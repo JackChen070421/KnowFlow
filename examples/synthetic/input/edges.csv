@@ -1,0 +1,9 @@
+from_id,to_id,edge_type,weight,note
+OBJ-7M-01,K-01,contains,1.0,课标包含知识点
+OBJ-7M-03,K-06,contains,1.0,课标包含知识点
+OBJ-7M-03,K-07,contains,1.0,课标包含知识点
+OBJ-7M-03,K-08,contains,1.0,课标包含知识点
+K-06,K-07,prerequisite,1.0,先学等式性质
+K-06,K-08,prerequisite,1.0,先学等式性质
+K-07,K-08,confusable,0.6,移项与合并同类项易混
+K-08,K-07,confusable,0.6,对称

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/students.schema.json",
+  "title": "students.csv row",
+  "description": "一行 = 一名学生（伪匿名）。禁止真实姓名/学号/联系方式。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["student_id", "group_id", "grade"],
+  "properties": {
+    "student_id": {
+      "type": "string",
+      "pattern": "^S[0-9]{3}$",
+      "description": "学生主键，如 S012"
+    },
+    "group_id": {
+      "type": "string",
+      "pattern": "^G[0-9]{1,2}$",
+      "description": "群体/班级，如 G2"
+    },
+    "grade": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12,
+      "description": "年级"
+    },
+    "stage": {
+      "type": ["string", "null"],
+      "enum": ["middle", "high", null],
+      "description": "学段：初中/高中"
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "备注；不得含真实身份信息"
+    }
+  },
+  "x-primary-key": ["student_id"],
+  "x-file": "students.csv"
+}

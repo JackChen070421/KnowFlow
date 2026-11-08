@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/llm/llm_response.schema.json",
+  "title": "llm_response.json",
+  "description": "LLM 输出契约：只允许文字字段与受限标签；数字/ID 必须来自 llm_summary 白名单。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "ref_id", "cited_ids", "numbers_used"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "student_summary",
+        "class_summary",
+        "issue_labeling",
+        "recommendation_reason"
+      ]
+    },
+    "ref_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text": {
+      "type": "string",
+      "description": "教师可读文本；不得含 Markdown 代码围栏、URL、个人身份信息"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "recommendation_reason 专用：引用 issue_id 与统计量的理由"
+    },
+    "check": {
+      "type": "string",
+      "minLength": 1,
+      "description": "recommendation_reason 专用：可验证的检查方式"
+    },
+    "issue_labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue_id", "type", "rationale"],
+        "properties": {
+          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
+          "type": {
+            "type": "string",
+            "enum": [
+              "concept_confusion",
+              "procedure_gap",
+              "reading_error",
+              "prerequisite_gap",
+              "transfer_gap",
+              "insufficient_evidence"
+            ]
+          },
+          "rationale": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "cited_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "numbers_used": {
+      "type": "array",
+      "items": {"type": "number"},
+      "uniqueItems": true
+    }
+  },
+  "anyOf": [
+    {"required": ["text"]},
+    {"required": ["issue_labels"]},
+    {"required": ["reason", "check"]}
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"kind": {"const": "issue_labeling"}},
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["issue_labels"],
+        "properties": {
+          "issue_labels": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"kind": {"const": "recommendation_reason"}},
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["reason", "check"]
+      }
+    }
+  ]
+}

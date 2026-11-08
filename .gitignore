@@ -1,0 +1,97 @@
+# ============================================================
+# KnowFlow .gitignore
+# 原则：真实数据、密钥、模型权重、运行产物一律不入库。
+# 唯一例外：examples/ 下的合成样例。
+# ============================================================
+
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*
+secrets*
+
+# --- competition data: never commit ---
+data/raw/**
+data/interim/**
+data/external/**
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/external/.gitkeep
+
+# Defense in depth: any CSV/XLSX/Parquet outside examples is assumed restricted.
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.jsonl
+!examples/**/*.csv
+!examples/**/*.tsv
+!examples/**/*.jsonl
+
+# Data-like JSON under data/ (schemas live under schemas/)
+data/**/*.json
+
+# --- model weights / large binaries ---
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.gguf
+*.h5
+*.pkl
+*.joblib
+
+# --- runtime artifacts ---
+artifacts/
+*.log
+*.tmp
+*.bak
+
+# --- deliverable artifacts: keep out of the repo ---
+*.pdf
+*.mp4
+*.mov
+*.pptx
+*.docx
+*.zip
+
+# --- Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- notebooks ---
+.ipynb_checkpoints/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- keep directory markers ---
+!**/.gitkeep

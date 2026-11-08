@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/records.schema.json",
+  "title": "records.csv row",
+  "description": "一行 = 一条作答记录。未作答时 score/is_correct 必须为 null。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "student_id",
+    "material_id",
+    "assigned",
+    "attempted",
+    "score",
+    "max_score"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^R-[0-9]{4}$",
+      "description": "记录主键，如 R-0031"
+    },
+    "student_id": {
+      "type": "string",
+      "pattern": "^S[0-9]{3}$",
+      "description": "学生 ID"
+    },
+    "material_id": {
+      "type": "string",
+      "pattern": "^M-[0-9]{3}$",
+      "description": "材料 ID"
+    },
+    "assigned": {
+      "type": "boolean",
+      "description": "是否已布置"
+    },
+    "attempted": {
+      "type": "boolean",
+      "description": "是否作答"
+    },
+    "score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "得分；未作答为 null"
+    },
+    "max_score": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "满分，必须 > 0"
+    },
+    "is_correct": {
+      "type": ["boolean", "null"],
+      "description": "是否答对；为空则按 score == max_score 推导"
+    },
+    "answer": {
+      "type": ["string", "null"],
+      "description": "作答内容；默认不落库、不送 LLM"
+    },
+    "submitted_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "提交时间，ISO 8601 带时区"
+    },
+    "duration_seconds": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "用时（秒）；未提供则不分析"
+    },
+    "attempt_no": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "第几次作答，从 1 开始"
+    },
+    "source": {
+      "type": ["string", "null"],
+      "description": "来源标记，如 synthetic"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"attempted": {"const": false}},
+        "required": ["attempted"]
+      },
+      "then": {
+        "properties": {
+          "score": {"type": "null"},
+          "is_correct": {"type": "null"}
+        }
+      }
+    }
+  ],
+  "x-primary-key": ["record_id"],
+  "x-file": "records.csv"
+}

@@ -1,0 +1,3 @@
+objective_id,subject,grade,theme,unit,objective_text,verb_level,source_material_id,source_locator,notes
+OBJ-7M-01,math,7,有理数,有理数运算,理解有理数的加减乘除运算法则并能进行简单混合运算,understand,M-001,p.8 §1.2,合成样例
+OBJ-7M-03,math,7,一元一次方程,解一元一次方程,掌握一元一次方程的解法并能正确进行移项与合并同类项,master,M-002,p.42 §3.2,合成样例

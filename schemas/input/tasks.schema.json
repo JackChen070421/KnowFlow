@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/tasks.schema.json",
+  "title": "tasks.csv row",
+  "description": "一行 = 一个学习任务条件。决定适用对象、材料范围与预算。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "title", "goal", "target_scope"],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{1,2}$",
+      "description": "任务主键，如 T1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "任务名"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "学习目标"
+    },
+    "target_scope": {
+      "type": "string",
+      "enum": ["all", "group", "student"],
+      "description": "适用对象范围"
+    },
+    "target_ids_json": {
+      "type": ["string", "null"],
+      "description": "JSON 数组字符串，如 [\"S012\"] 或 [\"G2\"]"
+    },
+    "material_scope_json": {
+      "type": ["string", "null"],
+      "description": "JSON 数组字符串，材料 ID 列表"
+    },
+    "constraints_json": {
+      "type": ["string", "null"],
+      "description": "JSON 对象字符串，如 {\"time_budget_minutes\":45}"
+    },
+    "expected_output": {
+      "type": ["string", "null"],
+      "description": "期望产物说明"
+    }
+  },
+  "x-primary-key": ["task_id"],
+  "x-file": "tasks.csv"
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/data_quality_report.schema.json",
+  "title": "data_quality_report.json",
+  "description": "任务 2 数据处理证据：输入哈希、去重、缺失、异常、处理规则。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "generated_at",
+    "input_files",
+    "total_records",
+    "duplicates_removed",
+    "records_by_state",
+    "missing",
+    "anomalies",
+    "field_quality",
+    "handling_rules"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "input_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "rows"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "rows": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "total_records": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "duplicates_removed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "records_by_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_correct",
+        "observed_wrong",
+        "assigned_not_attempted",
+        "unobserved"
+      ],
+      "properties": {
+        "observed_correct": {"type": "integer", "minimum": 0},
+        "observed_wrong": {"type": "integer", "minimum": 0},
+        "assigned_not_attempted": {"type": "integer", "minimum": 0},
+        "unobserved": {"type": "integer", "minimum": 0}
+      }
+    },
+    "missing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "students_without_records",
+        "items_without_records",
+        "empty_answers"
+      ],
+      "properties": {
+        "students_without_records": {"type": "integer", "minimum": 0},
+        "items_without_records": {"type": "integer", "minimum": 0},
+        "empty_answers": {"type": "integer", "minimum": 0}
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["record_id", "reason", "action"],
+        "properties": {
+          "record_id": {"type": ["string", "null"], "pattern": "^R-[0-9]{4}$"},
+          "reason": {"type": "string", "minLength": 1},
+          "action": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "field_quality": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "issue", "count"],
+        "properties": {
+          "field": {"type": "string", "minLength": 1},
+          "issue": {"type": "string", "minLength": 1},
+          "count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "handling_rules": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    }
+  }
+}

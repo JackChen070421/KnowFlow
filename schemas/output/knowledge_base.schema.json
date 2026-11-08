@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/knowledge_base.schema.json",
+  "title": "knowledge_base.json",
+  "description": "任务 1 产物：课标条目、知识点、材料、Q-matrix、必要联系的打包。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "generated_at",
+    "subject",
+    "grade",
+    "counts",
+    "objectives",
+    "knowledge",
+    "materials",
+    "qmatrix",
+    "edges"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "数据集标识；不得含个人信息"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subject": {
+      "type": "string",
+      "enum": ["math"]
+    },
+    "grade": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objective_count",
+        "knowledge_count",
+        "material_count",
+        "qmatrix_count",
+        "edge_count"
+      ],
+      "properties": {
+        "objective_count": {"type": "integer", "minimum": 0},
+        "knowledge_count": {"type": "integer", "minimum": 0},
+        "material_count": {"type": "integer", "minimum": 0},
+        "qmatrix_count": {"type": "integer", "minimum": 0},
+        "edge_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "items": {"$ref": "https://knowflow.local/schemas/input/objectives.schema.json"}
+    },
+    "knowledge": {
+      "type": "array",
+      "items": {"$ref": "https://knowflow.local/schemas/input/knowledge.schema.json"}
+    },
+    "materials": {
+      "type": "array",
+      "items": {"$ref": "https://knowflow.local/schemas/input/materials.schema.json"}
+    },
+    "qmatrix": {
+      "type": "array",
+      "items": {"$ref": "https://knowflow.local/schemas/input/qmatrix.schema.json"}
+    },
+    "edges": {
+      "type": "array",
+      "items": {"$ref": "https://knowflow.local/schemas/input/edges.schema.json"}
+    }
+  }
+}

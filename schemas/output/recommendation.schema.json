@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/recommendation.schema.json",
+  "title": "recommendation.json",
+  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "student_id",
+    "generated_at",
+    "source",
+    "generated_by",
+    "plan",
+    "probe_plan"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "student_id": {
+      "type": "string",
+      "pattern": "^S[0-9]{3}$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "profile_generated_at"],
+      "properties": {
+        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "profile_generated_at": {"type": "string", "format": "date-time"},
+        "profile_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "可选：画像文件哈希，便于追溯"
+        }
+      }
+    },
+    "generated_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "prompt_version"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "prompt_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "issue_id",
+          "activity",
+          "material_ids",
+          "primary_material_id",
+          "objective_id",
+          "knowledge_ids",
+          "reason",
+          "check",
+          "est_minutes",
+          "difficulty",
+          "prerequisite_check",
+          "teacher_adjustable"
+        ],
+        "properties": {
+          "seq": {"type": "integer", "minimum": 1},
+          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
+          "activity": {"type": "string", "minLength": 1},
+          "material_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "primary_material_id": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$",
+            "description": "必须是 material_ids 之一；G4 检查"
+          },
+          "objective_id": {"type": "string", "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"},
+          "knowledge_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "必须引用 issue_id 与统计量；数字须在 allowed_numbers 内"
+          },
+          "check": {
+            "type": "string",
+            "minLength": 1,
+            "description": "可验证的检查方式，如“3 题对 2 题”"
+          },
+          "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
+          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+          "prerequisite_check": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["satisfied", "missing_knowledge_ids"],
+            "properties": {
+              "satisfied": {"type": "boolean"},
+              "missing_knowledge_ids": {
+                "type": "array",
+                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+                "uniqueItems": true
+              }
+            }
+          },
+          "teacher_adjustable": {"type": "boolean"}
+        }
+      }
+    },
+    "probe_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["needed", "items", "purpose"],
+      "properties": {
+        "needed": {"type": "boolean"},
+        "items": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+          "uniqueItems": true
+        },
+        "purpose": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

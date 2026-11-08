@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/objectives.schema.json",
+  "title": "objectives.csv row",
+  "description": "一行 = 一条课标条目。objective_text 必须是课标原文，不改写。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "objective_id",
+    "subject",
+    "grade",
+    "theme",
+    "unit",
+    "objective_text",
+    "verb_level",
+    "source_locator"
+  ],
+  "properties": {
+    "objective_id": {
+      "type": "string",
+      "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$",
+      "description": "课标条目主键，如 OBJ-7M-03"
+    },
+    "subject": {
+      "type": "string",
+      "enum": ["math"],
+      "description": "学科；当前仅七年级数学"
+    },
+    "grade": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12,
+      "description": "年级"
+    },
+    "theme": {
+      "type": "string",
+      "minLength": 1,
+      "description": "学习主题"
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "单元"
+    },
+    "objective_text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "课标原文，不改写、不概括"
+    },
+    "verb_level": {
+      "type": "string",
+      "enum": ["know", "understand", "master", "apply"],
+      "description": "行为动词等级：了解/理解/掌握/运用"
+    },
+    "source_material_id": {
+      "type": ["string", "null"],
+      "pattern": "^M-[0-9]{3}$",
+      "description": "出处材料 ID；可为空，但 source_locator 必填"
+    },
+    "source_locator": {
+      "type": "string",
+      "minLength": 1,
+      "description": "页码/章节/条目号，必须能定位到原文"
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "备注；不得含个人信息"
+    }
+  },
+  "x-primary-key": ["objective_id"],
+  "x-file": "objectives.csv"
+}

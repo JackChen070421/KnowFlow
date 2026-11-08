@@ -1,0 +1,12 @@
+material_id,knowledge_id,weight,difficulty,item_type,is_primary
+M-003,K-01,1.0,2,practice,true
+M-021,K-07,1.0,2,explain,true
+M-022,K-06,1.0,1,explain,true
+M-023,K-06,1.0,1,practice,true
+M-027,K-07,1.0,2,practice,true
+M-045,K-07,0.9,2,practice,true
+M-041,K-07,1.0,3,probe,true
+M-050,K-07,0.8,3,assessment,true
+M-030,K-08,1.0,2,explain,true
+M-031,K-08,1.0,2,practice,true
+M-032,K-08,1.0,3,probe,true

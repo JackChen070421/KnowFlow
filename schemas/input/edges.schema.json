@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/edges.schema.json",
+  "title": "edges.csv row",
+  "description": "一行 = 一条必要联系：先修/包含/易混/相关。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["from_id", "to_id", "edge_type"],
+  "properties": {
+    "from_id": {
+      "type": "string",
+      "pattern": "^(OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}|K-[0-9]{2,3}|M-[0-9]{3})$",
+      "description": "起点 ID（课标/知识点/材料）"
+    },
+    "to_id": {
+      "type": "string",
+      "pattern": "^(OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}|K-[0-9]{2,3}|M-[0-9]{3})$",
+      "description": "终点 ID（课标/知识点/材料）"
+    },
+    "edge_type": {
+      "type": "string",
+      "enum": ["prerequisite", "contains", "confusable", "related"],
+      "description": "关系类型"
+    },
+    "weight": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "强度/置信度"
+    },
+    "note": {
+      "type": ["string", "null"],
+      "description": "说明"
+    }
+  },
+  "x-primary-key": ["from_id", "to_id", "edge_type"],
+  "x-file": "edges.csv"
+}

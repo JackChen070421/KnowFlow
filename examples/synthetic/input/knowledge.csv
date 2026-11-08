@@ -1,0 +1,5 @@
+knowledge_id,objective_id,parent_id,name,level,cognitive_type,description,sort_order
+K-01,OBJ-7M-01,,有理数加法法则,knowledge,concept,异号相加取绝对值较大数的符号,1
+K-06,OBJ-7M-03,,等式的基本性质,knowledge,concept,等式两边同加同减同乘同除结果仍相等,2
+K-07,OBJ-7M-03,K-06,移项与符号处理,skill,procedure,移项要变号,3
+K-08,OBJ-7M-03,K-06,合并同类项,skill,procedure,系数相加字母部分不变,4

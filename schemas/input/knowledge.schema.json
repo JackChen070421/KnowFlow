@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/knowledge.schema.json",
+  "title": "knowledge.csv row",
+  "description": "一行 = 一个知识点/子技能/单元/主题节点。canonical v0.1。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "knowledge_id",
+    "objective_id",
+    "name",
+    "level",
+    "cognitive_type"
+  ],
+  "properties": {
+    "knowledge_id": {
+      "type": "string",
+      "pattern": "^K-[0-9]{2,3}$",
+      "description": "知识点主键，如 K-07"
+    },
+    "objective_id": {
+      "type": "string",
+      "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$",
+      "description": "所属课标条目"
+    },
+    "parent_id": {
+      "type": ["string", "null"],
+      "pattern": "^K-[0-9]{2,3}$",
+      "description": "父知识点；顶层为 null"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "知识点名称"
+    },
+    "level": {
+      "type": "string",
+      "enum": ["theme", "unit", "knowledge", "skill"],
+      "description": "层级：主题/单元/知识点/子技能"
+    },
+    "cognitive_type": {
+      "type": "string",
+      "enum": ["concept", "procedure", "application"],
+      "description": "认知类型：概念/程序/应用"
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "一句话解释"
+    },
+    "sort_order": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "同层排序，从 0 开始"
+    }
+  },
+  "x-primary-key": ["knowledge_id"],
+  "x-file": "knowledge.csv"
+}

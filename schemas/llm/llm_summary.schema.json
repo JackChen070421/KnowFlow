@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/llm/llm_summary.schema.json",
+  "title": "llm_summary.json",
+  "description": "唯一允许送进 LLM 的对象：聚合计数/比率/状态/错误模式，不含原始作答、姓名、自由文本。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary_id", "scope", "ref_id", "locale", "facts", "constraints"],
+  "properties": {
+    "summary_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["student", "class", "issue"]
+    },
+    "ref_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "S012 / G2 / IS-012-01；不得是真实姓名"
+    },
+    "locale": {
+      "type": "string",
+      "const": "zh-CN"
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_id",
+        "observed_records",
+        "correct",
+        "wrong",
+        "not_attempted",
+        "mastery",
+        "confidence",
+        "evidence_count",
+        "status",
+        "coverage_ratio",
+        "error_patterns"
+      ],
+      "properties": {
+        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "observed_records": {"type": "integer", "minimum": 0},
+        "correct": {"type": "integer", "minimum": 0},
+        "wrong": {"type": "integer", "minimum": 0},
+        "not_attempted": {"type": "integer", "minimum": 0},
+        "mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+        "evidence_count": {"type": "integer", "minimum": 0},
+        "status": {
+          "type": "string",
+          "enum": [
+            "confirmed_weak",
+            "likely_weak",
+            "insufficient_evidence",
+            "likely_mastered",
+            "confirmed_mastered"
+          ]
+        },
+        "coverage_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "error_patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "count", "material_ids"],
+            "properties": {
+              "label": {"type": "string", "minLength": 1},
+              "count": {"type": "integer", "minimum": 0},
+              "material_ids": {
+                "type": "array",
+                "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["must_not_infer", "allowed_numbers", "allowed_ids"],
+      "properties": {
+        "must_not_infer": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1
+        },
+        "allowed_numbers": {
+          "type": "array",
+          "items": {"type": "number"},
+          "uniqueItems": true
+        },
+        "allowed_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# Normalize line endings for a Windows/macOS/Linux team.
+* text=auto eol=lf
+
+# Windows scripts keep CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary artifacts.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.mp4 binary
+*.mov binary
+*.xlsx binary
+*.xls binary
+*.pptx binary
+*.docx binary
+*.zip binary

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/data_quality_report.schema.json",
   "title": "data_quality_report.json",
-  "description": "任务 2 数据处理证据：输入哈希、去重、缺失、异常、处理规则。canonical v0.1。",
+  "description": "任务 2 数据处理证据：输入哈希、去重、缺失、异常、处理规则。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -55,16 +55,23 @@
     "records_by_state": {
       "type": "object",
       "additionalProperties": false,
+      "description": "按记录行计数：observed_correct + observed_wrong + pending + assigned_not_attempted = total_records；unobserved 在此恒为 0（无记录不落行），缺测见 missing 与 coverage。",
       "required": [
         "observed_correct",
         "observed_wrong",
         "assigned_not_attempted",
+        "pending",
         "unobserved"
       ],
       "properties": {
         "observed_correct": {"type": "integer", "minimum": 0},
         "observed_wrong": {"type": "integer", "minimum": 0},
         "assigned_not_attempted": {"type": "integer", "minimum": 0},
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "已作答、未评分；不进 evidence，也不算错"
+        },
         "unobserved": {"type": "integer", "minimum": 0}
       }
     },

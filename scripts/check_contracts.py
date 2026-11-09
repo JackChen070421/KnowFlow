@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check repository structure, JSON Schemas and data-hygiene rules.
-检查必需目录/文件、schema 能否解析、$id 是否唯一、data/raw/interim 是否有数据、.gitignore 规则
+检查必需目录/文件、schema 能否解析、$id 是否唯一、受限数据是否被 Git 忽略、.gitignore 规则
 Usage:
     python scripts/check_contracts.py
 
@@ -31,7 +31,7 @@ def main() -> int:
     print(f"KnowFlow contract check: OK ({schema_count} schemas)")
     print("  - required directories/files present")
     print("  - schemas parse and $id values are unique")
-    print("  - restricted data directories contain no data files")
+    print("  - files under data/raw and data/interim are git-ignored (never committed)")
     print("  - .gitignore keeps data, secrets and model weights out")
     return 0
 

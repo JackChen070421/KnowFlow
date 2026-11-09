@@ -12,7 +12,7 @@
 
 样例故意覆盖四种证据状态：
 
-| 学生 | 知识点 | 记录 | 四态 | 预期诊断 |
+| 学生 | 知识点 | 记录 | 五态 | 预期诊断 |
 |---|---|---|---|---|
 | S012 | K-07 移项与符号 | M-027 错、M-045 错、M-050 错 | 3 × `observed_wrong` | n=3, k=0 → mastery 0.20, `confirmed_weak` |
 | S012 | K-08 合并同类项 | M-031 对 | 1 × `observed_correct` | n=1, k=1 → mastery 0.6667, `insufficient_evidence` |

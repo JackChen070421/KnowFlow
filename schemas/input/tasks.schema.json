@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/tasks.schema.json",
   "title": "tasks.csv row",
-  "description": "一行 = 一个学习任务条件。决定适用对象、材料范围与预算。canonical v0.1。",
+  "description": "一行 = 一个学习任务条件。决定适用对象、材料范围与预算。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": ["task_id", "title", "goal", "target_scope"],

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/student_profile.schema.json",
   "title": "student_profile.json",
-  "description": "任务 2 个体画像：知识点级诊断 + 课标聚合 + 问题 + 三张清单。canonical v0.1。",
+  "description": "任务 2 个体画像：知识点级诊断 + 课标聚合 + 问题 + 三张清单。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -98,16 +98,23 @@
           "state_counts": {
             "type": "object",
             "additionalProperties": false,
+            "description": "五项之和 = 该知识点可测材料数；evidence_count = observed_correct + observed_wrong。",
             "required": [
               "observed_correct",
               "observed_wrong",
               "assigned_not_attempted",
+              "pending",
               "unobserved"
             ],
             "properties": {
               "observed_correct": {"type": "integer", "minimum": 0},
               "observed_wrong": {"type": "integer", "minimum": 0},
               "assigned_not_attempted": {"type": "integer", "minimum": 0},
+              "pending": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "已作答但未评分的材料项数；不计入 evidence_count，也不判为错误"
+              },
               "unobserved": {"type": "integer", "minimum": 0}
             }
           },

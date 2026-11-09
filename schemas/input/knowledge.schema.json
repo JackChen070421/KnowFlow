@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/knowledge.schema.json",
   "title": "knowledge.csv row",
-  "description": "一行 = 一个知识点/子技能/单元/主题节点。canonical v0.1。",
+  "description": "一行 = 一个知识点/子技能/单元/主题节点。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -6,7 +6,7 @@
 KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对的东西：
 
 1. **知识底座**：课标 → 知识点 → 材料 → Q-matrix → 先修/易混关系；
-2. **学情画像**：四态证据、覆盖度、Beta-Binomial 掌握度、问题清单；
+2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
 > 当前状态：**M0 地基**。仓库只保留数据契约、合成样例、契约检查与最小目录；业务模块随任务逐步增加。
@@ -29,7 +29,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | 任务 | 产物 | 关键点 |
 |---|---|---|
 | **任务 1** 知识底座 | `knowledge_base.json` | 课标原文 + 出处；知识点树；Q-matrix；先修/易混图 |
-| **任务 2** 学情画像 | `student_profile.json` / `class_profile.json` | 四态、覆盖度、Beta 后验、问题识别 |
+| **任务 2** 学情画像 | `student_profile.json` / `class_profile.json` | 五态、覆盖度、Beta 后验、问题识别 |
 | **任务 3** 学习建议 | `recommendation.json` | 材料真实、理由可追、顺序合理、检查可验证 |
 
 完整字段/枚举见 [`schemas/CONTRACT.md`](schemas/CONTRACT.md)。
@@ -43,10 +43,10 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 16 schemas |
 | **2 数据层** | `data/`、未来 `src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | 🟡 目录/schema，适配待 M1 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 schema，构建待 M1 |
-| **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 四态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
+| **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 三脚本 + 11 tests |
+| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 三脚本 + 12 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -64,13 +64,14 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 当前 M0 只实现第 1 层、第 2 层目录、第 7 层检查、第 8 层协作；第 3–6 层先冻结 schema，再按 M1–M3 逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。另有 `scripts/ingest_raw.py`：把官方材料原样落地到 `data/raw/<dataset_id>/` 并生成指纹（**不是** IO 适配层，不做列映射）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
-| 脚本 | 检查范围 | 成功标志 |
+| 脚本 | 作用 | 成功标志 |
 |---|---|---|
-| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 无数据、`.gitignore` 规则 | `OK (16 schemas)` |
+| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (16 schemas)` |
 | `scripts/check_examples.py` | `examples/synthetic/input/` 8 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (8 tables)` |
 | `scripts/validate_outputs.py` | 一份 JSON 对一份 schema | `OK (0 errors)` |
+| `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |
 
 ---
 
@@ -83,8 +84,9 @@ KnowFlow/
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # 目前只有 __init__ / __main__ / cli / contracts
 ├─ tests/                   # contract + fixtures
-├─ scripts/                 # check_contracts / check_examples / validate_outputs
+├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
+├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
 └─ .github/                 # CI + PR 模板
 ```
@@ -148,17 +150,22 @@ KnowFlow/data/
 | 官方原始数据 | `data/raw/<dataset_id>/` | ❌ |
 | 适配后 canonical | `data/interim/<dataset_id>/` | ❌ |
 | 合成样例 | `examples/synthetic/`、`tests/fixtures/` | ✅ 仅合成 |
-| 数据字典 / manifest | 跟原始数据放一起 | ❌ |
+| 数据字典 / 本机 manifest | 跟原始数据放一起 | ❌ |
+| **纯指纹清单** | `data/manifests/<dataset_id>.structure.json` | ✅ 只有路径/哈希/行数，无数据内容 |
 
 `<dataset_id>` 用短英文/数字，例如 `dev-2026-11`、`eval-holdout`。
 
+当前赛题数据集已落地为 **`official-v1`**：`data/raw/official-v1/`（21 文件 / 73 MB，目录结构与文件名原样保留），指纹清单入库为 `data/manifests/official-v1.structure.json`，组员一条 `--check` 就能确认自己那份是否字节一致。`data/raw` 仍全封闭，`check_contracts` 会用 `git check-ignore` 复核。详见 [`data/README.md`](data/README.md) §0 与 [`AGENT.md`](AGENT.md) §4。
+
 **接数据 5 步**：
 
-1. 原样放：官方文件放 `data/raw/<dataset_id>/`，不要先手工改列名。
-2. 留字典：数据字典/字段说明跟原始文件放一起。
-3. 记 manifest：文件名、`sha256`、行数、来源、日期。
+1. 原样放：`python scripts/ingest_raw.py --source "<赛题资料包路径>"`，一步完成复制 + 指纹，不改列名。
+2. 留字典：数据字典/字段说明随包一起放（脚本按原结构复制，`字段说明.csv` 已在包内）。
+3. 记 manifest：脚本自动写 `data/raw/<dataset_id>/manifest.json`（`sha256` + 行数 + 字节数）。
 4. 写适配：在 `src/knowflow/io/` 把官方列名映射到 canonical，输出到 `data/interim/<dataset_id>/`。
-5. 跑检查：`check_contracts` + `check_examples`（合成样例）+ `validate_outputs`（产物）+ `pytest`。
+5. 跑检查：`ingest_raw --check` + `check_contracts` + `check_examples` + `validate_outputs` + `pytest`。
+
+> ⚠️ **`git pull` 不会带来任何数据。** 新组员必须自己跑第 1 步，否则 `data/raw/` 是空的——这是有意设计，不是故障。
 
 **三条硬规则**：
 
@@ -202,7 +209,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
 | **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | ⬜ |
-| **M2 诊断** | 四态、覆盖度、Beta、画像 | ⬜ |
+| **M2 诊断** | 五态、覆盖度、Beta、画像 | ⬜ |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |
 

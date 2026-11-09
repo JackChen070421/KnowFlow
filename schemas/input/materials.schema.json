@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/materials.schema.json",
   "title": "materials.csv row",
-  "description": "一行 = 一份材料/题目/课标参考文档。canonical v0.1。",
+  "description": "一行 = 一份材料/题目/课标参考文档。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [

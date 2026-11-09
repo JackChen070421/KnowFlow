@@ -35,6 +35,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "AGENT.md",
     "README.md",
     "shortcuts.md",
+    "CHANGELOG.md",
     ".gitignore",
     ".gitattributes",
     ".env.example",

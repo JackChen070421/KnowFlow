@@ -1,8 +1,8 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-08 · v0.2（精简版）
-> 阅读顺序：本文件 → [`README.md`](README.md) → [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
+> 最后更新：2026-11-09 · v0.5
+> 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
 ## 0. 30 秒总览
@@ -30,7 +30,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 ## 2. 仓库边界
 
-**只放**：代码、schema、合成样例、契约检查、必要的协作说明（README/AGENT/shortcuts）。
+**只放**：代码、schema、合成样例、契约检查、必要的协作说明（README/AGENT/shortcuts/**CHANGELOG**）。
 
 **不放**：设计方案/PDF/PPT/视频/真实结果包/项目文档/真实学情数据/模型权重/密钥。
 这些放仓库外的团队网盘或赛方提交渠道；仓库保持干净，避免污染和误传。
@@ -62,7 +62,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 ```text
 KnowFlow/
-├─ AGENT.md / README.md / shortcuts.md
+├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
@@ -144,7 +144,8 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 3. **先契约/测试**：改 schema/fixture，再写实现。
 4. **跑验证**：`check_contracts` + `check_examples` + `validate_outputs`（有产物时）+ `pytest`（见 §8）。
 5. **提 PR**：关联 Issue；贴命令与结果；作者不能自审；合约变更需 R1 + R4 双审。
-6. **合并**：通过检查后合并；删分支；更新 Issue。禁止直接 push `main`、禁止 force-push。
+6. **记变更**：在 [`CHANGELOG.md`](CHANGELOG.md) 顶部加一条（改了什么 / 验证 / 回退），一个可交付单元一条。
+7. **合并**：通过检查后合并；删分支；更新 Issue。禁止直接 push `main`、禁止 force-push。
 
 提交信息：Conventional Commits；正文写“改了什么 / 为什么 / 怎么验证 / 未验证项”。
 
@@ -210,8 +211,11 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 ## 13. 变更记录
 
+> 这里只记**协作文档本身**的版本号。项目事件流（改了什么、怎么验证、怎么回退）记在 [`CHANGELOG.md`](CHANGELOG.md)，两者不重复维护。
+
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.5 | 2026-11-09 | 引入 [`CHANGELOG.md`](CHANGELOG.md)：阅读顺序、§2 仓库边界、§4 目录、§7 工作流（新增第 6 步「记变更」）同步 |
 | v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |
 | v0.3 | 2026-11-09 | M1-a 契约补丁：`evidence_state` 增 `pending`；`state_counts`/`records_by_state` 增 `pending` 记账；写明 `assigned`/`attempted` 判定与 `applicable` 口径；受限目录检查改为 `git check-ignore`；落地 `data/raw/official-v1/` |
 | v0.1 | 2026-11-08 | 初版地基 |

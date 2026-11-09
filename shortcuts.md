@@ -87,14 +87,19 @@ python -m pytest
 
 ### “检查格式 / 契约 / 样例 / 产物”
 
-三个脚本分工不同，按下面的自然语言选择：
+三个检查脚本分工不同，另有 `ingest_raw` 负责官方数据落地（不是检查）。按下面的自然语言选择：
 
 | 你说 | Agent 执行 | 检查什么 |
 |---|---|---|
-| “检查项目结构 / 契约 / 隐私”<br>“schema 有没有问题”<br>“有没有真实数据混进来” | `python scripts/check_contracts.py` | 必需目录/文件、schema 能否解析、`$id` 唯一、`data/raw`/`interim` 是否混入数据、`.gitignore` 是否挡住数据/密钥/权重 |
+| “检查项目结构 / 契约 / 隐私”<br>“schema 有没有问题”<br>“有没有真实数据混进来” | `python scripts/check_contracts.py` | 必需目录/文件、schema 能否解析、`$id` 唯一、`data/raw`/`interim` 下的文件**是否被 Git 忽略**、`.gitignore` 是否挡住数据/密钥/权重 |
+| “把赛题材料放进来”<br>“复现数据目录”<br>“新机器接数据” | `python scripts/ingest_raw.py --source "<赛题资料包路径>"` | 原样复制到 `data/raw/official-v1/`，写本机 `manifest.json`（`sha256` + 字节数 + 行数 + sheet 数） |
+| “数据放对了吗”<br>“核对一下数据有没有缺”<br>“和别人那份一致吗” | `python scripts/ingest_raw.py --check` | 复算每文件 `sha256`/行数，默认对照**入库的** `data/manifests/official-v1.structure.json`（可用 `--expected` 指定别的基准） |
+| “赛方更新了材料”<br>“重新钉指纹” | `python scripts/ingest_raw.py --source "<路径>" --force --export-structure` | 重新落地并改写 `data/manifests/official-v1.structure.json`；改完要在 PR 说明变了哪几行 |
 | “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 8 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
-| “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |
+| “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |
+
+> **`git pull` 不会带来数据。** 新组员拉到的是空的 `data/raw/`；“复现数据目录”必须自己跑一次 `ingest_raw --source`。
 
 常用产物对应的 schema：
 

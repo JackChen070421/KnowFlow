@@ -14,6 +14,11 @@ credentials*
 secrets*
 
 # --- competition data: never commit ---
+# 官方资料包已落地为 data/raw/official-v1/（21 文件 / 73 MB，原样保留目录与文件名）。
+# 前两行是对 data/raw/** 的显式复述：写清楚“这里确实有数据，且它必须被忽略”，
+# 避免以后有人为了让检查通过而删数据。
+data/raw/official-v1/**
+data/raw/*/manifest.json
 data/raw/**
 data/interim/**
 data/external/**
@@ -35,6 +40,9 @@ data/external/**
 
 # Data-like JSON under data/ (schemas live under schemas/)
 data/**/*.json
+# 例外：纯指纹清单（路径 + sha256 + 字节数 + 行数，无任何数据内容）允许入库。
+# 它是组员核对“我这份和别人那份是否字节一致”的唯一依据；data/raw 仍然是封闭的。
+!data/manifests/*.structure.json
 
 # --- model weights / large binaries ---
 *.pt

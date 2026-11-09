@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/qmatrix.schema.json",
   "title": "qmatrix.csv row",
-  "description": "一行 = 一个材料×知识点测量关系。主键 (material_id, knowledge_id)。canonical v0.1。",
+  "description": "一行 = 一个材料×知识点测量关系。主键 (material_id, knowledge_id)。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [

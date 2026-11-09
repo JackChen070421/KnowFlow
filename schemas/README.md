@@ -1,6 +1,6 @@
 # schemas/ · 机器契约（第 1 层）
 
-> 最后更新：2026-11-08
+> 最后更新：2026-11-09
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 
 ---
@@ -77,12 +77,16 @@ assert errors == [], errors
 1. 改 schema + [`CONTRACT.md`](CONTRACT.md) + fixtures。
 2. 跑 `check_contracts` + `check_examples` + `pytest`。
 3. PR 写清：为什么改、谁消费、旧产物是否兼容。
-4. 删字段/改语义/改枚举 = **major**；加可选字段/加枚举 = **minor**；只改描述 = patch。
+4. 删字段/改语义/改枚举 = **major**；加可选字段/加枚举值 = **minor**；只改描述 = patch。
 5. 不兼容时保留旧 schema 一个版本 + 迁移脚本。
 
 ---
 
 ## 5. 常见问题
+
+### 为什么 `state_counts` 里一定有 `pending`？
+
+官方数据有“待评分”记录：学生交了、老师没给分。它既不是对也不是错，所以既不能进 `observed_*`，也不能丢进 `unobserved`。`pending` 让这类记录**被显式记账**，诊断层据此既不算 n、也不判错，只是把它计入覆盖度缺口。
 
 ### 为什么 `mastery` 允许 `null`？
 

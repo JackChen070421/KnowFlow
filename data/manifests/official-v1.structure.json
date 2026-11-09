@@ -1,0 +1,120 @@
+{
+  "dataset_id": "official-v1",
+  "note": "纯指纹：路径 + sha256 + 字节数 + 行数；不含任何数据内容，可入库。",
+  "file_count": 21,
+  "total_bytes": 76518706,
+  "files": [
+    {
+      "path": "1_赛题规则.pdf",
+      "sha256": "de3190cb8ddd950fcb869815079d006457296217793a0e561d10403505468877",
+      "bytes": 784891
+    },
+    {
+      "path": "2_参赛说明.docx",
+      "sha256": "567943da004f82dd588a828f5cb2884fc6f240052de300b1198537b68ab92612",
+      "bytes": 38182
+    },
+    {
+      "path": "3_典型案例说明.docx",
+      "sha256": "4b1aa01a13aa9beddbc4bc0900fd7d99f4b84e54adc5fe09bfd26e1a9e277fbe",
+      "bytes": 37973
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/作答记录.csv",
+      "sha256": "fb055bdcb0e83524f6e02c42713c9cf580a8c490a7fa609c31ab7b3ec43cf2be",
+      "bytes": 102089,
+      "rows": 806
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/字段说明.csv",
+      "sha256": "4771809373818fd5a729e111fd7e70e2cdccb85c1631ea75adc2707e57455966",
+      "bytes": 4902,
+      "rows": 42
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/模拟学生.csv",
+      "sha256": "fc497cd9e4e731b695ec6f300916e17c154243abeef9af43b456aa1ae9d7964b",
+      "bytes": 523,
+      "rows": 40
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/测验节点.csv",
+      "sha256": "4eba902326d9e22582b162f345f67abfe1c6dc3efae1e208717c0cc8e782ff0b",
+      "bytes": 812,
+      "rows": 2
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/课程要求.csv",
+      "sha256": "1a2e43dad2d9741e2c30268a56b4ae1d0905fa63e5ced871e138ea921a02cf11",
+      "bytes": 1998,
+      "rows": 9
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据/题目与材料.csv",
+      "sha256": "787147c2610c6cee7a4424af46e6fa469c3dd7d496392fe139becd8f433acb19",
+      "bytes": 13386,
+      "rows": 65
+    },
+    {
+      "path": "4_赛题数据/模拟学情数据索引.xlsx",
+      "sha256": "bab4171fb02e118baac7efb362a7b8b1a0f6bde3425aa0ee93edf27746c7c7da",
+      "bytes": 98216,
+      "sheets": 7
+    },
+    {
+      "path": "4_赛题数据/赛题数据说明.docx",
+      "sha256": "665e8980c116dfa44b54c14bc58c43cb0af576f944b64412e17506e5b4095e01",
+      "bytes": 26451
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B01_相关资料切片.pdf",
+      "sha256": "3c131d770c62858cf609e3e455bfbcfc40f941564209914edda55fb39c7df0a9",
+      "bytes": 2286475
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B02_相关资料切片.pdf",
+      "sha256": "ccde81c935d7adeaf3c0da331b8881ea86ca0b173e01d20c4ab427d202efc6b6",
+      "bytes": 2600857
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B03_相关资料切片.pdf",
+      "sha256": "b1e5c1928ba857b1561231e866010b3a9cdcebf4c3efe373a0c75be14093b7e2",
+      "bytes": 4312729
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B04_相关资料切片.pdf",
+      "sha256": "cb6d4e0aa9bbed40579f3faf06f0080b09bd954c774b4b5e645438cd6a493410",
+      "bytes": 4867154
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B05_相关资料切片.pdf",
+      "sha256": "3f5e0575e5983a35662e705e90230ee5c0c9876b47c98c9da8b9b444027e2e8e",
+      "bytes": 4251754
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B06_相关资料切片.pdf",
+      "sha256": "ccee907e3a43e701d851942d59511c6a7f78c2ee315cc831592b28517168a990",
+      "bytes": 9586562
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B07_相关资料切片.pdf",
+      "sha256": "be3630a7a28647cd78f0432c16b21c985f3fd6004e86f22dd320b71a0dfa3d5b",
+      "bytes": 3253392
+    },
+    {
+      "path": "5_课程标准及相关教学资源/B08_相关资料切片.pdf",
+      "sha256": "410bfc4f88a94480cd473fc0bf08716e4c1b5aa98da0916d4c2e3a78333d3c72",
+      "bytes": 4125728
+    },
+    {
+      "path": "5_课程标准及相关教学资源/课程标准_2022.pdf",
+      "sha256": "1183b95c58a65eaac4c456f2d2b329bbe42f65a6482993edb537e3eaf8baa144",
+      "bytes": 40123943
+    },
+    {
+      "path": "资料说明.txt",
+      "sha256": "3a4e2ce63216b05dc525945f5133b4192726866ad4fee7a56c8ff65e43671dc1",
+      "bytes": 689
+    }
+  ]
+}

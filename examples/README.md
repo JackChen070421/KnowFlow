@@ -64,7 +64,7 @@ python scripts/validate_outputs.py `
 2. 必须包含 8 张输入表；字段与 `schemas/input/*.schema.json` 一致。
 3. 学生 ID 用 `Sxxx`，不得用真实姓名/学号；备注写“合成样例”。
 4. 材料 ID 用 `M-xxx`，记录 ID 用 `R-xxxx`，知识点 `K-xx`。
-5. 提供 `README.md`：故事、覆盖的知识点、四态分布、预期用途。
+5. 提供 `README.md`：故事、覆盖的知识点、五态分布、预期用途。
 6. **不要**放真实数据、真实题目截图、真实学生作业。
 7. 新增样例后跑 `check_contracts` + `check_examples` + `pytest`；必要时加 fixture。
 
@@ -75,4 +75,4 @@ python scripts/validate_outputs.py `
 - ❌ 把官方数据改个名字放进 `examples/`。
 - ❌ 用真实学生姓名/学号/成绩单。
 - ❌ 用未授权的教材题目/图片。
-- ❌ 为了让样例“好看”而伪造四态/掌握度；样例要能暴露边界（未作答、无记录、n<3）。
+- ❌ 为了让样例“好看”而伪造五态/掌握度；样例要能暴露边界（未作答、无记录、n<3）。

@@ -10,7 +10,7 @@
 KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体。输入课程材料、题目、学生作答记录，输出：
 
 1. **知识底座**：课标 → 知识点 → 材料 → Q-matrix → 先修/易混关系；
-2. **学情画像**：四态证据、覆盖度、Beta-Binomial 掌握度、问题清单；
+2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
 **一句话：数字由代码算，语言由模型写；所有结论必须能追到 ID。**
@@ -42,10 +42,10 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
 | **2 数据层** | `data/`、未来 `io/` | `raw → canonical → interim`；隔离官方格式 | 🟡 |
 | **3 知识层** | 未来 `knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | 🟡 |
-| **4 诊断层** | 未来 `cleaning/`、`diagnosis/` | 四态/覆盖度/Beta/问题/个体与班级画像 | 🟡 |
+| **4 诊断层** | 未来 `cleaning/`、`diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像 | 🟡 |
 | **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三脚本 + 契约测试 + 校验报告 | ✅ |
+| **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
 | **8 协作层** | `AGENT/README/shortcuts/.github` | 准则/流程/分支/PR/CI | ✅ |
 
 数据流：`data/raw → io → data/interim → knowledge → diagnosis → recommend → JSON`；LLM 只写文字。
@@ -68,7 +68,7 @@ KnowFlow/
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # 目前只有 __init__ / __main__ / contracts / cli
 ├─ tests/                   # contract + fixtures
-├─ scripts/                 # check_contracts / check_examples / validate_outputs
+├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
 ├─ data/
 │  ├─ raw/<dataset_id>/     # 官方原始数据，原样放，不进 Git
 │  ├─ interim/<dataset_id>/ # 适配后 canonical，不进 Git
@@ -76,7 +76,27 @@ KnowFlow/
 └─ .github/                 # CI + PR 模板
 ```
 
-**数据集放置（必读）**：官方原始数据放 `data/raw/<dataset_id>/`（原样、不改名）；canonical 中间表放 `data/interim/<dataset_id>/`；两者都不进 Git。`examples/synthetic/`、`tests/fixtures/` 只放合成样例，**永远不放真实数据**。接数据时保留数据字典 + `manifest.json`，下游只读 `interim/`；详见 `data/README.md`。
+**数据集放置（必读）**：官方原始数据放 `data/raw/<dataset_id>/`（原样、不改名）；canonical 中间表放 `data/interim/<dataset_id>/`；两者都不进 Git。`examples/synthetic/`、`tests/fixtures/` 只放合成样例，**永远不放真实数据**；下游只读 `interim/`。
+
+> ⚠️ **`git pull` 不会带来数据。** `data/raw/**` 与 `data/interim/**` 都在 `.gitignore` 里，新组员拉下来只有 `README.md` 和两个 `.gitkeep`。所以“数据集放哪”不是口头约定，而是一条**必须执行的命令**。
+
+**复现当前结构（每台新机器、每个新组员都要跑一次）**：
+
+| 步骤 | 命令 | 期望输出 |
+|---|---|---|
+| 1. 取材料 | 赛题组统一渠道获取 `赛题资料包`，解压到本机任意路径 | 目录内含 `1_赛题规则.pdf` |
+| 2. 落地 | `python scripts/ingest_raw.py --source "<上一步路径>"` | `INGEST OK dataset_id=official-v1 files=21 bytes=76518706` |
+| 3. 自检 | `python scripts/ingest_raw.py --check` | `CHECK OK ...` + `compared against .../data/manifests/official-v1.structure.json` |
+| 4. 验不进库 | `python scripts/check_contracts.py` | `files under data/raw and data/interim are git-ignored` |
+
+- `dataset_id` 固定为 `official-v1`，**不要改名**：文档、审计报告与下游都按这个名字引用。
+- **原样复制**：不改名、不改列、不删干扰项（B01–B08 全留；其中只有 B02/B05/B06 对应 T03/T01/T02）。
+- **两份指纹，分工不同**：
+  - `data/manifests/official-v1.structure.json` —— **入库**。纯指纹（路径 + `sha256` + 字节数 + 行数），不含任何数据内容。第 3 步默认拿它当基准，所以组员不用交换文件就能知道“我这份和主仓是否字节一致”。
+  - `data/raw/official-v1/manifest.json` —— **不入库**。本机落地时生成，多带 `received_at`/来源等易变字段，只用于自己复查。
+- **官方材料版本变化时**（赛方更新了包）：必须 `--export-structure` 重新钉住指纹，并在 PR 里写明变了几行、为什么。**不要**为了“让检查过”去改这份清单。
+- `scripts/ingest_raw.py` **不是 IO 适配层**：它只做“复制 + 指纹”，不做任何列名/ID 映射（映射见 [`schemas/CONTRACT.md`](schemas/CONTRACT.md) §6，属 M1 后续）。
+- 收尾确认：`git status --porcelain` 应为空；`git ls-files data/` 只应出现 `data/README.md`、`data/manifests/official-v1.structure.json`、`data/raw/.gitkeep`、`data/interim/.gitkeep`。
 
 业务模块（`io/cleaning/knowledge/diagnosis/recommend/llm`）按任务逐个添加，不预先铺空目录。
 
@@ -97,7 +117,7 @@ KnowFlow/
 
 | 枚举 | 取值 |
 |---|---|
-| `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `unobserved` |
+| `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `pending` / `unobserved` |
 | `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `likely_mastered` / `confirmed_mastered` |
 | `issue_type` | `concept_confusion` / `procedure_gap` / `reading_error` / `prerequisite_gap` / `transfer_gap` / `insufficient_evidence` |
 | `material_type` | `reference` / `explain` / `example` / `practice` / `assessment` / `probe` |
@@ -109,7 +129,7 @@ KnowFlow/
 | 角色 | 负责 | 主要产物 |
 |---|---|---|
 | **R1 知识/契约** | 课标/知识点/Q-matrix/图；守 schema | `knowledge_base.json`、schema |
-| **R2 数据/诊断** | 适配、清洗、四态、覆盖度、Beta | canonical 表、`student_profile.json` |
+| **R2 数据/诊断** | 适配、清洗、五态、覆盖度、Beta | canonical 表、`student_profile.json` |
 | **R3 建议/LLM** | 材料检索、约束、排序、理由、探测小测 | `recommendation.json`、prompt |
 | **R4 质量/交付** | 校验、测试、CI、隐私、提交检查 | `validation_report.json`、测试 |
 
@@ -136,7 +156,7 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
 | G2 引用 | 所有 ID 存在、无悬空 | 待实现（M1） |
 | G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 待实现（M2） |
-| G4 隐私 | 无真实数据/密钥/PII | `python scripts/check_contracts.py` |
+| G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
 未实现的 G2/G3 不假装通过；在 PR 里写“待实现”。
@@ -192,5 +212,6 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
-| v0.2 | 2026-11-08 | 精简到最小架构；移除 docs/team/prompts/configs/app/reports/deliverables；接入 shortcuts.md |
+| v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |
+| v0.3 | 2026-11-09 | M1-a 契约补丁：`evidence_state` 增 `pending`；`state_counts`/`records_by_state` 增 `pending` 记账；写明 `assigned`/`attempted` 判定与 `applicable` 口径；受限目录检查改为 `git check-ignore`；落地 `data/raw/official-v1/` |
 | v0.1 | 2026-11-08 | 初版地基 |

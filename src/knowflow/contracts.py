@@ -10,6 +10,7 @@ Owner: R4 (quality & delivery). See AGENT.md §7 (quality gates).
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -41,6 +42,8 @@ REQUIRED_FILES: tuple[str, ...] = (
     "schemas/README.md",
     "schemas/CONTRACT.md",
     "data/README.md",
+    "data/manifests/official-v1.structure.json",
+    "scripts/ingest_raw.py",
     "examples/README.md",
     "examples/synthetic/README.md",
     "tests/conftest.py",
@@ -97,15 +100,58 @@ def load_json(path: Path) -> Any:
         raise ValueError(f"{path}: invalid JSON: {exc}") from exc
 
 
+def _git_ignored(root: Path, rels: list[str]) -> set[str] | None:
+    """Return the subset of *rels* that Git ignores, or ``None`` if Git is unusable."""
+
+    if not rels:
+        return set()
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "check-ignore", "--no-index", "-z", "--stdin"],
+            input="\0".join(rels) + "\0",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # 0 = at least one path is ignored, 1 = none is, anything else = Git error.
+    if proc.returncode not in (0, 1):
+        return None
+    return {chunk for chunk in proc.stdout.split("\0") if chunk}
+
+
 def _check_restricted_dir(root: Path, rel: str) -> Iterable[str]:
+    """Restricted data may sit on disk; it must never be committed.
+
+    Official material is *placed* under ``data/raw/<dataset_id>/`` on purpose
+    (see ``data/README.md``); the risk is committing it, not storing it. Asking
+    Git itself is the only check that reflects that risk, so a CI checkout
+    without the local data and a working copy holding 73 MB of it both pass.
+    """
+
     base = root / rel
     if not base.exists():
         return
-    for path in base.rglob("*"):
-        if path.is_file() and path.name not in ALLOWED_RESTRICTED_FILES:
+    files = [
+        path
+        for path in base.rglob("*")
+        if path.is_file() and path.name not in ALLOWED_RESTRICTED_FILES
+    ]
+    if not files:
+        return
+    rels = [path.relative_to(root).as_posix() for path in files]
+    ignored = _git_ignored(root, rels)
+    if ignored is None:
+        # No usable Git (rare: an exported tarball). CI always has Git, and
+        # replaying .gitignore rules by hand would only drift from Git's own.
+        return
+    for relpath in rels:
+        if relpath not in ignored:
             yield (
-                f"{path.relative_to(root)}: restricted data file must not be in the "
-                "repository (data/raw and data/interim are gitignored)"
+                f"{relpath}: restricted data file is not git-ignored and would be "
+                "committed (data/raw and data/interim must stay out of the repository)"
             )
 
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/records.schema.json",
   "title": "records.csv row",
-  "description": "一行 = 一条作答记录。未作答时 score/is_correct 必须为 null。canonical v0.1。",
+  "description": "一行 = 一条作答记录。assigned=是否被布置；attempted=是否作答；待评分 = attempted=true 且 score=null；未作答 = attempted=false 且 score=null。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -32,16 +32,16 @@
     },
     "assigned": {
       "type": "boolean",
-      "description": "是否已布置"
+      "description": "该生是否被布置过该材料。只由证据推出：出现作答记录（含“未作答”记录）即 true；无记录不落行，不写 assigned=false 的行。禁止把“测验节点可用题目”全量展开成 assigned=true。"
     },
     "attempted": {
       "type": "boolean",
-      "description": "是否作答"
+      "description": "是否有作答内容。false 仅用于“未作答”记录；待评分与已评分都为 true"
     },
     "score": {
       "type": ["number", "null"],
       "minimum": 0,
-      "description": "得分；未作答为 null"
+      "description": "得分；未作答与待评分均为 null。待评分靠 attempted=true 与未作答区分"
     },
     "max_score": {
       "type": "number",
@@ -50,7 +50,7 @@
     },
     "is_correct": {
       "type": ["boolean", "null"],
-      "description": "是否答对；为空则按 score == max_score 推导"
+      "description": "是否答对；为空则按 score == max_score 推导。禁止用字符串比对答案重算，官方得分优先"
     },
     "answer": {
       "type": ["string", "null"],

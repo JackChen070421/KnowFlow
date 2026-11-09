@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/class_profile.schema.json",
   "title": "class_profile.json",
-  "description": "任务 2 群体画像：覆盖、知识点分布、共性错因、分层、群体差异。canonical v0.1。",
+  "description": "任务 2 群体画像：覆盖、知识点分布、共性错因、分层、群体差异。canonical v0.2。",
   "type": "object",
   "additionalProperties": false,
   "required": [

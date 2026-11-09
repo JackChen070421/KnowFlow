@@ -79,7 +79,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 ```text
 KnowFlow/
-├─ AGENT.md / README.md / shortcuts.md
+├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # 目前只有 __init__ / __main__ / cli / contracts
@@ -222,6 +222,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 想知道 | 读 |
 |---|---|
 | 协作准则、角色、质量门 | [`AGENT.md`](AGENT.md) |
+| **最近改了什么、怎么验证、怎么回退** | [`CHANGELOG.md`](CHANGELOG.md) |
 | 字段、ID、枚举、CSV/JSON 结构 | [`schemas/CONTRACT.md`](schemas/CONTRACT.md) |
 | Schema 怎么用/怎么改 | [`schemas/README.md`](schemas/README.md) |
 | Git/GitHub 操作 | [`shortcuts.md`](shortcuts.md) |

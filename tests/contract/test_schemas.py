@@ -18,6 +18,23 @@ def test_repository_contracts() -> None:
     assert errors == [], "\n".join(errors)
 
 
+def test_changelog_is_project_specific() -> None:
+    """Guard against pasting another project's changelog in by mistake.
+
+    The file is hand-edited and once arrived as a copy of an unrelated
+    repository's log; a wrong changelog is worse than none.
+    """
+
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert text.startswith("# 变更记录"), "CHANGELOG must keep its title"
+    assert "KnowFlow" in text
+    assert text.count("\n## 2026-") >= 3, "keep at least the three landing entries"
+
+    for foreign in ("LG-AI-process", "LegWheel", "AI-LegWheel-Program"):
+        assert foreign not in text, f"entry from another project: {foreign}"
+
+
 def test_schema_headers_and_unique_ids() -> None:
     seen: dict[str, Path] = {}
     for path in iter_schema_paths(ROOT):

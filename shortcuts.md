@@ -71,11 +71,15 @@ git commit -m '<commit_message>'
 
 提交信息用 Conventional Commits：`feat:` / `fix:` / `docs:` / `test:` / `chore:`；正文写“改了什么 / 为什么 / 怎么验证 / 未验证项”。
 
-**提交前必须跑**：
+**提交前必须做两件事**：
+
+1. 在 [`CHANGELOG.md`](CHANGELOG.md) 顶部加一条（**一个可交付单元一条**，≤15 行：改了什么 / 验证 / 回退）。纯措辞、格式化不必记。
+2. 跑下面这些：
 
 ```powershell
 python scripts/check_contracts.py
 python scripts/check_examples.py
+python scripts/ingest_raw.py --check   # 动过数据目录时
 
 # 有产物时再加一项：校验本次生成的 JSON
 python scripts/validate_outputs.py --schema <schema> --data <json>
@@ -98,6 +102,7 @@ python -m pytest
 | “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 8 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
 | “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |
+| “记一下这次改了什么”<br>“更新变更记录”<br>“上次改到哪了”<br>“怎么回退” | 编辑 [`CHANGELOG.md`](CHANGELOG.md)（顶部加一条） | 一个可交付单元一条，≤15 行：改了什么 / 验证 / 回退。**不要**把逐条 commit 流水抄进来 |
 
 > **`git pull` 不会带来数据。** 新组员拉到的是空的 `data/raw/`；“复现数据目录”必须自己跑一次 `ingest_raw --source`。
 

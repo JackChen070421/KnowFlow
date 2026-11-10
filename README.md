@@ -1,5 +1,7 @@
 # KnowFlow
 
+[![ci](https://github.com/JackChen070421/KnowFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/JackChen070421/KnowFlow/actions/workflows/ci.yml)
+
 > **学情诊断与个性化学习智能体** · “智慧学伴”赛道
 > 第二届北京市大学生“人工智能+”创新大赛
 
@@ -100,6 +102,18 @@ KnowFlow/
 
 要求：Python 3.11+、Git。
 
+推荐用 [uv](https://docs.astral.sh/uv/)：它按 `uv.lock` 装出与其他人**完全一致**的依赖树，并自动使用 `.python-version` 指定的解释器。
+
+```powershell
+cd KnowFlow
+uv sync --extra dev
+uv run python scripts/check_contracts.py
+uv run python scripts/check_examples.py
+uv run python -m pytest
+```
+
+不用 uv 也可以用 pip，但装到的是当天最新版本，可能与 `uv.lock` 有差异：
+
 ```powershell
 cd KnowFlow
 python -m venv .venv
@@ -110,6 +124,16 @@ python scripts/check_contracts.py
 python scripts/check_examples.py
 python -m pytest
 ```
+
+按层装可选依赖（core 只有校验与配置，其余按需）：
+
+| extra | 内容 | 何时需要 |
+|---|---|---|
+| `io` | pandas | M1 数据适配 |
+| `stats` | numpy, scipy | M2 掌握度计算 |
+| `llm` | openai | M3 LLM 边缘层 |
+| `app` | streamlit, plotly | 演示界面 |
+| `dev` | pytest, ruff, mypy, pre-commit | 开发与 CI |
 
 Linux / macOS：
 

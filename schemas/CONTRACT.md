@@ -138,6 +138,31 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 ---
 
+## 6.1 作答记录的数据到契约适配
+
+本模块属于数据层的IO适配边界：`data/raw → src/knowflow/io/records_adapter.py → 按schemas校验 → data/interim`。契约层定义格式与语义，不存放实际数据。`scripts/export_records_json.py`是本机命令入口，不执行诊断或LLM调用。
+
+**兼容性**：保留现有canonical v0.2 records单行结构。新增独立的明细行契约和两个数组导出契约，既有消费者不必读取明细，不改变已有状态或数值缺失规则。
+
+| 本机结果 | 契约 | 消费方 |
+|---|---|---|
+| records.json（数组） | output/records_export.schema.json，复用input/records.schema.json | 后续清洗、诊断模块 |
+| records_details.json（数组） | output/record_details_export.schema.json，复用input/record_details.schema.json | 本机步骤复核；不送LLM |
+
+明细字段：`record_id, student_id, material_id, source_record_id, csv_record_number, final_answer, solution_process, scoring_point_scores`。前三个ID必须与主记录对应；导出器逐条同步生成，拒绝记录不产生明细。原编号和CSV逻辑记录序号用于回查，表头为1。
+
+按本任务要求，三个明细文本字段缺列、为空或全空白时使用字符串`"NULL"`；非空文本原样保留，包括换行、空格及`"0"`。这是原始文本归档的特定占位约定，不适用于score、mastery等数值字段；它们继续使用JSON `null`。评分点原文不自动解析为分数对象，也不重判步骤。主记录answer默认null，`--include-answer`仅控制是否额外复制最终作答到主记录。
+
+输入11个必需列：记录编号、学生编号、材料编号、主题编号、节点编号、作答事件编号、修订版本、模拟提交时间、评分状态、得分、满分。可选列：学生最终作答、解答过程、评分点得分。列序不限；未知列、重复列、缺必需列、行列数不一致报错。主题、节点、作答事件当前不写入输出，仍保留在原CSV。
+
+首次映射由完整登记表和记录集生成：学生/记录按原编号字典序，材料按Q、L、B及各自数字排序，目标编号从1开始。映射必须持久复用并与其他适配器共用；新编号不自动追加，不在子集重新初始化。`source`当前固定official-v1。初始化容量为记录9999、学生999、材料999；材料源格式为Q加3位、L/B加2位。
+
+严格模式遇异常停止；显式`--skip-invalid --issues-output`才跳过行级转换错误并记录位置/原因，不修分。结构、映射初始化及schema错误仍终止。不同记录编号的修订保留；重复记录主键严格模式报错，跳过模式保留首条转换成功的记录，后续重复进入清单。它不替代后续版本选择和学情清洗。
+
+实际导出、映射和异常清单只存本机被Git忽略的data/interim，不提交、不送LLM。脚本不自动脱敏或检查Git忽略；禁止覆盖已有文件，多文件写入不具备事务原子性。合约改动需R1 + R4审阅。
+
+---
+
 ## 7. 官方数据已确认（原「当前未定」）
 
 以下四项曾列为未定，接入 `official-v1` 后已确认：

@@ -207,6 +207,49 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 
 ---
 
+## 原始作答记录到契约数据
+
+### 作用
+
+`src/knowflow/io/records_adapter.py`把数据层的官方CSV转换为符合契约的标准记录，入口为`scripts/export_records_json.py`。它不调用LLM、不重新判卷、不做掌握度计算；实际结果留在`data/interim/`，不是搬进`schemas/`。详细字段见[契约§6.1](schemas/CONTRACT.md#61-作答记录的数据到契约适配)。
+
+### 输入与输出
+
+输入为UTF-8作答CSV，以及首次初始化所需的完整学生/材料登记表；后续使用同一ID映射。保留11个必需列，最终作答、解答过程、评分点得分三列可缺省。
+
+输出主记录数组`records.json`、同编号明细数组`records_details.json`、持久ID映射；可选异常清单。明细默认保存原文，缺失写字符串`"NULL"`，有内容的`"0"`保留。主记录中的缺失得分仍为JSON `null`。`--include-answer`只控制主记录是否也包含最终作答，明细不依赖此开关。
+
+```powershell
+uv run python scripts/export_records_json.py `
+  --source "data/raw/official-v1/4_赛题数据/模拟学情数据/作答记录.csv" `
+  --materials "data/raw/official-v1/4_赛题数据/模拟学情数据/题目与材料.csv" `
+  --students "data/raw/official-v1/4_赛题数据/模拟学情数据/模拟学生.csv" `
+  --id-map "data/interim/official-v1/id_map.json" `
+  --init-id-map `
+  --output "data/interim/official-v1/records.json" `
+  --skip-invalid `
+  --issues-output "data/interim/official-v1/conversion_issues.json"
+```
+
+`--details-output`可指定明细路径，默认在主输出旁生成`<主文件名>_details.json`。重复运行省略`--init-id-map`并选新输出名。文件已存在会报错，不覆盖。初始化后即使转换失败，映射也可能已存在，应复用。
+
+### 使用边界
+
+- 只处理CSV，三类评分状态为已评分/待评分/未作答；不从无记录推断未掌握。
+- 默认严格报错；上述示例显式跳过行级异常并记录清单。得分越界不自动修正，schema或结构错误仍停止。
+- 新ID不会自动扩充映射；独立新数据集须另行约定映射和来源，当前source固定official-v1。
+- 修订记录保留；主题、节点、作答事件未进入主输出。步骤和评分点按文本保存，未进行语义解析。
+- 一次性读入内存；多文件输出非事务，失败后应检查残留结果。不得将明细发给LLM或提交Git。
+
+验证整份合成导出样例：
+
+```powershell
+uv run python scripts/validate_outputs.py --schema schemas/output/records_export.schema.json --data tests/fixtures/records_export.min.json
+uv run python scripts/validate_outputs.py --schema schemas/output/record_details_export.schema.json --data tests/fixtures/record_details_export.min.json
+```
+
+---
+
 ## 数据与隐私
 
 - `data/raw/`、`data/interim/` 被 `.gitignore` 忽略；真实 CSV/模型权重/密钥永不提交。

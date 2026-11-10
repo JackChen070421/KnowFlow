@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/record_details.schema.json",
+  "title": "One locally preserved answer detail record",
+  "description": "One local detail row linked to a canonical record. Missing detail text uses the literal string NULL. Never send to LLM.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "student_id",
+    "material_id",
+    "source_record_id",
+    "csv_record_number",
+    "final_answer",
+    "solution_process",
+    "scoring_point_scores"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^R-[0-9]{4}$"
+    },
+    "student_id": {
+      "type": "string",
+      "pattern": "^S[0-9]{3}$"
+    },
+    "material_id": {
+      "type": "string",
+      "pattern": "^M-[0-9]{3}$"
+    },
+    "source_record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "csv_record_number": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "final_answer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "solution_process": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scoring_point_scores": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "x-primary-key": [
+    "record_id"
+  ]
+}

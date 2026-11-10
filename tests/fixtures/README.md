@@ -23,3 +23,6 @@ python scripts/validate_outputs.py `
 - **永远不要**把真实数据放进 `tests/fixtures/`。
 - 真实原始数据放 `data/raw/<dataset_id>/`；canonical 放 `data/interim/<dataset_id>/`；两者都不进 Git。
 - 改 schema 后同步改 fixture，并跑 `pytest`。
+
+- `records_export.min.json`：合成主记录数组，验证数据适配输出契约。
+- `record_details_export.min.json`：关联的合成明细数组，验证原文和NULL占位契约。

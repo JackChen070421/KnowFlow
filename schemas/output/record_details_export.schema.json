@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/record_details_export.schema.json",
+  "title": "record_details_export",
+  "description": "Local canonical adapter export; actual data belongs in git-ignored data/interim, never in schemas.",
+  "type": "array",
+  "items": {
+    "$ref": "https://knowflow.local/schemas/input/record_details.schema.json"
+  }
+}

@@ -28,13 +28,15 @@ schemas/
 
 ---
 
+新增作答导出：`input/record_details.schema.json`定义单条本机明细；`output/records_export.schema.json`和`output/record_details_export.schema.json`定义整份数组，通过`$ref`复用单行结构。实际结果不存schemas。
+
 ## 2. 约定
 
 | 项 | 约定 |
 |---|---|
 | JSON Schema | draft 2020-12 |
 | `$id` | `https://knowflow.local/schemas/<path>`，全局唯一 |
-| 根类型 | `object`；`additionalProperties: false` |
+| 根类型 | 通常为`object`且`additionalProperties: false`；作答导出契约为`array`，items引用严格单行契约 |
 | 可空 | `["string","null"]`，不要用 `0`/`false`/`""` 冒充“不知道” |
 | 主键 | `x-primary-key`；整表校验时查唯一 |
 | 日期 | ISO 8601 带时区 |
@@ -109,7 +111,7 @@ assert errors == [], errors
 ## 6. 禁止
 
 - ❌ 实现里加字段但 schema 不更新。
-- ❌ 用 `null` 之外的默认值表示“没有观测”。
+- ❌ 用 `null` 之外的默认值表示“没有观测”。作答明细的三个原文文本字段按用户要求用字符串`"NULL"`表示缺失；不得把该特例用于观测状态或数值。
 - ❌ 复用 `$id`。
 - ❌ 把真实数据写进 `examples/` 或 `tests/fixtures/`。
 - ❌ 用 `additionalProperties: true` 绕过契约。

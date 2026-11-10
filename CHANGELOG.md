@@ -10,31 +10,33 @@
 
 ---
 
-## 2026-11-10 — M1 数据层：official-v1 → canonical v0.3
+## 2026-11-10 — 依赖分层 + 锁文件 + 格式校验修复
 
-**`045f997`** · 本地分支 `feat/r2-canonical-adapters`（未 push）
+**待合入** · 分支 `chore/r4-deps-lock` → `main`（已 rebase 到 #3 之后的 main）
 
 ### 改了什么
 
-- **契约 v0.3**：新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`；`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.difficulty`、教材切片 `objective_id` 允许 `null`；去重改为节点内。
-- **数据层**：新增 `src/knowflow/io/`（`mapping`/`adapters`/`quality`/`pipeline`）；新增 `scripts/build_canonical.py`、`scripts/validate_canonical.py`；CLI 增 `adapt` / `validate-canonical`。
-- **official-v1 产物**：9 张 canonical 表（3/9/65/63/9/40/2/799/0）+ `data_quality_report.json`（五态 405/385/4/5/0，去重 7，异常 13，空作答 5）。
-- **文档/测试**：`CONTRACT.md` v0.3 + §7.1 ID 映射附录；`data/README.md` 数据处理节；本机 `data/README-processing.md`（已 gitignore）；新增 32 个测试（合计 46）。
+- **依赖分层**：core 从 10 个包瘦到 4 个（`jsonschema[format]`、`referencing`、`pydantic`、`pydantic-settings`）；`pandas`→`io`、`numpy`/`scipy`→`stats`、`openai`→`llm`、`streamlit`/`plotly`→`app`。移除 `httpx`（LLM 走 SDK）与尚未使用的 `PyYAML`/`Jinja2`。
+- **配置**：新增 `src/knowflow/config.py`（pydantic-settings，读 `.env` + `KNOWFLOW_*`）；新增 `knowflow config` 子命令，密钥只显示 `(set)`/`(empty)`。
+- **校验修复**：`validate_instance` 与 `check_examples` 补 `format_checker`——此前 8 处 `"format": "date-time"` 空转，`"昨天下午"` 也能通过。
+- **可复现**：新增 `uv.lock`（84 包）与 `.python-version`（3.13）；`pyproject` 补 `license`。
+- **CI**：`ci.yml` 从 `pip install -e .[dev]` 改为 `uv sync --frozen`，新增 `lock` job（`uv lock --check`）、矩阵扩到 3.11/3.12/3.13、加 `concurrency` 与 `timeout`；README 加 ci badge。
 
 ### 验证
 
 ```text
-check_contracts     OK (17 schemas)
-check_examples      OK (8 tables)
-pytest              46 passed
-ingest_raw --check  CHECK OK dataset_id=official-v1 files=21 bytes=76518706
-build_canonical     ADAPT OK 3/9/65/63/9/40/2/799/0
-validate_canonical  VALIDATE OK dataset_id=official-v1 tables=9 records=799 anomalies=13
+uv sync --frozen --extra dev  OK（venv 内无 httpx/pandas/numpy/scipy）
+check_contracts        OK (16 schemas)
+check_examples         OK (8 tables)
+pytest                 14 passed
+uv lock --check        OK
+CI 里的每条命令已在本机逐条复跑通过
+反例 generated_at="昨天下午" → validate_outputs 退出码 1（此前静默通过）
 ```
 
 ### 回退
 
-`git revert 045f997`；`data/interim/official-v1/` 直接删（本来就不在版本库）。
+`git checkout -- pyproject.toml README.md scripts src` 并删除 `uv.lock`、`.python-version`、`src/knowflow/config.py`。
 
 ---
 

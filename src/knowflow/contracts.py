@@ -272,7 +272,13 @@ def validate_instance(
 
     schema = load_json(schema_file)
     instance = load_json(data_file)
-    validator = Draft202012Validator(schema, registry=build_registry(base))
+    # ``format`` is an annotation by default in JSON Schema; without an explicit
+    # checker, ``"format": "date-time"`` would silently accept "not-a-date".
+    validator = Draft202012Validator(
+        schema,
+        registry=build_registry(base),
+        format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
     errors = sorted(
         validator.iter_errors(instance),
         key=lambda err: (tuple(str(part) for part in err.absolute_path), err.message),

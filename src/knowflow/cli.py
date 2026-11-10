@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .config import get_settings
 from .contracts import (
     check_repo,
     iter_schema_paths,
@@ -56,49 +57,21 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_adapt(args: argparse.Namespace) -> int:
-    """Official package → canonical tables (layer 2)."""
+def _cmd_config(_: argparse.Namespace) -> int:
+    """Print resolved settings (never the key itself) to debug local setup."""
 
-    from .io import AdaptError, run_adapt
-
-    root = repo_root()
-    raw = Path(args.raw) if args.raw else root / "data" / "raw" / args.dataset_id
-    out = Path(args.out) if args.out else root / "data" / "interim" / args.dataset_id
-    try:
-        summary = run_adapt(raw, out, args.dataset_id, args.generated_at)
-    except AdaptError as exc:
-        print(f"adapt: FAILED\n  {exc}", file=sys.stderr)
-        return 1
-    print(f"adapt: OK ({summary['dataset_id']}, {summary['generated_at']})")
-    for name, count in summary["counts"].items():
-        print(f"  {name:<12} {count}")
-    print(f"  report       {summary['report_path']}")
-    return 0
-
-
-def _cmd_validate_canonical(args: argparse.Namespace) -> int:
-    """Re-verify canonical tables on disk (G2/G3)."""
-
-    from .io import AdaptError, verify_written
-
-    root = repo_root()
-    raw = Path(args.raw) if args.raw else root / "data" / "raw" / args.dataset_id
-    out = Path(args.out) if args.out else root / "data" / "interim" / args.dataset_id
-    try:
-        errors, bundle = verify_written(raw, out, args.dataset_id, args.generated_at)
-    except AdaptError as exc:
-        print(f"validate-canonical: FAILED\n  {exc}", file=sys.stderr)
-        return 1
-    if errors:
-        print(f"validate-canonical: FAILED ({len(errors)} errors)")
-        for error in errors:
-            print(f"  - {error}")
-        return 1
-    print(
-        "validate-canonical: OK "
-        f"({bundle.counts()['records']} records, "
-        f"{len(bundle.report['anomalies'])} anomalies)"
-    )
+    settings = get_settings()
+    print(f"llm.enabled   = {settings.llm_enabled}")
+    print(f"llm.ready     = {settings.llm_ready}")
+    print(f"llm.provider  = {settings.llm_provider}")
+    print(f"llm.model     = {settings.llm_model}")
+    print(f"llm.base_url  = {settings.llm_base_url}")
+    print(f"llm.api_key   = {'(set)' if settings.llm_api_key else '(empty)'}")
+    print(f"llm.timeout   = {settings.llm_timeout_seconds}s")
+    print(f"data_dir      = {settings.data_dir}")
+    print(f"artifact_dir  = {settings.artifact_dir}")
+    print(f"log_level     = {settings.log_level}")
+    print(f"random_seed   = {settings.random_seed}")
     return 0
 
 
@@ -126,26 +99,13 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--data", required=True, help="path to JSON data")
     validate_parser.set_defaults(func=_cmd_validate)
 
-    adapt_parser = subparsers.add_parser(
-        "adapt", help="official raw CSV → canonical tables (layer 2)"
-    )
-    adapt_parser.add_argument("--dataset-id", default="official-v1")
-    adapt_parser.add_argument("--raw", default=None, help="default: data/raw/<dataset_id>")
-    adapt_parser.add_argument("--out", default=None, help="default: data/interim/<dataset_id>")
-    adapt_parser.add_argument("--generated-at", default=None, help="ISO 8601 timestamp")
-    adapt_parser.set_defaults(func=_cmd_adapt)
-
-    validate_canonical_parser = subparsers.add_parser(
-        "validate-canonical", help="verify canonical tables on disk (G2/G3)"
-    )
-    validate_canonical_parser.add_argument("--dataset-id", default="official-v1")
-    validate_canonical_parser.add_argument("--raw", default=None)
-    validate_canonical_parser.add_argument("--out", default=None)
-    validate_canonical_parser.add_argument("--generated-at", default=None)
-    validate_canonical_parser.set_defaults(func=_cmd_validate_canonical)
-
     version_parser = subparsers.add_parser("version", help="print version")
     version_parser.set_defaults(func=_cmd_version)
+
+    config_parser = subparsers.add_parser(
+        "config", help="print resolved settings (keys are masked)"
+    )
+    config_parser.set_defaults(func=_cmd_config)
 
     return parser
 

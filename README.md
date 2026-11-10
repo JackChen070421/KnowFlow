@@ -42,7 +42,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 17 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 9 张 canonical 表 |
-| **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 schema，构建待 M1 |
+| **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
 | **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |

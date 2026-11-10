@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .config import get_settings
 from .contracts import (
     check_repo,
     iter_schema_paths,
@@ -56,6 +57,24 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_config(_: argparse.Namespace) -> int:
+    """Print resolved settings (never the key itself) to debug local setup."""
+
+    settings = get_settings()
+    print(f"llm.enabled   = {settings.llm_enabled}")
+    print(f"llm.ready     = {settings.llm_ready}")
+    print(f"llm.provider  = {settings.llm_provider}")
+    print(f"llm.model     = {settings.llm_model}")
+    print(f"llm.base_url  = {settings.llm_base_url}")
+    print(f"llm.api_key   = {'(set)' if settings.llm_api_key else '(empty)'}")
+    print(f"llm.timeout   = {settings.llm_timeout_seconds}s")
+    print(f"data_dir      = {settings.data_dir}")
+    print(f"artifact_dir  = {settings.artifact_dir}")
+    print(f"log_level     = {settings.log_level}")
+    print(f"random_seed   = {settings.random_seed}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowflow",
@@ -82,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     version_parser = subparsers.add_parser("version", help="print version")
     version_parser.set_defaults(func=_cmd_version)
+
+    config_parser = subparsers.add_parser(
+        "config", help="print resolved settings (keys are masked)"
+    )
+    config_parser.set_defaults(func=_cmd_config)
 
     return parser
 

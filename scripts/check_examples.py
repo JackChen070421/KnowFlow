@@ -86,7 +86,11 @@ def validate_table(csv_path: Path, schema_path: Path) -> list[str]:
             f"{sorted(required - set(fieldnames))}"
         )
 
-    validator = Draft202012Validator(schema, registry=build_registry(ROOT))
+    validator = Draft202012Validator(
+        schema,
+        registry=build_registry(ROOT),
+        format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
     seen: dict[tuple[Any, ...], int] = {}
     for index, row in enumerate(rows, start=2):  # header is line 1
         if None in row:

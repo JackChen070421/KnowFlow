@@ -10,6 +10,36 @@
 
 ---
 
+## 2026-11-10 — 依赖分层 + 锁文件 + 格式校验修复
+
+**待合入** · 分支 `chore/r4-deps-lock` → `main`（已 rebase 到 #3 之后的 main）
+
+### 改了什么
+
+- **依赖分层**：core 从 10 个包瘦到 4 个（`jsonschema[format]`、`referencing`、`pydantic`、`pydantic-settings`）；`pandas`→`io`、`numpy`/`scipy`→`stats`、`openai`→`llm`、`streamlit`/`plotly`→`app`。移除 `httpx`（LLM 走 SDK）与尚未使用的 `PyYAML`/`Jinja2`。
+- **配置**：新增 `src/knowflow/config.py`（pydantic-settings，读 `.env` + `KNOWFLOW_*`）；新增 `knowflow config` 子命令，密钥只显示 `(set)`/`(empty)`。
+- **校验修复**：`validate_instance` 与 `check_examples` 补 `format_checker`——此前 8 处 `"format": "date-time"` 空转，`"昨天下午"` 也能通过。
+- **可复现**：新增 `uv.lock`（84 包）与 `.python-version`（3.13）；`pyproject` 补 `license`。
+- **CI**：`ci.yml` 从 `pip install -e .[dev]` 改为 `uv sync --frozen`，新增 `lock` job（`uv lock --check`）、矩阵扩到 3.11/3.12/3.13、加 `concurrency` 与 `timeout`；README 加 ci badge。
+
+### 验证
+
+```text
+uv sync --frozen --extra dev  OK（venv 内无 httpx/pandas/numpy/scipy）
+check_contracts        OK (16 schemas)
+check_examples         OK (8 tables)
+pytest                 14 passed
+uv lock --check        OK
+CI 里的每条命令已在本机逐条复跑通过
+反例 generated_at="昨天下午" → validate_outputs 退出码 1（此前静默通过）
+```
+
+### 回退
+
+`git checkout -- pyproject.toml README.md scripts src` 并删除 `uv.lock`、`.python-version`、`src/knowflow/config.py`。
+
+---
+
 ## 2026-11-09 — M1-a：新增 pending 态 + 官方数据可复现接入
 
 **`6a8aac9`** · PR [#2](https://github.com/JackChen070421/KnowFlow/pull/2) · `feat/r1-m1a-contract-pending` → `main`

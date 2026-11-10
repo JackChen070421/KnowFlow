@@ -10,6 +10,34 @@
 
 ---
 
+## 2026-11-10 — M1 数据层：official-v1 → canonical v0.3
+
+**`045f997`** · 本地分支 `feat/r2-canonical-adapters`（未 push）
+
+### 改了什么
+
+- **契约 v0.3**：新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`；`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.difficulty`、教材切片 `objective_id` 允许 `null`；去重改为节点内。
+- **数据层**：新增 `src/knowflow/io/`（`mapping`/`adapters`/`quality`/`pipeline`）；新增 `scripts/build_canonical.py`、`scripts/validate_canonical.py`；CLI 增 `adapt` / `validate-canonical`。
+- **official-v1 产物**：9 张 canonical 表（3/9/65/63/9/40/2/799/0）+ `data_quality_report.json`（五态 405/385/4/5/0，去重 7，异常 13，空作答 5）。
+- **文档/测试**：`CONTRACT.md` v0.3 + §7.1 ID 映射附录；`data/README.md` 数据处理节；本机 `data/README-processing.md`（已 gitignore）；新增 32 个测试（合计 46）。
+
+### 验证
+
+```text
+check_contracts     OK (17 schemas)
+check_examples      OK (8 tables)
+pytest              46 passed
+ingest_raw --check  CHECK OK dataset_id=official-v1 files=21 bytes=76518706
+build_canonical     ADAPT OK 3/9/65/63/9/40/2/799/0
+validate_canonical  VALIDATE OK dataset_id=official-v1 tables=9 records=799 anomalies=13
+```
+
+### 回退
+
+`git revert 045f997`；`data/interim/official-v1/` 直接删（本来就不在版本库）。
+
+---
+
 ## 2026-11-09 — M1-a：新增 pending 态 + 官方数据可复现接入
 
 **`6a8aac9`** · PR [#2](https://github.com/JackChen070421/KnowFlow/pull/2) · `feat/r1-m1a-contract-pending` → `main`

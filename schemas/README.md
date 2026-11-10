@@ -10,9 +10,9 @@
 ```text
 schemas/
 ├─ CONTRACT.md              # 人读速查：ID/枚举/CSV 列/缺失语义
-├─ input/                   # canonical CSV 的一行
+├─ input/                   # canonical CSV 的一行（17 schemas 之一）
 │  ├─ objectives / knowledge / materials / qmatrix
-│  ├─ edges / students / records / tasks
+│  ├─ edges / students / nodes / records / tasks
 ├─ output/                  # 整份 JSON
 │  ├─ knowledge_base / data_quality_report
 │  ├─ student_profile / class_profile
@@ -35,7 +35,7 @@ schemas/
 | JSON Schema | draft 2020-12 |
 | `$id` | `https://knowflow.local/schemas/<path>`，全局唯一 |
 | 根类型 | `object`；`additionalProperties: false` |
-| 可空 | `["string","null"]`，不要用 `0`/`false`/`""` 冒充“不知道” |
+| 可空 | `["string","null"]`，不要用 `0`/`false`/`""` 冒充“不知道”；官方无难度、教材无主题时就是 `null` |
 | 主键 | `x-primary-key`；整表校验时查唯一 |
 | 日期 | ISO 8601 带时区 |
 | 数值 | mastery/ratio 0–1；difficulty 1–5；est_minutes 1–120 |

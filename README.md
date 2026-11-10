@@ -40,13 +40,13 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 16 schemas |
-| **2 数据层** | `data/`、未来 `src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | 🟡 目录/schema，适配待 M1 |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 17 schemas |
+| **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 9 张 canonical 表 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 schema，构建待 M1 |
 | **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 三脚本 + 12 tests |
+| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 数据复检 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 六脚本 + 46 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -64,14 +64,16 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 当前 M0 只实现第 1 层、第 2 层目录、第 7 层检查、第 8 层协作；第 3–6 层先冻结 schema，再按 M1–M3 逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。另有 `scripts/ingest_raw.py`：把官方材料原样落地到 `data/raw/<dataset_id>/` 并生成指纹（**不是** IO 适配层，不做列映射）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据链路另有两个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）与 `build_canonical`（官方 CSV → 9 张 canonical 表 + 数据质量报告）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
-| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (16 schemas)` |
+| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (17 schemas)` |
 | `scripts/check_examples.py` | `examples/synthetic/input/` 8 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (8 tables)` |
 | `scripts/validate_outputs.py` | 一份 JSON 对一份 schema | `OK (0 errors)` |
 | `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |
+| `scripts/build_canonical.py` | 官方 CSV → `data/interim/<dataset_id>/` 9 张表 + `data_quality_report.json` | `ADAPT OK` + 9 表行数 |
+| `scripts/validate_canonical.py` | G2 引用 + G3 一致性，并与磁盘产物逐字节比对 | `VALIDATE OK` |
 
 ---
 
@@ -82,9 +84,9 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # 目前只有 __init__ / __main__ / cli / contracts
-├─ tests/                   # contract + fixtures
-├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
+├─ src/knowflow/            # __init__ / __main__ / cli / contracts / io
+├─ tests/                   # contract + io + fixtures
+├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
@@ -109,6 +111,10 @@ pip install -e ".[dev]"
 python scripts/check_contracts.py
 python scripts/check_examples.py
 python -m pytest
+
+# 数据处理（先按「数据集放哪里」落地官方数据）
+python scripts/build_canonical.py --dataset-id official-v1
+python scripts/validate_canonical.py --dataset-id official-v1
 ```
 
 Linux / macOS：
@@ -128,7 +134,7 @@ python scripts/validate_outputs.py `
   --data tests/fixtures/student_profile.min.json
 ```
 
-> `python -m knowflow.cli run ...` 等业务入口随 M1–M3 落地；当前 CLI 只提供 `check` / `validate` / `version`。
+> `python -m knowflow.cli run ...` 等业务入口随 M2–M3 落地；当前 CLI 提供 `check` / `validate` / `adapt` / `validate-canonical` / `version`。
 
 ---
 
@@ -208,7 +214,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
-| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | ⬜ |
+| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 适配器 + Q-matrix + contains 边已落地；课标解析与先修/易混图待做 |
 | **M2 诊断** | 五态、覆盖度、Beta、画像 | ⬜ |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |

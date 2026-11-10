@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/knowledge_base.schema.json",
   "title": "knowledge_base.json",
-  "description": "任务 1 产物：课标条目、知识点、材料、Q-matrix、必要联系的打包。canonical v0.2。",
+  "description": "任务 1 产物：课标条目、知识点、材料、Q-matrix、必要联系的打包。canonical v0.3。",
   "type": "object",
   "additionalProperties": false,
   "required": [

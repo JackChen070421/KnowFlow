@@ -56,6 +56,52 @@ def _cmd_version(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_adapt(args: argparse.Namespace) -> int:
+    """Official package → canonical tables (layer 2)."""
+
+    from .io import AdaptError, run_adapt
+
+    root = repo_root()
+    raw = Path(args.raw) if args.raw else root / "data" / "raw" / args.dataset_id
+    out = Path(args.out) if args.out else root / "data" / "interim" / args.dataset_id
+    try:
+        summary = run_adapt(raw, out, args.dataset_id, args.generated_at)
+    except AdaptError as exc:
+        print(f"adapt: FAILED\n  {exc}", file=sys.stderr)
+        return 1
+    print(f"adapt: OK ({summary['dataset_id']}, {summary['generated_at']})")
+    for name, count in summary["counts"].items():
+        print(f"  {name:<12} {count}")
+    print(f"  report       {summary['report_path']}")
+    return 0
+
+
+def _cmd_validate_canonical(args: argparse.Namespace) -> int:
+    """Re-verify canonical tables on disk (G2/G3)."""
+
+    from .io import AdaptError, verify_written
+
+    root = repo_root()
+    raw = Path(args.raw) if args.raw else root / "data" / "raw" / args.dataset_id
+    out = Path(args.out) if args.out else root / "data" / "interim" / args.dataset_id
+    try:
+        errors, bundle = verify_written(raw, out, args.dataset_id, args.generated_at)
+    except AdaptError as exc:
+        print(f"validate-canonical: FAILED\n  {exc}", file=sys.stderr)
+        return 1
+    if errors:
+        print(f"validate-canonical: FAILED ({len(errors)} errors)")
+        for error in errors:
+            print(f"  - {error}")
+        return 1
+    print(
+        "validate-canonical: OK "
+        f"({bundle.counts()['records']} records, "
+        f"{len(bundle.report['anomalies'])} anomalies)"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowflow",
@@ -79,6 +125,24 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--schema", required=True, help="path to *.schema.json")
     validate_parser.add_argument("--data", required=True, help="path to JSON data")
     validate_parser.set_defaults(func=_cmd_validate)
+
+    adapt_parser = subparsers.add_parser(
+        "adapt", help="official raw CSV → canonical tables (layer 2)"
+    )
+    adapt_parser.add_argument("--dataset-id", default="official-v1")
+    adapt_parser.add_argument("--raw", default=None, help="default: data/raw/<dataset_id>")
+    adapt_parser.add_argument("--out", default=None, help="default: data/interim/<dataset_id>")
+    adapt_parser.add_argument("--generated-at", default=None, help="ISO 8601 timestamp")
+    adapt_parser.set_defaults(func=_cmd_adapt)
+
+    validate_canonical_parser = subparsers.add_parser(
+        "validate-canonical", help="verify canonical tables on disk (G2/G3)"
+    )
+    validate_canonical_parser.add_argument("--dataset-id", default="official-v1")
+    validate_canonical_parser.add_argument("--raw", default=None)
+    validate_canonical_parser.add_argument("--out", default=None)
+    validate_canonical_parser.add_argument("--generated-at", default=None)
+    validate_canonical_parser.set_defaults(func=_cmd_validate_canonical)
 
     version_parser = subparsers.add_parser("version", help="print version")
     version_parser.set_defaults(func=_cmd_version)

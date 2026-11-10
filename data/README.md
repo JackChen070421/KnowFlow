@@ -68,7 +68,34 @@ git check-ignore -v data/raw/official-v1/4_赛题数据/模拟学情数据/作�
 git status --porcelain
 ```
 
-> 该数据集的结构、完整性审计（8 条待处理记录、课标扫描件、切片数学符号错映射）与接入方案，见仓库外的 `_analysis/赛题资料包数据审计报告.md`。**仓库内不放审计报告与原始数据。**
+> 数据处理的完整规则、例子与赛题对照见本机 `data/README-processing.md`（已列入 `.gitignore`，不随公开仓外传）；每次运行的异常与处置以 `data/interim/<dataset_id>/data_quality_report.json` 为准（本机生成）。**仓库内不放审计报告与原始数据。**
+
+---
+
+## 0.1 数据处理（本机，official-v1）
+
+```powershell
+python scripts/ingest_raw.py --source "D:\competition\2026NOV\赛题数据"
+python scripts/ingest_raw.py --check
+python scripts/build_canonical.py --dataset-id official-v1
+python scripts/validate_canonical.py --dataset-id official-v1
+```
+
+产物 `data/interim/official-v1/`：9 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
+
+| 表 | 行数 | 说明 |
+|---|---|---|
+| `objectives.csv` | 3 | 课标条目 OBJ-7M-01..03 |
+| `knowledge.csv` | 9 | 知识点 K-01..09 |
+| `materials.csv` | 65 | 54 题 + 3 学习卡 + 8 教材切片 |
+| `qmatrix.csv` | 63 | 54 题 + 3 卡 × 3 指标 |
+| `edges.csv` | 9 | 课标 → 知识点 contains |
+| `students.csv` | 40 | S001..S040，G1/G2 |
+| `nodes.csv` | 2 | N01/N02，含可用题目与已教主题 |
+| `records.csv` | 799 | 806 条原始记录去掉 7 条旧修订版本 |
+| `tasks.csv` | 0 | 仅表头；任务由建议层定义 |
+
+质量报告基线：`records_by_state = 405/385/4/5/0`、`duplicates_removed = 7`、`anomalies = 13`、`missing = 0/0/5`。
 
 ---
 
@@ -81,8 +108,10 @@ data/
 │  └─ official-v1/             本机官方资料包副本（21 文件 / 73 MB，gitignore）
 ├─ manifests/                  ✅ 入库：纯指纹，无数据内容
 │  └─ official-v1.structure.json
-├─ interim/                    canonical 中间表（适配层生成）
-│  └─ .gitkeep
+├─ interim/                    canonical 中间表（适配层生成，gitignore）
+│  ├─ .gitkeep
+│  └─ official-v1/             9 张 CSV + data_quality_report.json
+├─ README-processing.md        本机数据处理说明（gitignore，不随公开仓外传）
 └─ README.md
 ```
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/recommendation.schema.json",
   "title": "recommendation.json",
-  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。canonical v0.2。",
+  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。canonical v0.3。",
   "type": "object",
   "additionalProperties": false,
   "required": [

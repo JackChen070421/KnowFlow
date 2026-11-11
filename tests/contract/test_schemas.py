@@ -47,7 +47,42 @@ def test_schema_headers_and_unique_ids() -> None:
         ), f"{path}: bad $id {schema['$id']}"
         assert schema["$id"] not in seen, f"duplicate $id: {schema['$id']}"
         seen[schema["$id"]] = path
-    assert len(seen) >= 16
+        assert "canonical v0.2" not in schema["description"], f"{path}: stale canonical version"
+    assert len(seen) >= 17
+
+
+def test_nodes_schema_is_registered() -> None:
+    """nodes.csv is the source of the coverage denominator (CONTRACT §5.3)."""
+
+    schema = json.loads(
+        (ROOT / "schemas" / "input" / "nodes.schema.json").read_text(encoding="utf-8")
+    )
+    assert schema["$id"].endswith("/input/nodes.schema.json")
+    assert schema["x-file"] == "nodes.csv"
+    assert schema["x-primary-key"] == ["node_id"]
+    assert "available_material_ids_json" in schema["properties"]
+
+
+def test_nullable_objective_and_difficulty_are_allowed() -> None:
+    """Official material may carry no theme and no difficulty — null, not a lie."""
+
+    from jsonschema import Draft202012Validator
+
+    from knowflow.contracts import build_registry
+
+    schema = json.loads(
+        (ROOT / "schemas" / "input" / "materials.schema.json").read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(schema, registry=build_registry(ROOT))
+    row = {
+        "material_id": "M-058",
+        "title": "B01 教材切片",
+        "body": "七年级上册 第一章 有理数",
+        "material_type": "reference",
+        "difficulty": None,
+        "objective_id": None,
+    }
+    assert list(validator.iter_errors(row)) == []
 
 
 def test_student_profile_fixture_is_valid() -> None:

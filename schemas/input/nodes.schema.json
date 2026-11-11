@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/nodes.schema.json",
+  "title": "nodes.csv row",
+  "description": "一行 = 一个测验节点（一次考试事件）：日期、截至该节点已教/已测的课标条目、可用题目。它是 coverage.applicable 的唯一来源。canonical v0.3。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "node_id",
+    "title",
+    "exam_date",
+    "taught_objective_ids_json",
+    "available_material_ids_json"
+  ],
+  "properties": {
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2}$",
+      "description": "节点主键，如 N01"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "节点名称，如 模拟上学期期末"
+    },
+    "exam_date": {
+      "type": "string",
+      "format": "date",
+      "description": "考试日期 YYYY-MM-DD；带时区的时间属于记录 submitted_at"
+    },
+    "taught_objective_ids_json": {
+      "type": "string",
+      "description": "JSON 数组字符串：截至该节点已教/已测的课标条目，如 [\"OBJ-7M-01\",\"OBJ-7M-02\"]"
+    },
+    "available_material_ids_json": {
+      "type": "string",
+      "description": "JSON 数组字符串：该节点可以出现的材料，如 [\"M-001\",\"M-002\"]；它是可测上限，不是布置名单"
+    },
+    "note": {
+      "type": ["string", "null"],
+      "description": "教学进度说明；不得含个人信息"
+    }
+  },
+  "x-primary-key": ["node_id"],
+  "x-file": "nodes.csv"
+}

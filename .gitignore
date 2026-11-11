@@ -26,6 +26,9 @@ data/external/**
 !data/interim/.gitkeep
 !data/external/.gitkeep
 
+# 本机数据处理说明：写给协同同学看，但不随公开仓外传（含数据口径与期望数字）。
+data/README-processing.md
+
 # Defense in depth: any CSV/XLSX/Parquet outside examples is assumed restricted.
 *.csv
 *.tsv

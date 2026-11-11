@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/records.schema.json",
   "title": "records.csv row",
-  "description": "一行 = 一条作答记录。assigned=是否被布置；attempted=是否作答；待评分 = attempted=true 且 score=null；未作答 = attempted=false 且 score=null。canonical v0.2。",
+  "description": "一行 = 一条作答记录。assigned=是否被布置；attempted=是否作答；待评分 = attempted=true 且 score=null；未作答 = attempted=false 且 score=null。node_id 让“同一学生同一题在两个节点各考一次”可区分。canonical v0.3。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -30,6 +30,11 @@
       "pattern": "^M-[0-9]{3}$",
       "description": "材料 ID"
     },
+    "node_id": {
+      "type": ["string", "null"],
+      "pattern": "^N[0-9]{2}$",
+      "description": "作答所属测验节点，如 N01；节点定义见 nodes.csv。为空表示该数据集不提供节点维度"
+    },
     "assigned": {
       "type": "boolean",
       "description": "该生是否被布置过该材料。只由证据推出：出现作答记录（含“未作答”记录）即 true；无记录不落行，不写 assigned=false 的行。禁止把“测验节点可用题目”全量展开成 assigned=true。"
@@ -54,7 +59,15 @@
     },
     "answer": {
       "type": ["string", "null"],
-      "description": "作答内容；默认不落库、不送 LLM"
+      "description": "学生最终作答原文；canonical 在本机保留（gitignore），禁止送 LLM 或外传"
+    },
+    "rubric_scores_json": {
+      "type": ["string", "null"],
+      "description": "评分点得分 JSON 对象字符串，如 {\"M-043P1\":1,\"M-043P2\":0}；待评分/未作答为 null"
+    },
+    "steps_json": {
+      "type": ["string", "null"],
+      "description": "解答过程 JSON 数组字符串，一步一行（原文）；非解答题为 null"
     },
     "submitted_at": {
       "type": ["string", "null"],

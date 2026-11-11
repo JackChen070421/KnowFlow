@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/students.schema.json",
   "title": "students.csv row",
-  "description": "一行 = 一名学生（伪匿名）。禁止真实姓名/学号/联系方式。canonical v0.2。",
+  "description": "一行 = 一名学生（伪匿名）。禁止真实姓名/学号/联系方式。canonical v0.3。",
   "type": "object",
   "additionalProperties": false,
   "required": ["student_id", "group_id", "grade"],

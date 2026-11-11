@@ -40,7 +40,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
-| **2 数据层** | `data/`、未来 `io/` | `raw → canonical → interim`；隔离官方格式 | 🟡 |
+| **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | 未来 `knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | 🟡 |
 | **4 诊断层** | 未来 `cleaning/`、`diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像 | 🟡 |
 | **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
@@ -66,9 +66,9 @@ KnowFlow/
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # 目前只有 __init__ / __main__ / contracts / cli
-├─ tests/                   # contract + fixtures
-├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
+├─ src/knowflow/            # __init__ / __main__ / cli / contracts / io
+├─ tests/                   # contract + io + fixtures
+├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical
 ├─ data/
 │  ├─ raw/<dataset_id>/     # 官方原始数据，原样放，不进 Git
 │  ├─ interim/<dataset_id>/ # 适配后 canonical，不进 Git
@@ -88,6 +88,8 @@ KnowFlow/
 | 2. 落地 | `python scripts/ingest_raw.py --source "<上一步路径>"` | `INGEST OK dataset_id=official-v1 files=21 bytes=76518706` |
 | 3. 自检 | `python scripts/ingest_raw.py --check` | `CHECK OK ...` + `compared against .../data/manifests/official-v1.structure.json` |
 | 4. 验不进库 | `python scripts/check_contracts.py` | `files under data/raw and data/interim are git-ignored` |
+| 5. 处理数据 | `python scripts/build_canonical.py --dataset-id official-v1` | `ADAPT OK` + 9 表行数（3/9/65/63/9/40/2/799/0） |
+| 6. 复检 | `python scripts/validate_canonical.py --dataset-id official-v1` | `VALIDATE OK dataset_id=official-v1 tables=9 records=799` |
 
 - `dataset_id` 固定为 `official-v1`，**不要改名**：文档、审计报告与下游都按这个名字引用。
 - **原样复制**：不改名、不改列、不删干扰项（B01–B08 全留；其中只有 B02/B05/B06 对应 T03/T01/T02）。
@@ -155,8 +157,8 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 |---|---|---|
 | G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples` |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | 待实现（M1） |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 待实现（M2） |
+| G2 引用 | 所有 ID 存在、无悬空 | `python scripts/validate_canonical.py --dataset-id official-v1`（M1 已实现） |
+| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 记录级一致性/去重/五态已由 `validate_canonical` 覆盖；`mastery` 复算随 M2 |
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
@@ -187,6 +189,10 @@ python scripts/check_contracts.py
 # 合成 CSV 行级校验
 python scripts/check_examples.py
 
+# 数据处理：官方数据 → canonical（需先跑 ingest_raw）
+python scripts/build_canonical.py --dataset-id official-v1
+python scripts/validate_canonical.py --dataset-id official-v1
+
 # 测试
 python -m pytest
 
@@ -215,6 +221,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.6 | 2026-11-10 | 数据层落地：`src/knowflow/io/`、`build_canonical` / `validate_canonical`；契约 v0.3（nodes、证据字段、nullable）；新增本机 `data/README-processing.md`（gitignore） |
 | v0.5 | 2026-11-09 | 引入 [`CHANGELOG.md`](CHANGELOG.md)：阅读顺序、§2 仓库边界、§4 目录、§7 工作流（新增第 6 步「记变更」）同步 |
 | v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |
 | v0.3 | 2026-11-09 | M1-a 契约补丁：`evidence_state` 增 `pending`；`state_counts`/`records_by_state` 增 `pending` 记账；写明 `assigned`/`attempted` 判定与 `applicable` 口径；受限目录检查改为 `git check-ignore`；落地 `data/raw/official-v1/` |

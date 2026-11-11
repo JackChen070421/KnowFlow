@@ -1,4 +1,4 @@
-# 数据契约（canonical v0.2）
+# 数据契约（canonical v0.3）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
@@ -46,11 +46,12 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 |---|---|
 | `objectives.csv` | `objective_id, subject, grade, theme, unit, objective_text, verb_level, source_material_id, source_locator` |
 | `knowledge.csv` | `knowledge_id, objective_id, parent_id, name, level, cognitive_type, description, sort_order` |
-| `materials.csv` | `material_id, title, body, material_type, difficulty, objective_id, options_json, answer_key, est_minutes, source, license` |
+| `materials.csv` | `material_id, title, body, material_type, item_format, difficulty, objective_id, options_json, answer_key, explanation, rubric_json, attachments_json, est_minutes, source, license` |
 | `qmatrix.csv` | `material_id, knowledge_id, weight, difficulty, item_type, is_primary`；主键二元组 |
 | `edges.csv` | `from_id, to_id, edge_type, weight, note` |
 | `students.csv` | `student_id, group_id, grade, stage, notes` |
-| `records.csv` | `record_id, student_id, material_id, assigned, attempted, score, max_score, is_correct, answer, submitted_at, duration_seconds, attempt_no, source` |
+| `nodes.csv` | `node_id, title, exam_date, taught_objective_ids_json, available_material_ids_json, note`；一次考试事件 |
+| `records.csv` | `record_id, student_id, material_id, node_id, assigned, attempted, score, max_score, is_correct, answer, rubric_scores_json, steps_json, submitted_at, duration_seconds, attempt_no, source` |
 | `tasks.csv` | `task_id, title, goal, target_scope, target_ids_json, material_scope_json, constraints_json, expected_output` |
 
 约束：
@@ -59,6 +60,8 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 - `score` 必须在 `[0, max_score]`；`attempted=false` 时 `score/is_correct` 为 `null`。
 - `qmatrix` 每个 `practice/assessment` 至少挂 1 个知识点；每个知识点至少 1 个 `practice/assessment`。
 - `prerequisite`/`contains` 不能成环；无自环。
+- 官方未提供的 `difficulty`、教材切片的 `objective_id` 为 `null`：**不猜、不用哨兵值**；下游把 `null` 当“未知”，不得当作 1 或最低难度。
+- `answer` / `steps_json` / `rubric_scores_json` 是**本机证据字段**：只写 `data/interim/`（gitignore），禁止送 LLM 或外传。
 
 ---
 
@@ -94,7 +97,8 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 - 无观测：`mastery=null`、`status=insufficient_evidence`，**不要写 0**。
 - `pending` 是“已作答但没分”：既不是对也不是错，**不得计入 n、不得判为 wrong、不得静默丢弃**。
 - 未作答不等于答错；未记录不等于未掌握。
-- 同一学生同一材料多条记录：按 `attempt_no` → `submitted_at` → `record_id` 取最后一条，并记录去重数。
+- 同一学生同一材料**同一节点**多条记录：按 `attempt_no` → `submitted_at` → `record_id` 取最后一条，并记录去重数。
+- **跨节点同题不算重复**：同一学生在 N01、N02 各答一次是两次独立观测，靠 `node_id` 区分，两行都保留。
 
 ### 5.2 `assigned` 怎么定（官方数据没有这个字段）
 
@@ -116,6 +120,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 ### 5.3 可测范围（applicable）与覆盖度
 
 - `applicable`：该生在所参加测验节点上**能够**被测量的材料集合 = 节点 `可用题目` ∩ 该节点已教主题。它是**分母**，与 `assigned` 无关。
+- 数据源：`nodes.csv` 的 `available_material_ids_json`（可用题目）与 `taught_objective_ids_json`（已教主题），配合 `records.node_id` 确定“该生参加了哪些节点”。没有 `nodes.csv` 的数据集（如合成样例）退回用 `tasks.material_scope_json` 定义分母。
 - `coverage.observed_items`：有评分记录的作答项数（`observed_correct + observed_wrong`）。
 - `coverage.applicable_items`：上述 `applicable` 的去重材料数。
 - `ratio = observed_items / applicable_items`；`pending`、`assigned_not_attempted`、`unobserved` 都落在缺口里，但**成因不同，必须分别报**。
@@ -131,10 +136,12 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 ## 6. 适配与版本
 
-- 官方数据先经 `src/knowflow/io/adapters.py` 映射；下游不直接读官方列名。
+- 官方数据先经 `src/knowflow/io/`（`mapping.py` ID、`adapters.py` 字段、`quality.py` 清洗/报告、`pipeline.py` I/O 与校验）映射；下游不直接读官方列名。
+- 生成：`python scripts/build_canonical.py --dataset-id official-v1` → `data/interim/official-v1/`（9 张表 + `data_quality_report.json`，均 gitignore）。
+- 复检：`python scripts/validate_canonical.py --dataset-id official-v1`（G2 引用 + G3 一致性，逐字节比对磁盘文件）。
 - 官方数据字典到达后只改适配层 + 本文附录，不改诊断/建议。
 - `schema_version` semver：删字段/改语义/改枚举 = major；加可选字段/加枚举值 = minor；只改描述 = patch。
-- 变更必须更新 schema、本文、fixtures，并跑 `check_contracts` + `pytest`。
+- 变更必须更新 schema、本文、fixtures，并跑 `check_contracts` + `check_examples` + `pytest`。
 
 ---
 
@@ -153,11 +160,42 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 未确认的字段不猜；适配层显式报告未知列/缺列，人工确认后再写入 canonical。
 
+### 7.1 官方 → canonical ID 映射（official-v1）
+
+| 官方 | canonical | 规则 |
+|---|---|---|
+| `CR01/02/03` | `OBJ-7M-01/02/03` | 保留序号 |
+| `T01I1…T03I3` | `K-01…K-09` | 主题序 × 指标序；9 行固定表 |
+| `Q001–Q054` | `M-001–M-054` | 保留序号 |
+| `L01–L03` | `M-055–M-057` | 接在题后 |
+| `B01–B08` | `M-058–M-065` | 接在卡后 |
+| `DR0001–DR0806` | `R-0001–R-0806` | 保留序号 |
+| `D01–D40` | `S001–S040` | 保留序号 |
+| `DC01/DC02` | `G1/G2` | 班序 |
+| `N01/N02` | `N01/N02` | 原样 |
+| `Q043P2` 等评分点 | `M-043P2` | 材料 ID 替换，P 序号保留 |
+
+教材切片与课标条目的对应（其余 5 条官方明确“未标注主题和指标”，`objective_id=null`）：
+
+| 切片 | objective_id |
+|---|---|
+| `B02` | `OBJ-7M-03` |
+| `B05` | `OBJ-7M-01` |
+| `B06` | `OBJ-7M-02` |
+
+其他固定判定（写进适配层，逐条可复核）：
+
+- `verb_level=apply`：三条主题目标均为“能……”。
+- `cognitive_type`：`K-01/K-03/K-06/K-09 = application`，`K-02/K-04/K-05/K-07/K-08 = procedure`。
+- `materials.unit`（objectives.unit）：取对应教材切片的章节标签（官方无单元字段）。
+- `title`：`"{官方编号} {题型/学习卡/教材切片}"`，确定性占位，不改 ID。
+
 ---
 
 ## 8. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.3** | 新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`，`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.objective_id`、`materials.difficulty`、`qmatrix.difficulty` 允许 `null`；去重改为节点内；§5.3 明确 applicable 数据源；§7 增 ID 映射附录 | **minor**：只加可选字段/新增表/放宽 required；无字段删除、无已有取值语义变更；消费方需处理 `null` |
 | **v0.2** | 新增 `pending` 态；`state_counts` / `records_by_state` 增加 `pending` 记账字段（必填）；明确 `assigned` / `attempted` 判定与 `applicable` 口径；§7 四项结案；新增两条不变式 | **minor**：无字段删除、无既有取值语义变更；M0 阶段无生产方与历史产物 |
 | v0.1 | 初版 | — |

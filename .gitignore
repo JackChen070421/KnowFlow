@@ -46,6 +46,8 @@ data/**/*.json
 # 例外：纯指纹清单（路径 + sha256 + 字节数 + 行数，无任何数据内容）允许入库。
 # 它是组员核对“我这份和别人那份是否字节一致”的唯一依据；data/raw 仍然是封闭的。
 !data/manifests/*.structure.json
+# 同理：产物指纹（每张表的行数 + sha256 + 聚合计数），不含任何行内容。
+!data/manifests/*.expected.json
 
 # --- model weights / large binaries ---
 *.pt

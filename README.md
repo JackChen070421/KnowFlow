@@ -76,6 +76,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 | `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |
 | `scripts/build_canonical.py` | 官方 CSV → `data/interim/<dataset_id>/` 10 张表 + `data_quality_report.json` | `ADAPT OK` + 10 表行数 |
 | `scripts/validate_canonical.py` | G2 引用 + G3 一致性，并与磁盘产物逐字节比对 | `VALIDATE OK` |
+| `scripts/export_digest.py` | 产物指纹（每张表行数 + sha256 + 聚合计数，不含内容）；`--check` 证明多人构建一致 | `DIGEST OK` |
 
 ---
 
@@ -129,6 +130,7 @@ python -m pytest
 # 数据处理（先按「数据集放哪里」落地官方数据）
 python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
+python scripts/export_digest.py --check   # 与仓库里的产物指纹比对，证明"我和你算的一样"
 ```
 
 按层装可选依赖（core 只有校验与配置，其余按需）：

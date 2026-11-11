@@ -101,6 +101,7 @@ python -m pytest
 | “赛方更新了材料”<br>“重新钉指纹” | `python scripts/ingest_raw.py --source "<路径>" --force --export-structure` | 重新落地并改写 `data/manifests/official-v1.structure.json`；改完要在 PR 说明变了哪几行 |
 | “把官方数据变成 canonical”<br>“生成中间表”<br>“跑数据处理” | `python scripts/build_canonical.py --dataset-id official-v1` | 官方 5 张 CSV → `data/interim/official-v1/` 10 张表 + `data_quality_report.json`（gitignore）；列/枚举不认识就中止 |
 | “检查 canonical 对不对”<br>“质量报告可信吗”<br>“中间表有没有被手改” | `python scripts/validate_canonical.py --dataset-id official-v1` | G2 引用 + G3 一致性，重算后与磁盘产物逐字节比对 |
+| “我跑的和队友跑的一样吗”<br>“复刻对不对” | `python scripts/export_digest.py --check` | 每张表的行数 + sha256 + 聚合计数与仓库指纹比对；不一致会点出是哪张表 |
 | “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 10 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
 | “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |

@@ -1,0 +1,69 @@
+{
+  "note": "纯指纹：行数 + sha256 + 聚合计数；不含任何数据内容，可入库。",
+  "dataset_id": "official-v1",
+  "canonical_version": "0.4.0",
+  "tables": {
+    "objectives": {
+      "rows": 3,
+      "sha256": "d24c12e6bb2b72e879019d304ad4a92e9c6223beb9b4823bc94762bbb4b158fc"
+    },
+    "knowledge": {
+      "rows": 9,
+      "sha256": "6b14b9b049557954d2173e1322dd8cb21be1459d7f107207d98c103f93d84f6c"
+    },
+    "materials": {
+      "rows": 65,
+      "sha256": "8c8262005d8ec0324f2a43fe9bd4b897ab71ca91c19fe032a013f70326d2d70d"
+    },
+    "qmatrix": {
+      "rows": 63,
+      "sha256": "3352e08ed1272a21a61d928b62cd3dbab18496a0642d68b5fcd603dd7d55deab"
+    },
+    "edges": {
+      "rows": 9,
+      "sha256": "7b886bbde467b4d8a2f9f55b6195e4f0d3a14dbcca7a56fd777c578106ee30d2"
+    },
+    "students": {
+      "rows": 40,
+      "sha256": "ca3b8c46a84fd4f752c0a4b642cbec91f0fcd422b328a13945e4880f3cbbc09c"
+    },
+    "nodes": {
+      "rows": 2,
+      "sha256": "0d37f9c7f216cd2f5dce82acb346264b40ab64f1e6e232a0fd8b98ae9c44622f"
+    },
+    "records": {
+      "rows": 799,
+      "sha256": "c769e11efc8a8a5be5600bc5c71c2c5c6dabae642af00d6fe38df68269f5df7d"
+    },
+    "record_details": {
+      "rows": 806,
+      "sha256": "3618d38c1329fb21b12b27b4871fed246ded0508d92657d159e5ed160d633337"
+    },
+    "tasks": {
+      "rows": 0,
+      "sha256": "aff66d27eee77c068f63d3fa4248dd161ef284a028e1e547dc43e2a3de4b248e"
+    }
+  },
+  "total_records": 799,
+  "duplicates_removed": 7,
+  "records_by_state": {
+    "observed_correct": 405,
+    "observed_wrong": 385,
+    "assigned_not_attempted": 5,
+    "pending": 4,
+    "unobserved": 0
+  },
+  "missing": {
+    "students_without_records": 0,
+    "items_without_records": 0,
+    "empty_answers": 5
+  },
+  "anomaly_counts": {
+    "同一作答事件存在更高修订版本": 7,
+    "学生 <id> 只有 [...] 的记录，缺少 [...]": 1,
+    "得分 <n> 与评分点合计 <n> 不一致": 1,
+    "得分 <n> 超出满分 <n>": 2,
+    "记录主题 <id> 与材料 <id> 主题 <id> 不一致": 1,
+    "记录节点 <id> 的可用题目不含 <id>": 1
+  }
+}

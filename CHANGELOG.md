@@ -10,6 +10,32 @@
 
 ---
 
+## 2026-11-12 — 产物指纹：多人构建互证
+
+**待合并** · 分支 `feat/r2-record-details` → `main`
+
+### 改了什么
+
+- **新增** `scripts/export_digest.py` 与 `src/knowflow/io/digest.py`：把 10 张表压成"行数 + sha256 + 聚合计数"，`--check` 与仓库里的 `data/manifests/official-v1.expected.json` 比对，不一致会点出是哪张表和哪个字段。
+- **入库** 产物指纹（2 KB）：只含行数、哈希、归一化后的异常分类计数（`得分 <n> 超出满分 <n>`），不含任何单元格内容；`.gitignore` 为它开例外，和 `*.structure.json` 同类。
+- **契约常量** `CANONICAL_VERSION` 0.3.0 → 0.4.0，与 CONTRACT v0.4 对齐；指纹里带版本号，跨版本比对会先报版本不一致。
+- **分工**：`*.structure.json` 证明"输入同一份"，`*.expected.json` 证明"产物同一份"，`validate_canonical` 证明"产物没被手改"。
+
+### 验证
+
+```text
+export_digest --write   DIGEST WRITTEN tables=10 records=799
+export_digest --check   DIGEST OK tables=10 records=799 anomalies=13
+check_contracts         OK (18 schemas)
+pytest                  54 passed
+```
+
+### 回退
+
+删除 `scripts/export_digest.py`、`src/knowflow/io/digest.py`、`data/manifests/official-v1.expected.json`，并回退 `.gitignore`、`contracts.py`、`README`、`data/README`、`shortcuts.md`。
+
+---
+
 ## 2026-11-12 — 证据层：record_details 拆分（canonical v0.4）
 
 **待合并** · 分支 `feat/r2-record-details` → `main`

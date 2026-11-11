@@ -79,9 +79,27 @@ python scripts/ingest_raw.py --source "D:\competition\2026NOV\赛题数据"
 python scripts/ingest_raw.py --check
 python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
+python scripts/export_digest.py --check
 ```
 
 产物 `data/interim/official-v1/`：10 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
+
+### 0.2 队友复刻与互证
+
+产物不入库，靠**同一条流水线重新算**；一致性靠两条指纹证明：
+
+| 命令 | 证明什么 |
+|---|---|
+| `ingest_raw --check` | 我们拿到的是**同一份原始包**（21 文件 sha256 + 字节数 + 行数） |
+| `validate_canonical` | 磁盘上的表 = 用这份 raw 重算的结果（逐字节比对，手改会被抓） |
+| `export_digest --check` | **我算的和你算的一样**（每张表的行数 + sha256 + 聚合计数） |
+
+`data/manifests/official-v1.expected.json` 只含行数、哈希和聚合计数，不含任何单元格内容，可以入库。两种指纹分工：
+
+- `*.structure.json` 管**输入**（官方包指纹），
+- `*.expected.json` 管**产物**（10 张表指纹）。
+
+不一致时：输入指纹不对 → 数据包版本不同；产物指纹不对 → 代码/依赖版本不同，报错会点出是哪张表。
 
 | 表 | 行数 | 说明 |
 |---|---|---|
@@ -108,7 +126,8 @@ data/
 │  ├─ .gitkeep
 │  └─ official-v1/             本机官方资料包副本（21 文件 / 73 MB，gitignore）
 ├─ manifests/                  ✅ 入库：纯指纹，无数据内容
-│  └─ official-v1.structure.json
+│  ├─ official-v1.structure.json   输入指纹（21 个官方文件）
+│  └─ official-v1.expected.json    产物指纹（10 张表的行数 + sha256）
 ├─ interim/                    canonical 中间表（适配层生成，gitignore）
 │  ├─ .gitkeep
 │  └─ official-v1/             10 张 CSV + data_quality_report.json

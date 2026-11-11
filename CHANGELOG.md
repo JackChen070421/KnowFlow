@@ -10,6 +10,61 @@
 
 ---
 
+## 2026-11-12 — 证据层：record_details 拆分（canonical v0.4）
+
+**待合并** · 分支 `feat/r2-record-details` → `main`
+
+### 改了什么
+
+- **契约**：新增 `record_details.csv`（v0.4，minor）。一行对应官方 CSV 一行，原文零加工（换行/空格/原始编号都保留），带 `csv_record_number` 可逐行回查、`kept` 标记被更高修订替代的行；`records` 字段不变，仍是分析层。
+- **数据层**：`quality.build_records` 返回 `(records, details)`；`pipeline` 增加第 10 张表、明细引用校验（每条记录恰有一条 `kept` 明细、`record_details` 行数 = 原始行数）；写盘改为临时文件 + 原子替换。
+- **边界**：五态记账从 `io/quality.py` 下沉到 `cleaning/states.py`（数据层只记账，判定留给诊断层）。
+- **安全**：适配错误信息不再回显单元格原文（评分点解析失败只报材料和第几行）。
+- **样例与文档**：合成样例补 `record_details.csv`（10 张表）；README / AGENT / shortcuts / CONTRACT / data README 同步。
+
+### 验证
+
+```text
+check_contracts     OK (18 schemas)
+check_examples      OK (10 tables)
+pytest              50 passed
+build_canonical     ADAPT OK records=799 record_details=806 duplicates_removed=7
+validate_canonical  VALIDATE OK tables=10 records=799 anomalies=13
+```
+
+### 回退
+
+`git revert` 本提交；本机 `data/interim/official-v1/` 删除后重跑 `build_canonical` 即可回到 v0.3 形态（少了 `record_details.csv`）。
+
+---
+
+## 2026-11-12 — 数据层落地：official-v1 → canonical v0.3
+
+**`07b662f`** · PR [#5](https://github.com/JackChen070421/KnowFlow/pull/5) · `feat/r2-canonical-adapters` → `main`
+
+### 改了什么
+
+- **契约**：canonical `v0.2 → v0.3`（minor）。新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json` / `steps_json`；`materials` 增 `item_format` / `explanation` / `rubric_json` / `attachments_json`；`materials.difficulty` 与无主题教材的 `objective_id` 允许 `null`；去重口径改为「同一学生 × 材料 × 节点」；§7.1 新增官方 → canonical ID 映射表。
+- **数据层**：新增 `src/knowflow/io/`（`mapping` ID、`adapters` 字段、`quality` 清洗与报告、`pipeline` 读写校验）与 `scripts/build_canonical.py`、`scripts/validate_canonical.py`；产物写 `data/interim/`，仍被 gitignore。
+- **结果**：official-v1 → 9 张表（3/9/65/63/9/40/2/799/0）+ `data_quality_report.json`；五态 405/385/4/5/0，去重 7，异常 13。
+- **样例与文档**：合成样例补 `nodes.csv`、`records.node_id` 接入节点（输入表 8 → 9 张）；README / AGENT / shortcuts / CONTRACT §5.3 / examples 说明同步。
+
+### 验证
+
+```text
+check_contracts     OK (17 schemas)
+check_examples      OK (9 tables)
+pytest              46 passed
+build_canonical     ADAPT OK records=799 duplicates_removed=7 anomalies=13
+validate_canonical  VALIDATE OK tables=9 records=799 anomalies=13
+```
+
+### 回退
+
+`git revert 07b662f`；本机 `data/interim/official-v1/` 重跑 `build_canonical` 即可重建（目录本身不入库）。
+
+---
+
 ## 2026-11-10 — 依赖分层 + 锁文件 + 格式校验修复
 
 **待合入** · 分支 `chore/r4-deps-lock` → `main`（已 rebase 到 #3 之后的 main）

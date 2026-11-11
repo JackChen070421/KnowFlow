@@ -1,4 +1,4 @@
-# 数据契约（canonical v0.3）
+# 数据契约（canonical v0.4）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
@@ -52,6 +52,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | `students.csv` | `student_id, group_id, grade, stage, notes` |
 | `nodes.csv` | `node_id, title, exam_date, taught_objective_ids_json, available_material_ids_json, note`；一次考试事件 |
 | `records.csv` | `record_id, student_id, material_id, node_id, assigned, attempted, score, max_score, is_correct, answer, rubric_scores_json, steps_json, submitted_at, duration_seconds, attempt_no, source` |
+| `record_details.csv` | `csv_record_number, source_record_id, record_id, student_id, material_id, node_id, kept, final_answer, solution_process, scoring_point_scores`；证据层，一行对应官方 CSV 一行 |
 | `tasks.csv` | `task_id, title, goal, target_scope, target_ids_json, material_scope_json, constraints_json, expected_output` |
 
 约束：
@@ -62,6 +63,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 - `prerequisite`/`contains` 不能成环；无自环。
 - 官方未提供的 `difficulty`、教材切片的 `objective_id` 为 `null`：**不猜、不用哨兵值**；下游把 `null` 当“未知”，不得当作 1 或最低难度。
 - `answer` / `steps_json` / `rubric_scores_json` 是**本机证据字段**：只写 `data/interim/`（gitignore），禁止送 LLM 或外传。
+- `record_details` 与 `records` 的分工：`records` 是**分析层**（一条观测一行，去重后 799 行）；`record_details` 是**证据层**（官方 CSV 一行一行，806 行，原文不动）。`kept=false` 的行是被更高修订替代的旧版本，只留在证据层，`record_id` 指向替代它的那条；因此 `record_details` 行数必须等于原始作答记录行数，且每条 `records` 必须恰有一条 `kept=true` 的明细。
 
 ---
 
@@ -120,7 +122,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 ### 5.3 可测范围（applicable）与覆盖度
 
 - `applicable`：该生在所参加测验节点上**能够**被测量的材料集合 = 节点 `可用题目` ∩ 该节点已教主题。它是**分母**，与 `assigned` 无关。
-- 数据源：`nodes.csv` 的 `available_material_ids_json`（可用题目）与 `taught_objective_ids_json`（已教主题），配合 `records.node_id` 确定“该生参加了哪些节点”。没有 `nodes.csv` 的数据集（如合成样例）退回用 `tasks.material_scope_json` 定义分母。
+- 数据源：`nodes.csv` 的 `available_material_ids_json`（可用题目）与 `taught_objective_ids_json`（已教主题），配合 `records.node_id` 确定“该生参加了哪些节点”。没有 `nodes.csv` 的数据集（M0 合成样例曾走此路，v0.3 起样例也带 `nodes.csv`）退回用 `tasks.material_scope_json` 定义分母。
 - `coverage.observed_items`：有评分记录的作答项数（`observed_correct + observed_wrong`）。
 - `coverage.applicable_items`：上述 `applicable` 的去重材料数。
 - `ratio = observed_items / applicable_items`；`pending`、`assigned_not_attempted`、`unobserved` 都落在缺口里，但**成因不同，必须分别报**。
@@ -137,7 +139,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 ## 6. 适配与版本
 
 - 官方数据先经 `src/knowflow/io/`（`mapping.py` ID、`adapters.py` 字段、`quality.py` 清洗/报告、`pipeline.py` I/O 与校验）映射；下游不直接读官方列名。
-- 生成：`python scripts/build_canonical.py --dataset-id official-v1` → `data/interim/official-v1/`（9 张表 + `data_quality_report.json`，均 gitignore）。
+- 生成：`python scripts/build_canonical.py --dataset-id official-v1` → `data/interim/official-v1/`（10 张表 + `data_quality_report.json`，均 gitignore）。
 - 复检：`python scripts/validate_canonical.py --dataset-id official-v1`（G2 引用 + G3 一致性，逐字节比对磁盘文件）。
 - 官方数据字典到达后只改适配层 + 本文附录，不改诊断/建议。
 - `schema_version` semver：删字段/改语义/改枚举 = major；加可选字段/加枚举值 = minor；只改描述 = patch。
@@ -196,6 +198,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.4** | 新增证据层 `record_details.csv`（原文零加工 + `csv_record_number` 回查 + `kept` 标记被替代的修订）；`records` 字段不变，仍为分析层；写盘改为临时文件 + 原子替换；适配错误信息不再回显单元格原文；五态记账下沉到 `src/knowflow/cleaning/states.py` | **minor**：只新增表，无字段删除、无既有取值语义变更；消费方只读 `records` 的无需改动 |
 | **v0.3** | 新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`，`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.objective_id`、`materials.difficulty`、`qmatrix.difficulty` 允许 `null`；去重改为节点内；§5.3 明确 applicable 数据源；§7 增 ID 映射附录 | **minor**：只加可选字段/新增表/放宽 required；无字段删除、无已有取值语义变更；消费方需处理 `null` |
 | **v0.2** | 新增 `pending` 态；`state_counts` / `records_by_state` 增加 `pending` 记账字段（必填）；明确 `assigned` / `attempted` 判定与 `applicable` 口径；§7 四项结案；新增两条不变式 | **minor**：无字段删除、无既有取值语义变更；M0 阶段无生产方与历史产物 |
 | v0.1 | 初版 | — |

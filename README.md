@@ -43,7 +43,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 17 schemas |
-| **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 9 张 canonical 表 |
+| **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
 | **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
@@ -66,15 +66,15 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 当前 M0 只实现第 1 层、第 2 层目录、第 7 层检查、第 8 层协作；第 3–6 层先冻结 schema，再按 M1–M3 逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据链路另有两个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）与 `build_canonical`（官方 CSV → 9 张 canonical 表 + 数据质量报告）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据链路另有两个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）与 `build_canonical`（官方 CSV → 10 张 canonical 表 + 数据质量报告）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
 | `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (17 schemas)` |
-| `scripts/check_examples.py` | `examples/synthetic/input/` 8 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (8 tables)` |
+| `scripts/check_examples.py` | `examples/synthetic/input/` 10 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (10 tables)` |
 | `scripts/validate_outputs.py` | 一份 JSON 对一份 schema | `OK (0 errors)` |
 | `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |
-| `scripts/build_canonical.py` | 官方 CSV → `data/interim/<dataset_id>/` 9 张表 + `data_quality_report.json` | `ADAPT OK` + 9 表行数 |
+| `scripts/build_canonical.py` | 官方 CSV → `data/interim/<dataset_id>/` 10 张表 + `data_quality_report.json` | `ADAPT OK` + 10 表行数 |
 | `scripts/validate_canonical.py` | G2 引用 + G3 一致性，并与磁盘产物逐字节比对 | `VALIDATE OK` |
 
 ---
@@ -85,7 +85,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
-├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
+├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # __init__ / __main__ / cli / contracts / io
 ├─ tests/                   # contract + io + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical

@@ -81,7 +81,7 @@ python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
 ```
 
-产物 `data/interim/official-v1/`：9 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
+产物 `data/interim/official-v1/`：10 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
 
 | 表 | 行数 | 说明 |
 |---|---|---|
@@ -92,7 +92,8 @@ python scripts/validate_canonical.py --dataset-id official-v1
 | `edges.csv` | 9 | 课标 → 知识点 contains |
 | `students.csv` | 40 | S001..S040，G1/G2 |
 | `nodes.csv` | 2 | N01/N02，含可用题目与已教主题 |
-| `records.csv` | 799 | 806 条原始记录去掉 7 条旧修订版本 |
+| `records.csv` | 799 | **分析层**：806 条原始记录去掉 7 条旧修订版本 |
+| `record_details.csv` | 806 | **证据层**：官方 CSV 一行一行，原文零加工 + 行号回查；7 条旧修订 `kept=false` |
 | `tasks.csv` | 0 | 仅表头；任务由建议层定义 |
 
 质量报告基线：`records_by_state = 405/385/4/5/0`、`duplicates_removed = 7`、`anomalies = 13`、`missing = 0/0/5`。
@@ -110,7 +111,7 @@ data/
 │  └─ official-v1.structure.json
 ├─ interim/                    canonical 中间表（适配层生成，gitignore）
 │  ├─ .gitkeep
-│  └─ official-v1/             9 张 CSV + data_quality_report.json
+│  └─ official-v1/             10 张 CSV + data_quality_report.json
 ├─ README-processing.md        本机数据处理说明（gitignore，不随公开仓外传）
 └─ README.md
 ```

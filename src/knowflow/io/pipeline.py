@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ TABLES: dict[str, str] = {
     "students": "students.csv",
     "nodes": "nodes.csv",
     "records": "records.csv",
+    "record_details": "record_details.csv",
     "tasks": "tasks.csv",
 }
 
@@ -38,6 +40,7 @@ PRIMARY_KEYS: dict[str, tuple[str, ...]] = {
     "students": ("student_id",),
     "nodes": ("node_id",),
     "records": ("record_id",),
+    "record_details": ("csv_record_number",),
     "tasks": ("task_id",),
 }
 
@@ -174,7 +177,7 @@ def build_bundle(
     nodes = adapters.adapt_nodes(tables.nodes)
 
     official_materials = {row["材料编号"].strip(): row for row in tables.materials}
-    records = quality.build_records(
+    records, record_details = quality.build_records(
         tables.records, nodes, official_materials, anomalies, counters
     )
     quality.find_partial_node_students(records, nodes, anomalies)
@@ -199,6 +202,7 @@ def build_bundle(
         "students": students,
         "nodes": nodes,
         "records": records,
+        "record_details": record_details,
         "tasks": [],
     }
     return Bundle(
@@ -293,6 +297,36 @@ def validate_bundle(bundle: Bundle) -> list[str]:
             if row["attempted"] and row["node_id"] is None:
                 errors.append(f"records {row['record_id']}: 缺少 node_id")
 
+    records_by_id = {str(row["record_id"]): row for row in tables["records"]}
+    kept_details: dict[str, int] = {}
+    for row in tables["record_details"]:
+        record_id = str(row["record_id"])
+        record = records_by_id.get(record_id)
+        if record is None:
+            errors.append(
+                f"record_details {row['csv_record_number']}: 悬空 record_id {record_id}"
+            )
+            continue
+        for field_name in ("student_id", "material_id", "node_id"):
+            if row[field_name] != record[field_name]:
+                errors.append(
+                    f"record_details {row['csv_record_number']}: {field_name} "
+                    f"与记录 {record_id} 不一致"
+                )
+        if row["kept"]:
+            if record_id in kept_details:
+                errors.append(
+                    f"record_details {row['csv_record_number']}: 记录 {record_id} 有多条 kept 明细"
+                )
+            kept_details[record_id] = int(row["csv_record_number"])  # type: ignore[arg-type]
+    for record_id in sorted(set(records_by_id) - set(kept_details)):
+        errors.append(f"records {record_id}: 缺少 kept 明细，证据不可回查")
+    if len(tables["record_details"]) != bundle.raw_record_rows:
+        errors.append(
+            f"record_details: 行数 {len(tables['record_details'])} "
+            f"!= 原始记录行数 {bundle.raw_record_rows}"
+        )
+
     assessment_materials = {
         row["material_id"]
         for row in tables["materials"]
@@ -350,17 +384,23 @@ def serialize_table(name: str, rows: list[dict[str, object]]) -> str:
     return buffer.getvalue()
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Write via a temp name and atomically replace: no half-written table survives."""
+
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(text, encoding="utf-8")
+    os.replace(temp, path)
+
+
 def write_bundle(bundle: Bundle, out_dir: Path | str) -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, filename in TABLES.items():
-        (out_dir / filename).write_text(
-            serialize_table(name, bundle.tables[name]), encoding="utf-8"
-        )
+        _write_atomic(out_dir / filename, serialize_table(name, bundle.tables[name]))
     report_path = out_dir / "data_quality_report.json"
-    report_path.write_text(
+    _write_atomic(
+        report_path,
         json.dumps(bundle.report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
     return report_path
 

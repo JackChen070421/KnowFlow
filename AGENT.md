@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-09 · v0.5
+> 最后更新：2026-11-12 · v0.8
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -65,7 +65,7 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
-├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
+├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # __init__ / __main__ / cli / contracts / io
 ├─ tests/                   # contract + io + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical
@@ -221,6 +221,8 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.8 | 2026-11-12 | 新增证据层 `record_details.csv`（契约 v0.4，10 张表）：原文零加工 + 行号回查 + `kept` 标记；写盘改原子替换；适配错误信息不回显原文；五态记账下沉 `cleaning/states.py` |
+| v0.7 | 2026-11-12 | 合成样例补 `nodes.csv`（输入表 8 → 9 张），`records.node_id` 接入节点；`check_examples` 覆盖 9 张表；补记 v0.3 数据层的 CHANGELOG |
 | v0.6 | 2026-11-10 | 数据层落地：`src/knowflow/io/`、`build_canonical` / `validate_canonical`；契约 v0.3（nodes、证据字段、nullable）；新增本机 `data/README-processing.md`（gitignore） |
 | v0.5 | 2026-11-09 | 引入 [`CHANGELOG.md`](CHANGELOG.md)：阅读顺序、§2 仓库边界、§4 目录、§7 工作流（新增第 6 步「记变更」）同步 |
 | v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |

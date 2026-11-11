@@ -50,6 +50,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "scripts/build_canonical.py",
     "scripts/validate_canonical.py",
     "schemas/input/nodes.schema.json",
+    "schemas/input/record_details.schema.json",
     "examples/README.md",
     "examples/synthetic/README.md",
     "tests/conftest.py",

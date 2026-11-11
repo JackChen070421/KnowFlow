@@ -21,6 +21,7 @@ EXPECTED_COUNTS = {
     "students": 2,
     "nodes": 2,
     "records": 9,
+    "record_details": 10,
     "tasks": 0,
 }
 
@@ -172,3 +173,29 @@ def test_report_is_parseable_json(mini_dataset) -> None:  # type: ignore[no-unty
     )
     assert payload["input_files"]
     assert all(len(item["sha256"]) == 64 for item in payload["input_files"])
+
+
+def test_record_details_cover_every_source_row(mini_dataset) -> None:  # type: ignore[no-untyped-def]
+    """Evidence layer: one row per source CSV row, superseded revisions included."""
+
+    run_adapt(mini_dataset.raw, mini_dataset.out, "mini-v1", FIXED_TIME)
+    details = _read_table(mini_dataset.out / "record_details.csv")
+    assert len(details) == 10
+    assert sum(1 for row in details if row["kept"] == "true") == 9
+    superseded = [row for row in details if row["kept"] == "false"]
+    assert [(row["source_record_id"], row["record_id"]) for row in superseded] == [
+        ("DR0006", "R-0007")
+    ]
+
+
+def test_detail_text_is_kept_verbatim(mini_dataset) -> None:  # type: ignore[no-untyped-def]
+    run_adapt(mini_dataset.raw, mini_dataset.out, "mini-v1", FIXED_TIME)
+    details = _read_table(mini_dataset.out / "record_details.csv")
+    answers = [row["final_answer"] for row in details if row["final_answer"]]
+    assert answers and answers[0] == "答案"
+
+
+def test_atomic_write_leaves_no_temp_files(mini_dataset) -> None:  # type: ignore[no-untyped-def]
+    run_adapt(mini_dataset.raw, mini_dataset.out, "mini-v1", FIXED_TIME)
+    leftovers = [p.name for p in mini_dataset.out.iterdir() if p.name.endswith(".tmp")]
+    assert leftovers == []

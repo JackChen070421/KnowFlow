@@ -39,16 +39,19 @@ def parse_rubric(value: str | None, official_mid: str) -> str | None:
     """``评分点`` → JSON array of ``{id, text, points}`` with canonical IDs."""
 
     items: list[dict[str, object]] = []
-    for line in (value or "").splitlines():
+    for index, line in enumerate((value or "").splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
         match = RUBRIC_LINE.match(line)
         if match is None:
-            raise AdaptError(f"评分点无法解析: {line!r}")
+            raise AdaptError(
+                f"{official_mid}: 评分点第 {index} 行格式无法解析"
+                "（不回显原文，避免题目/作答内容进入日志）"
+            )
         if match.group("mid") != official_mid:
             raise AdaptError(
-                f"评分点 {line!r} 与材料 {official_mid} 不匹配"
+                f"{official_mid}: 评分点第 {index} 行的材料编号与所在材料不一致"
             )
         items.append(
             {
@@ -64,16 +67,18 @@ def parse_rubric_scores(value: str | None) -> str | None:
     """``Q043P1=1；Q043P2=0`` → ``{"M-043P1":1,"M-043P2":0}``."""
 
     scores: dict[str, int] = {}
-    for part in re.split(r"[；;]", value or ""):
+    for index, part in enumerate(re.split(r"[；;]", value or ""), start=1):
         part = part.strip()
         if not part:
             continue
         if "=" not in part:
-            raise AdaptError(f"评分点得分无法解析: {part!r}")
+            raise AdaptError(
+                f"评分点得分第 {index} 段缺少 '='（不回显原文）"
+            )
         key, raw = part.split("=", 1)
         match = RUBRIC_SCORE.match(key.strip())
         if match is None:
-            raise AdaptError(f"评分点编号无法解析: {key!r}")
+            raise AdaptError(f"评分点得分第 {index} 段的编号格式无法解析（不回显原文）")
         scores[f"{mapping.material_id_for(match.group('mid'))}P{match.group('seq')}"] = int(
             raw.strip()
         )

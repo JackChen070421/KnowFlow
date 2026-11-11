@@ -1,10 +1,12 @@
-"""Record cleaning, state classification and the data-quality report."""
+"""Record cleaning, evidence bucketing (re-exported) and the data-quality report."""
 
 from __future__ import annotations
 
+import itertools
 import json
 from dataclasses import dataclass
 
+from ..cleaning.states import classify_state, state_counts
 from . import adapters, mapping
 from .errors import AdaptError
 
@@ -54,14 +56,72 @@ def _material_theme(official: dict[str, str]) -> str:
     return (official.get("主题编号") or "").strip()
 
 
+RECORD_FIELDS: tuple[str, ...] = (
+    "record_id",
+    "student_id",
+    "material_id",
+    "node_id",
+    "assigned",
+    "attempted",
+    "score",
+    "max_score",
+    "is_correct",
+    "answer",
+    "rubric_scores_json",
+    "steps_json",
+    "submitted_at",
+    "duration_seconds",
+    "attempt_no",
+    "source",
+)
+
+
+def _verbatim(value: str | None) -> str | None:
+    """Zero processing: keep the cell exactly as submitted; blank becomes null."""
+
+    if value is None or not value.strip():
+        return None
+    return value
+
+
+def _record_row(item: dict[str, object]) -> dict[str, object]:
+    """Analysis layer: only the fields the records schema declares."""
+
+    return {field: item[field] for field in RECORD_FIELDS}
+
+
+def _detail_row(item: dict[str, object]) -> dict[str, object]:
+    """Evidence layer: one row per source CSV row, raw text untouched."""
+
+    return {
+        "csv_record_number": item["_line"],
+        "source_record_id": item["_source_record_id"],
+        "record_id": item.get("_superseded_by") or item["record_id"],
+        "student_id": item["student_id"],
+        "material_id": item["material_id"],
+        "node_id": item["node_id"],
+        "kept": bool(item["_kept"]),
+        "final_answer": _verbatim(item["_raw_answer"]),  # type: ignore[arg-type]
+        "solution_process": _verbatim(item["_raw_steps"]),  # type: ignore[arg-type]
+        "scoring_point_scores": _verbatim(item["_raw_rubric"]),  # type: ignore[arg-type]
+    }
+
+
 def build_records(
     record_rows: list[dict[str, str]],
     nodes: list[dict[str, object]],
     official_materials: dict[str, dict[str, str]],
     anomalies: list[Anomaly],
     counters: ReportCounters,
-) -> list[dict[str, object]]:
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Map, validate, clean and de-duplicate official records.
+
+    Returns ``(records, details)``:
+
+    - ``records`` — analysis layer, one row per surviving observation;
+    - ``details`` — evidence layer, one row per **source CSV row** (raw text
+      untouched, superseded revisions included, ``csv_record_number`` for
+      traceability).
 
     De-duplication key is ``(student, material, node)``: the same event
     resubmitted keeps its highest revision, while two exam nodes answering the
@@ -225,6 +285,11 @@ def build_records(
                 "source": mapping.DATASET_ID,
                 "rubric_scores_json": adapters.parse_rubric_scores(rubric_raw),
                 "steps_json": adapters.split_steps(row["解答过程"]),
+                "_line": line_no,
+                "_source_record_id": official_record,
+                "_raw_answer": row["学生最终作答"],
+                "_raw_steps": row["解答过程"],
+                "_raw_rubric": rubric_raw,
             }
         )
 
@@ -240,50 +305,43 @@ def build_records(
         ),
     )
     kept: list[dict[str, object]] = []
-    previous: dict[str, object] | None = None
-    for item in ordered:
-        if previous is not None and (
-            previous["student_id"],
-            previous["material_id"],
-            previous["node_id"],
-        ) == (item["student_id"], item["material_id"], item["node_id"]):
+    superseded: list[dict[str, object]] = []
+    for _, group in itertools.groupby(
+        ordered,
+        key=lambda item: (
+            str(item["student_id"]),
+            str(item["material_id"]),
+            str(item["node_id"]),
+        ),
+    ):
+        members = list(group)
+        survivor = members[-1]
+        survivor["_kept"] = True
+        kept.append(survivor)
+        for item in members[:-1]:
+            item["_kept"] = False
+            item["_superseded_by"] = survivor["record_id"]
+            superseded.append(item)
             anomalies.append(
                 Anomaly(
-                    str(previous["record_id"]),
+                    str(item["record_id"]),
                     "同一作答事件存在更高修订版本",
-                    f"保留 {item['record_id']}（attempt_no={item['attempt_no']}）；"
-                    "本行不进入 canonical",
+                    f"保留 {survivor['record_id']}（attempt_no={survivor['attempt_no']}）；"
+                    "本行不进 records，原文保留在 record_details",
                 )
             )
             counters.duplicates_removed += 1
-            kept[-1] = item
-        else:
-            kept.append(item)
-        previous = item
 
     kept.sort(key=lambda item: str(item["record_id"]))
-    return kept
+    records = [_record_row(item) for item in kept]
+    details = sorted(
+        (_detail_row(item) for item in kept + superseded),
+        key=lambda row: int(row["csv_record_number"]),
+    )
+    return records, details
 
 
-def classify_state(record: dict[str, object]) -> str:
-    if not record["attempted"]:
-        return "assigned_not_attempted"
-    if record["score"] is None:
-        return "pending"
-    return "observed_correct" if record["is_correct"] else "observed_wrong"
 
-
-def state_counts(records: list[dict[str, object]]) -> dict[str, int]:
-    counts = {
-        "observed_correct": 0,
-        "observed_wrong": 0,
-        "assigned_not_attempted": 0,
-        "pending": 0,
-        "unobserved": 0,
-    }
-    for record in records:
-        counts[classify_state(record)] += 1
-    return counts
 
 
 def find_partial_node_students(

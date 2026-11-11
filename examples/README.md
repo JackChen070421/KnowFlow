@@ -19,7 +19,7 @@
 
 | 目录 | 内容 | 用途 |
 |---|---|---|
-| `synthetic/` | 七年级数学“一元一次方程”小样例：2 条课标、4 个知识点、13 份材料、3 名学生、13 条记录 | 跑通三任务、契约测试、演示 |
+| `synthetic/` | 七年级数学“一元一次方程”小样例：2 条课标、4 个知识点、13 份材料、3 名学生、4 个测验节点、13 条记录 + 13 条明细 | 跑通三任务、契约测试、演示 |
 
 文件：
 
@@ -31,7 +31,9 @@ examples/synthetic/input/
 ├─ qmatrix.csv
 ├─ edges.csv
 ├─ students.csv
+├─ nodes.csv
 ├─ records.csv
+├─ record_details.csv
 └─ tasks.csv
 ```
 
@@ -61,7 +63,7 @@ python scripts/validate_outputs.py `
 ## 4. 新增合成样例的规则
 
 1. 新建 `examples/<case-name>/`，不要覆盖 `synthetic/`。
-2. 必须包含 8 张输入表；字段与 `schemas/input/*.schema.json` 一致。
+2. 必须包含 10 张输入表；字段与 `schemas/input/*.schema.json` 一致。
 3. 学生 ID 用 `Sxxx`，不得用真实姓名/学号；备注写“合成样例”。
 4. 材料 ID 用 `M-xxx`，记录 ID 用 `R-xxxx`，知识点 `K-xx`。
 5. 提供 `README.md`：故事、覆盖的知识点、五态分布、预期用途。

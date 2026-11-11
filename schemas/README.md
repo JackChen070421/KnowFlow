@@ -10,9 +10,9 @@
 ```text
 schemas/
 ├─ CONTRACT.md              # 人读速查：ID/枚举/CSV 列/缺失语义
-├─ input/                   # canonical CSV 的一行（17 schemas 之一）
+├─ input/                   # canonical CSV 的一行（18 schemas 之一）
 │  ├─ objectives / knowledge / materials / qmatrix
-│  ├─ edges / students / nodes / records / tasks
+│  ├─ edges / students / nodes / records / record_details / tasks
 ├─ output/                  # 整份 JSON
 │  ├─ knowledge_base / data_quality_report
 │  ├─ student_profile / class_profile

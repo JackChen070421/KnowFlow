@@ -42,13 +42,13 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 17 schemas |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
 | **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 数据复检 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 六脚本 + 46 tests |
+| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 数据复检 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 六脚本 + 50 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -70,7 +70,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
-| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (17 schemas)` |
+| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (18 schemas)` |
 | `scripts/check_examples.py` | `examples/synthetic/input/` 10 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (10 tables)` |
 | `scripts/validate_outputs.py` | 一份 JSON 对一份 schema | `OK (0 errors)` |
 | `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |

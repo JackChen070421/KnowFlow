@@ -37,7 +37,7 @@
 | S013 | 4（M-027/M-045/M-050/M-031） | 0 | 2（M-021/M-041） | 4/6 = 0.6667 |
 | S021 | 3（M-027/M-045/M-031） | 1（M-050） | 2（M-021/M-041） | 3/6 = 0.5 |
 
-> `M-030`（讲解）与 `M-032`（探测）不在 T1 的 `material_scope_json` 里，只作为讲解/补测材料出现；覆盖度分母以 `tasks.material_scope_json` 为准。范围外材料若产生观测，要在质量报告中单独说明，不能悄悄扩大分母。
+> `M-030`（讲解）与 `M-032`（探测）不在 T1 的 `material_scope_json` 里，只作为讲解/补测材料出现；覆盖度分母以 4 个节点 `available_material_ids_json` 的并集为准（本样例并集恰好等于 T1 的 `material_scope_json`，仍为 6 份）。没有节点维度的数据集才退回 `tasks.material_scope_json`。范围外材料若产生观测，要在质量报告中单独说明，不能悄悄扩大分母。
 
 ---
 
@@ -51,7 +51,9 @@ input/
 ├─ qmatrix.csv      11 条材料×知识点
 ├─ edges.csv        8 条关系（contains/prerequisite/confusable）
 ├─ students.csv     3 名学生（S012/S013/S021）
-├─ records.csv      13 条记录（含 2 条未作答）
+├─ nodes.csv        4 个测验节点（N01–N04，每次周测一个节点）
+├─ records.csv      13 条记录（含 2 条未作答，按 `node_id` 归入 N01–N04）
+├─ record_details.csv 13 条明细（证据层：原文 + CSV 行号，与 records 一一对应）
 └─ tasks.csv        2 个任务（T1 个体 / T2 班级）
 ```
 

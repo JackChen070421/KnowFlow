@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/record_details.schema.json",
+  "title": "record_details.csv row",
+  "description": "证据层：一行 = 官方作答记录 CSV 的一行原文，零加工保留（含换行、空格、原始编号）。通过 record_id 与 records.csv 关联；kept=false 表示该修订被同事件更高修订替代，只留在本表。本机保存，禁止送 LLM 或外传。canonical v0.4。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "csv_record_number",
+    "source_record_id",
+    "record_id",
+    "student_id",
+    "material_id",
+    "node_id",
+    "kept",
+    "final_answer",
+    "solution_process",
+    "scoring_point_scores"
+  ],
+  "properties": {
+    "csv_record_number": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "官方 CSV 的逻辑记录序号（表头为 1），用于逐行回查"
+    },
+    "source_record_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "官方记录编号原文，如 DR0001"
+    },
+    "record_id": {
+      "type": "string",
+      "pattern": "^R-[0-9]{4}$",
+      "description": "归属的 canonical 记录；被替代的修订指向保留下来的那条"
+    },
+    "student_id": {
+      "type": "string",
+      "pattern": "^S[0-9]{3}$",
+      "description": "学生 ID"
+    },
+    "material_id": {
+      "type": "string",
+      "pattern": "^M-[0-9]{3}$",
+      "description": "材料 ID"
+    },
+    "node_id": {
+      "type": ["string", "null"],
+      "pattern": "^N[0-9]{2}$",
+      "description": "作答所属测验节点"
+    },
+    "kept": {
+      "type": "boolean",
+      "description": "该行是否进入 records.csv；false 只在本表留档"
+    },
+    "final_answer": {
+      "type": ["string", "null"],
+      "description": "学生最终作答原文；空为 null"
+    },
+    "solution_process": {
+      "type": ["string", "null"],
+      "description": "解答过程原文，保留换行与空格"
+    },
+    "scoring_point_scores": {
+      "type": ["string", "null"],
+      "description": "评分点得分原文，如 Q043P1=1；Q043P2=0，不解析、不重判"
+    }
+  },
+  "x-primary-key": ["csv_record_number"],
+  "x-file": "record_details.csv"
+}

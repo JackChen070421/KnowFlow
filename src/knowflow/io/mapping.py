@@ -9,7 +9,7 @@ Owner: R2 (data & diagnosis).
 from __future__ import annotations
 
 DATASET_ID = "official-v1"
-CANONICAL_VERSION = "0.3.0"
+CANONICAL_VERSION = "0.4.0"
 
 #: Official CSV locations, relative to ``data/raw/<dataset_id>/``.
 OFFICIAL_FILES: dict[str, str] = {

@@ -8,6 +8,7 @@ import pytest
 
 from knowflow.io import AdaptError, run_adapt
 from knowflow.io import quality
+from knowflow.io.adapters import parse_rubric
 
 RECORDS_REL = "4_赛题数据/模拟学情数据/作答记录.csv"
 FIXED_TIME = "2026-11-10T00:00:00+08:00"
@@ -93,3 +94,10 @@ def test_partial_node_student_is_reported_not_fabricated(mini_dataset) -> None: 
     assert len(missing) == 1
     assert "缺少" in missing[0]["reason"]
     assert "N02" in missing[0]["reason"]
+
+
+def test_error_messages_do_not_echo_cell_content() -> None:
+    with pytest.raises(AdaptError) as excinfo:
+        parse_rubric("Q001 缺少行号后缀的内容", "Q001")
+    assert "缺少行号后缀" not in str(excinfo.value)
+    assert "Q001" in str(excinfo.value)

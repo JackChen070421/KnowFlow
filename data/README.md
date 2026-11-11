@@ -79,9 +79,27 @@ python scripts/ingest_raw.py --source "D:\competition\2026NOV\赛题数据"
 python scripts/ingest_raw.py --check
 python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
+python scripts/export_digest.py --check
 ```
 
-产物 `data/interim/official-v1/`：9 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
+产物 `data/interim/official-v1/`：10 张 canonical CSV + `data_quality_report.json`（均 gitignore）。
+
+### 0.2 队友复刻与互证
+
+产物不入库，靠**同一条流水线重新算**；一致性靠两条指纹证明：
+
+| 命令 | 证明什么 |
+|---|---|
+| `ingest_raw --check` | 我们拿到的是**同一份原始包**（21 文件 sha256 + 字节数 + 行数） |
+| `validate_canonical` | 磁盘上的表 = 用这份 raw 重算的结果（逐字节比对，手改会被抓） |
+| `export_digest --check` | **我算的和你算的一样**（每张表的行数 + sha256 + 聚合计数） |
+
+`data/manifests/official-v1.expected.json` 只含行数、哈希和聚合计数，不含任何单元格内容，可以入库。两种指纹分工：
+
+- `*.structure.json` 管**输入**（官方包指纹），
+- `*.expected.json` 管**产物**（10 张表指纹）。
+
+不一致时：输入指纹不对 → 数据包版本不同；产物指纹不对 → 代码/依赖版本不同，报错会点出是哪张表。
 
 | 表 | 行数 | 说明 |
 |---|---|---|
@@ -92,7 +110,8 @@ python scripts/validate_canonical.py --dataset-id official-v1
 | `edges.csv` | 9 | 课标 → 知识点 contains |
 | `students.csv` | 40 | S001..S040，G1/G2 |
 | `nodes.csv` | 2 | N01/N02，含可用题目与已教主题 |
-| `records.csv` | 799 | 806 条原始记录去掉 7 条旧修订版本 |
+| `records.csv` | 799 | **分析层**：806 条原始记录去掉 7 条旧修订版本 |
+| `record_details.csv` | 806 | **证据层**：官方 CSV 一行一行，原文零加工 + 行号回查；7 条旧修订 `kept=false` |
 | `tasks.csv` | 0 | 仅表头；任务由建议层定义 |
 
 质量报告基线：`records_by_state = 405/385/4/5/0`、`duplicates_removed = 7`、`anomalies = 13`、`missing = 0/0/5`。
@@ -107,10 +126,11 @@ data/
 │  ├─ .gitkeep
 │  └─ official-v1/             本机官方资料包副本（21 文件 / 73 MB，gitignore）
 ├─ manifests/                  ✅ 入库：纯指纹，无数据内容
-│  └─ official-v1.structure.json
+│  ├─ official-v1.structure.json   输入指纹（21 个官方文件）
+│  └─ official-v1.expected.json    产物指纹（10 张表的行数 + sha256）
 ├─ interim/                    canonical 中间表（适配层生成，gitignore）
 │  ├─ .gitkeep
-│  └─ official-v1/             9 张 CSV + data_quality_report.json
+│  └─ official-v1/             10 张 CSV + data_quality_report.json
 ├─ README-processing.md        本机数据处理说明（gitignore，不随公开仓外传）
 └─ README.md
 ```

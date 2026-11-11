@@ -99,9 +99,10 @@ python -m pytest
 | “把赛题材料放进来”<br>“复现数据目录”<br>“新机器接数据” | `python scripts/ingest_raw.py --source "<赛题资料包路径>"` | 原样复制到 `data/raw/official-v1/`，写本机 `manifest.json`（`sha256` + 字节数 + 行数 + sheet 数） |
 | “数据放对了吗”<br>“核对一下数据有没有缺”<br>“和别人那份一致吗” | `python scripts/ingest_raw.py --check` | 复算每文件 `sha256`/行数，默认对照**入库的** `data/manifests/official-v1.structure.json`（可用 `--expected` 指定别的基准） |
 | “赛方更新了材料”<br>“重新钉指纹” | `python scripts/ingest_raw.py --source "<路径>" --force --export-structure` | 重新落地并改写 `data/manifests/official-v1.structure.json`；改完要在 PR 说明变了哪几行 |
-| “把官方数据变成 canonical”<br>“生成中间表”<br>“跑数据处理” | `python scripts/build_canonical.py --dataset-id official-v1` | 官方 5 张 CSV → `data/interim/official-v1/` 9 张表 + `data_quality_report.json`（gitignore）；列/枚举不认识就中止 |
+| “把官方数据变成 canonical”<br>“生成中间表”<br>“跑数据处理” | `python scripts/build_canonical.py --dataset-id official-v1` | 官方 5 张 CSV → `data/interim/official-v1/` 10 张表 + `data_quality_report.json`（gitignore）；列/枚举不认识就中止 |
 | “检查 canonical 对不对”<br>“质量报告可信吗”<br>“中间表有没有被手改” | `python scripts/validate_canonical.py --dataset-id official-v1` | G2 引用 + G3 一致性，重算后与磁盘产物逐字节比对 |
-| “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 8 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
+| “我跑的和队友跑的一样吗”<br>“复刻对不对” | `python scripts/export_digest.py --check` | 每张表的行数 + sha256 + 聚合计数与仓库指纹比对；不一致会点出是哪张表 |
+| “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 10 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
 | “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |
 | “记一下这次改了什么”<br>“更新变更记录”<br>“上次改到哪了”<br>“怎么回退” | 编辑 [`CHANGELOG.md`](CHANGELOG.md)（顶部加一条） | 一个可交付单元一条，≤15 行：改了什么 / 验证 / 回退。**不要**把逐条 commit 流水抄进来 |

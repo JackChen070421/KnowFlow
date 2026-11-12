@@ -74,7 +74,7 @@ K-07 ↔ confusable ↔ K-08
 ## 4. 怎么用
 
 1. **契约测试**：用 `schemas/input/*.schema.json` 逐行校验。
-2. **算法开发**：M1–M3 用这份样例做 golden test；预期诊断见 §1。
+2. **算法开发**：任务2/3 用这份样例做 golden test；预期诊断见 §1。
 3. **演示**：5 分钟视频/答辩用 S012 讲“问题→材料→检查→依据”；用 S021 讲“证据不足不乱判”。
 4. **回归**：改算法后重跑，对比 `student_profile.json` 的 `state_counts/mastery/status`。
 

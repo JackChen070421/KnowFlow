@@ -10,6 +10,33 @@
 
 ---
 
+## 2026-11-12 — 文档同步：把过期的计数与状态改回真实值
+
+**待合并** · 分支 `docs/r4-docs-sync` → `main`（纯文档）
+
+### 改了什么
+
+- **计数**：脚本 6 → 7；canonical 表 9 → 10（含 `record_details.csv`，806 行）；测试 50 → 93；schema 18 保持。
+- **状态**：README 里程碑 M2 由 ⬜ 改为 ✅ 基础版；"第 3–6 层"改为"第 3、5、6 层"；AGENT 的 G2/G3 说明改为"数据层 + 诊断层已覆盖，任务3 未实现"。
+- **入口**：删掉"CLI 只有 check/validate/config/version"的旧说明，改为 `run`/`verify-run`/`evidence`；README 新增「跑任务2」一节（3 条命令 + 产物树 + 期望输出）。
+- **样例说明**：`examples/README.md` 去掉 M0 旧话术；合成样例 README 的 "M1–M3" 改为 "任务2/3"。
+- **PR 模板**：增加 `knowflow verify-run` 检查项。
+
+### 验证
+
+```text
+md 相对链接全部可解析（脚本扫描）
+check_contracts  OK (18 schemas)
+check_examples   OK (10 tables)
+pytest           93 passed
+```
+
+### 回退
+
+revert 本提交；纯文档，无代码/数据影响。
+
+---
+
 ## 2026-11-12 — 任务2诊断层：canonical → 个人/班级画像
 
 **待合并** · 分支 `feat/r2-diagnosis-on-canonical` → `main`（含契约 v0.5 提交）
@@ -251,7 +278,7 @@ pytest           11 passed
 ```markdown
 ## YYYY-MM-DD — 一句话标题
 
-**`<commit>`** · PR [#N](链接) · `<branch>` → `main`
+**`<commit>`** · PR #N · `<branch>` → `main`
 
 ### 改了什么
 

@@ -152,6 +152,17 @@ def test_missing_null_mastery_is_allowed() -> None:
                 "unobserved": 1,
             },
             "evidence": [],
+            "credible_interval": None,
+            "weak_probability": None,
+            "mastered_probability": None,
+            "applicable_items": 1,
+            "status_reason": "没有有效评分，不能估计掌握情况。",
+            "performance": {
+                "full_credit": 0,
+                "partial_credit": 0,
+                "zero_credit": 0,
+                "mean_score_ratio": None,
+            },
         }
     )
     # Validate via jsonschema directly to avoid writing a temp file.
@@ -226,3 +237,133 @@ def test_required_profile_fields_are_present(field: str) -> None:
         (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
     )
     assert field in fixture
+
+
+def test_class_profile_fixture_is_valid() -> None:
+    errors = validate_instance(
+        ROOT / "schemas" / "output" / "class_profile.schema.json",
+        FIXTURES / "class_profile.min.json",
+        root=ROOT,
+    )
+    assert errors == [], "\n".join(errors)
+
+
+def test_data_quality_report_fixture_is_valid() -> None:
+    errors = validate_instance(
+        ROOT / "schemas" / "output" / "data_quality_report.schema.json",
+        FIXTURES / "data_quality_report.min.json",
+        root=ROOT,
+    )
+    assert errors == [], "\n".join(errors)
+
+
+def _quality_validator():
+    from jsonschema import Draft202012Validator
+
+    from knowflow.contracts import build_registry
+
+    schema = json.loads(
+        (ROOT / "schemas" / "output" / "data_quality_report.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return Draft202012Validator(schema, registry=build_registry(ROOT))
+
+
+def test_v04_quality_report_still_valid() -> None:
+    """v0.5 audit fields are optional so the existing data-layer producer keeps passing."""
+
+    report = json.loads(
+        (FIXTURES / "data_quality_report.min.json").read_text(encoding="utf-8")
+    )
+    for key in ("input_records", "rejected_records", "partial_credit_records", "decisions"):
+        report.pop(key)
+    assert list(_quality_validator().iter_errors(report)) == []
+
+
+def test_rejected_decision_must_explain_why() -> None:
+    """A quarantined row without a reason is indistinguishable from a silent drop."""
+
+    report = json.loads(
+        (FIXTURES / "data_quality_report.min.json").read_text(encoding="utf-8")
+    )
+    report["decisions"][-1]["reasons"] = []
+    errors = list(_quality_validator().iter_errors(report))
+    assert any(
+        "reasons" in getattr(error, "json_path", "") or "non-empty" in error.message
+        for error in errors
+    ), [error.message for error in errors]
+
+
+def test_quality_audit_invariant_is_documented_by_fixture() -> None:
+    """input = retained + superseded + rejected; every input row gets a decision."""
+
+    report = json.loads(
+        (FIXTURES / "data_quality_report.min.json").read_text(encoding="utf-8")
+    )
+    assert report["input_records"] == (
+        report["total_records"] + report["duplicates_removed"] + report["rejected_records"]
+    )
+    assert len(report["decisions"]) == report["input_records"]
+
+
+def _profile_validator():
+    from jsonschema import Draft202012Validator
+
+    from knowflow.contracts import build_registry
+
+    schema = json.loads(
+        (ROOT / "schemas" / "output" / "student_profile.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return Draft202012Validator(schema, registry=build_registry(ROOT))
+
+
+@pytest.mark.parametrize("status", ["not_applicable", "mixed_performance"])
+def test_v05_status_values_are_accepted(status: str) -> None:
+    """v0.5 adds two statuses so consumers stop guessing them (CONTRACT §5.5)."""
+
+    fixture = json.loads(
+        (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
+    )
+    fixture["knowledge_states"][1]["status"] = status
+    assert list(_profile_validator().iter_errors(fixture)) == []
+
+
+def test_rubric_evidence_is_required() -> None:
+    """Absence must mean "unchecked", not "no rubric loss" — so the field is required."""
+
+    fixture = json.loads(
+        (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
+    )
+    del fixture["issues"][0]["rubric_evidence"]
+    messages = [error.message for error in _profile_validator().iter_errors(fixture)]
+    assert any("rubric_evidence" in message for message in messages), messages
+
+
+def test_issue_id_suffix_is_the_knowledge_number() -> None:
+    """IS-<student>-<knowledge number>: stable across nodes, not a running sequence."""
+
+    fixture = json.loads(
+        (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
+    )
+    for issue in fixture["issues"]:
+        expected = int(issue["knowledge_id"].split("-")[1])
+        assert issue["issue_id"] == f"IS-{fixture['student_id'][1:]}-{expected:02d}"
+
+
+def test_node_id_is_required_and_zero_padded() -> None:
+    fixture = json.loads(
+        (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
+    )
+    del fixture["node_id"]
+    messages = [error.message for error in _profile_validator().iter_errors(fixture)]
+    assert any("node_id" in message for message in messages), messages
+
+    fixture = json.loads(
+        (FIXTURES / "student_profile.min.json").read_text(encoding="utf-8")
+    )
+    fixture["node_id"] = "N2"
+    messages = [error.message for error in _profile_validator().iter_errors(fixture)]
+    assert any("N2" in message for message in messages), messages

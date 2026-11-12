@@ -10,6 +10,35 @@
 
 ---
 
+## 2026-11-12 — 输出契约 v0.5：把诊断层的字段写进合同
+
+**待评审** · 分支 `feat/r2-diagnosis-contract-v05` → `main`（只动契约，不含实现）
+
+### 改了什么
+
+- **个人画像**：`node_id` 必填；`coverage.scope_known` 必填、`ratio` 可空；`knowledge_states[]` 增加 `credible_interval` / `weak_probability` / `mastered_probability` / `applicable_items` / `status_reason` / `performance`；`issues[].rubric_evidence` 必填（空数组 = 已核查无失分）。
+- **群体画像**：`node_id`、五项分布计数（之和 = `student_count`）、`rubric_patterns`、`common_issues.denominator(_basis)`；`mean_ratio` 可空。
+- **枚举**：`status` 加 `mixed_performance` / `not_applicable`；`issue_type` 加 `performance_gap` / `score_point_gap`。
+- **ID**：`issue_id` 第二段改为知识点序号（跨节点稳定），并写死"每学生每知识点至多一条"。
+- **质量报告**：加逐行 `decisions` 等**可选**字段（数据层旧产物仍有效，诊断运行必须带）。
+- **边界**：输入表未动，`CANONICAL_VERSION` 仍 `0.4.0`；不加 `event_id` / `score_points`；原文不进输出；schema 总数仍 18。
+
+### 验证
+
+```text
+check_contracts   OK (18 schemas)
+check_examples    OK (10 tables)
+pytest            64 passed
+data/interim/official-v1/data_quality_report.json  v0.5 校验通过（向后兼容）
+PR #9 代码 + v0.5 输出 schema                      30 项诊断测试通过（兼容性预演）
+```
+
+### 回退
+
+revert 本提交即可；schema / fixtures / CONTRACT / AGENT 同批回退。无数据迁移：输入表与 `*.expected.json` 未改。
+
+---
+
 ## 2026-11-12 — 产物指纹：多人构建互证
 
 **待合并** · 分支 `feat/r2-record-details` → `main`

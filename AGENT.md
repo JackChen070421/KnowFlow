@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-12 · v0.8
+> 最后更新：2026-11-12 · v0.9
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -120,8 +120,8 @@ KnowFlow/
 | 枚举 | 取值 |
 |---|---|
 | `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `pending` / `unobserved` |
-| `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `likely_mastered` / `confirmed_mastered` |
-| `issue_type` | `concept_confusion` / `procedure_gap` / `reading_error` / `prerequisite_gap` / `transfer_gap` / `insufficient_evidence` |
+| `status` | 原五类 + `mixed_performance`（中间表现，不是证据不足）/ `not_applicable`（本节点无该知识点可测题目） |
+| `issue_type` | 原六类 + `performance_gap`（表现差距、错因未定）/ `score_point_gap`（有官方评分点依据的失分） |
 | `material_type` | `reference` / `explain` / `example` / `practice` / `assessment` / `probe` |
 
 字段、CSV 列、输出结构以 [`schemas/CONTRACT.md`](schemas/CONTRACT.md) 与 `schemas/` 为准。
@@ -221,6 +221,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.9 | 2026-11-12 | 输出契约升 **v0.5**：诊断层字段（`node_id`/`scope_known`/Beta 区间与概率/`rubric_evidence`/`rubric_patterns`）、两种新状态与两类新问题、`issue_id` 改为知识点序号；输入表仍 canonical v0.4。见 [`schemas/CONTRACT.md`](schemas/CONTRACT.md) §8 |
 | v0.8 | 2026-11-12 | 新增证据层 `record_details.csv`（契约 v0.4，10 张表）：原文零加工 + 行号回查 + `kept` 标记；写盘改原子替换；适配错误信息不回显原文；五态记账下沉 `cleaning/states.py` |
 | v0.7 | 2026-11-12 | 合成样例补 `nodes.csv`（输入表 8 → 9 张），`records.node_id` 接入节点；`check_examples` 覆盖 9 张表；补记 v0.3 数据层的 CHANGELOG |
 | v0.6 | 2026-11-10 | 数据层落地：`src/knowflow/io/`、`build_canonical` / `validate_canonical`；契约 v0.3（nodes、证据字段、nullable）；新增本机 `data/README-processing.md`（gitignore） |

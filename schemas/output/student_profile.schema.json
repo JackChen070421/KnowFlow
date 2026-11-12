@@ -2,13 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/student_profile.schema.json",
   "title": "student_profile.json",
-  "description": "任务 2 个体画像：知识点级诊断 + 课标聚合 + 问题 + 三张清单。canonical v0.3。",
+  "description": "任务 2 个体画像（contract v0.5）：按测验节点统计知识点级诊断 + 课标聚合 + 问题 + 三张清单。mastery 为满分成功率的 Beta(1+k, 1+n-k) 后验均值；无观测为 null，不是 0。",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "student_id",
     "group_id",
+    "node_id",
     "generated_at",
     "source_dataset",
     "coverage",
@@ -30,6 +31,11 @@
       "type": "string",
       "pattern": "^G[0-9]{1,2}$"
     },
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2}$",
+      "description": "本画像所属测验节点；画像按节点产出，跨节点不合并（见 CONTRACT §5.3）"
+    },
     "generated_at": {
       "type": "string",
       "format": "date-time"
@@ -45,13 +51,23 @@
         "observed_items",
         "applicable_items",
         "ratio",
+        "scope_known",
         "observed_knowledge",
         "total_knowledge"
       ],
       "properties": {
         "observed_items": {"type": "integer", "minimum": 0},
         "applicable_items": {"type": "integer", "minimum": 0},
-        "ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "ratio": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "observed_items / applicable_items；无参与证据或分母为 0 时为 null，不写 0"
+        },
+        "scope_known": {
+          "type": "boolean",
+          "description": "该生在该节点是否留有参与证据；false 时 ratio 必须为 null"
+        },
         "observed_knowledge": {"type": "integer", "minimum": 0},
         "total_knowledge": {"type": "integer", "minimum": 0}
       }
@@ -69,7 +85,13 @@
           "evidence_count",
           "status",
           "state_counts",
-          "evidence"
+          "evidence",
+          "credible_interval",
+          "weak_probability",
+          "mastered_probability",
+          "applicable_items",
+          "status_reason",
+          "performance"
         ],
         "properties": {
           "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
@@ -92,8 +114,11 @@
               "likely_weak",
               "insufficient_evidence",
               "likely_mastered",
-              "confirmed_mastered"
-            ]
+              "confirmed_mastered",
+              "mixed_performance",
+              "not_applicable"
+            ],
+            "description": "判读顺序见 CONTRACT §5.5；mixed_performance = 中间或混合表现；not_applicable = 本节点无该知识点可测题目"
           },
           "state_counts": {
             "type": "object",
@@ -122,6 +147,52 @@
             "type": "array",
             "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
             "uniqueItems": true
+          },
+          "credible_interval": {
+            "type": ["array", "null"],
+            "items": {"type": "number", "minimum": 0, "maximum": 1},
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "等尾可信区间 [low, high]；n=0 时为 null"
+          },
+          "weak_probability": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P(p < 薄弱阈值 | 证据)；n=0 时为 null"
+          },
+          "mastered_probability": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P(p > 掌握阈值 | 证据)；n=0 时为 null"
+          },
+          "applicable_items": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "该知识点在本节点的可测材料数，等于 state_counts 五项之和"
+          },
+          "status_reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "一句话说明为何是这个 status；不得只重复枚举值"
+          },
+          "performance": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "部分得分与零分的另报口径；不等于掌握度",
+            "required": ["full_credit", "partial_credit", "zero_credit", "mean_score_ratio"],
+            "properties": {
+              "full_credit": {"type": "integer", "minimum": 0},
+              "partial_credit": {"type": "integer", "minimum": 0},
+              "zero_credit": {"type": "integer", "minimum": 0},
+              "mean_score_ratio": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1,
+                "description": "有效评分记录的 score/max_score 均值；n=0 时为 null"
+              }
+            }
           }
         }
       }
@@ -152,7 +223,9 @@
               "likely_weak",
               "insufficient_evidence",
               "likely_mastered",
-              "confirmed_mastered"
+              "confirmed_mastered",
+              "mixed_performance",
+              "not_applicable"
             ]
           },
           "derived_from": {
@@ -180,10 +253,15 @@
           "objective_id",
           "statement",
           "evidence",
-          "severity"
+          "severity",
+          "rubric_evidence"
         ],
         "properties": {
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$",
+            "description": "IS-<学生三位>-<知识点序号>；第二段是 knowledge_id 的数字部分，同一学生同一知识点跨节点稳定。每学生每知识点至多一条 issue"
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -192,7 +270,9 @@
               "reading_error",
               "prerequisite_gap",
               "transfer_gap",
-              "insufficient_evidence"
+              "insufficient_evidence",
+              "performance_gap",
+              "score_point_gap"
             ]
           },
           "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
@@ -216,7 +296,28 @@
               "stat": {"type": "string", "minLength": 1}
             }
           },
-          "severity": {"type": "string", "enum": ["low", "medium", "high"]}
+          "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+          "rubric_evidence": {
+            "type": "array",
+            "description": "评分点级失分证据；空数组表示已核查且无可引用评分点，不是未计算",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["record_id", "material_id", "point_id", "criterion", "score", "max_score"],
+              "properties": {
+                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+                "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
+                "criterion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "官方评分点原文标签，不自动合并同义项"
+                },
+                "score": {"type": "number", "minimum": 0},
+                "max_score": {"type": "number", "exclusiveMinimum": 0}
+              }
+            }
+          }
         }
       }
     },

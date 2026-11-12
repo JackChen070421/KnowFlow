@@ -5,7 +5,12 @@
   "description": "LLM 输出契约：只允许文字字段与受限标签；数字/ID 必须来自 llm_summary 白名单。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["kind", "ref_id", "cited_ids", "numbers_used"],
+  "required": [
+    "kind",
+    "ref_id",
+    "cited_ids",
+    "numbers_used"
+  ],
   "properties": {
     "kind": {
       "type": "string",
@@ -39,9 +44,16 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issue_id", "type", "rationale"],
+        "required": [
+          "issue_id",
+          "type",
+          "rationale"
+        ],
         "properties": {
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -50,49 +62,91 @@
               "reading_error",
               "prerequisite_gap",
               "transfer_gap",
-              "insufficient_evidence"
+              "insufficient_evidence",
+              "performance_gap",
+              "score_point_gap"
             ]
           },
-          "rationale": {"type": "string", "minLength": 1}
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "cited_ids": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "numbers_used": {
       "type": "array",
-      "items": {"type": "number"},
+      "items": {
+        "type": "number"
+      },
       "uniqueItems": true
     }
   },
   "anyOf": [
-    {"required": ["text"]},
-    {"required": ["issue_labels"]},
-    {"required": ["reason", "check"]}
+    {
+      "required": [
+        "text"
+      ]
+    },
+    {
+      "required": [
+        "issue_labels"
+      ]
+    },
+    {
+      "required": [
+        "reason",
+        "check"
+      ]
+    }
   ],
   "allOf": [
     {
       "if": {
-        "properties": {"kind": {"const": "issue_labeling"}},
-        "required": ["kind"]
+        "properties": {
+          "kind": {
+            "const": "issue_labeling"
+          }
+        },
+        "required": [
+          "kind"
+        ]
       },
       "then": {
-        "required": ["issue_labels"],
+        "required": [
+          "issue_labels"
+        ],
         "properties": {
-          "issue_labels": {"minItems": 1}
+          "issue_labels": {
+            "minItems": 1
+          }
         }
       }
     },
     {
       "if": {
-        "properties": {"kind": {"const": "recommendation_reason"}},
-        "required": ["kind"]
+        "properties": {
+          "kind": {
+            "const": "recommendation_reason"
+          }
+        },
+        "required": [
+          "kind"
+        ]
       },
       "then": {
-        "required": ["reason", "check"]
+        "required": [
+          "reason",
+          "check"
+        ]
       }
     }
   ]

@@ -46,9 +46,26 @@
         "students_with_insufficient_evidence"
       ],
       "properties": {
-        "mean_ratio": {"type": "number", "minimum": 0, "maximum": 1},
-        "students_below_0_5": {"type": "integer", "minimum": 0},
-        "students_with_insufficient_evidence": {"type": "integer", "minimum": 0}
+        "mean_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "students_below_0_5": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "students_with_insufficient_evidence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "students_with_known_scope": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "knowledge_distribution": {
@@ -66,13 +83,58 @@
           "mean_mastery"
         ],
         "properties": {
-          "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
-          "objective_id": {"type": "string", "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"},
-          "student_count": {"type": "integer", "minimum": 0},
-          "mastered_count": {"type": "integer", "minimum": 0},
-          "weak_count": {"type": "integer", "minimum": 0},
-          "insufficient_count": {"type": "integer", "minimum": 0},
-          "mean_mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+          "knowledge_id": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          },
+          "objective_id": {
+            "type": "string",
+            "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"
+          },
+          "student_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mastered_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "weak_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "insufficient_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mean_mastery": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mixed_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "not_applicable_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_student_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mean_score_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       }
     },
@@ -98,18 +160,44 @@
               "reading_error",
               "prerequisite_gap",
               "transfer_gap",
-              "insufficient_evidence"
+              "insufficient_evidence",
+              "performance_gap",
+              "score_point_gap"
             ]
           },
-          "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
-          "statement": {"type": "string", "minLength": 1},
-          "student_count": {"type": "integer", "minimum": 0},
-          "prevalence": {"type": "number", "minimum": 0, "maximum": 1},
+          "knowledge_id": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "student_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prevalence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
           "example_student_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^S[0-9]{3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^S[0-9]{3}$"
+            },
             "maxItems": 5,
             "uniqueItems": true
+          },
+          "denominator": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "denominator_basis": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }
@@ -127,19 +215,34 @@
           "suggested_focus"
         ],
         "properties": {
-          "tier_id": {"type": "string", "minLength": 1},
-          "label": {"type": "string", "minLength": 1},
+          "tier_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
           "student_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^S[0-9]{3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^S[0-9]{3}$"
+            },
             "uniqueItems": true
           },
           "weak_knowledge_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^K-[0-9]{2,3}$"
+            },
             "uniqueItems": true
           },
-          "suggested_focus": {"type": "string", "minLength": 1}
+          "suggested_focus": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -148,25 +251,154 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["dimension", "groups", "note"],
+        "required": [
+          "dimension",
+          "groups",
+          "note"
+        ],
         "properties": {
-          "dimension": {"type": "string", "minLength": 1},
+          "dimension": {
+            "type": "string",
+            "minLength": 1
+          },
           "groups": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["group_id", "student_count", "mean_mastery"],
+              "required": [
+                "group_id",
+                "student_count",
+                "mean_mastery"
+              ],
               "properties": {
-                "group_id": {"type": "string", "pattern": "^G[0-9]{1,2}$"},
-                "student_count": {"type": "integer", "minimum": 0},
-                "mean_mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+                "group_id": {
+                  "type": "string",
+                  "pattern": "^G[0-9]{1,2}$"
+                },
+                "student_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "mean_mastery": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1
+                }
               }
             }
           },
-          "note": {"type": "string", "minLength": 1}
+          "note": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2,3}$"
+    },
+    "rubric_patterns": {
+      "type": "array",
+      "description": "按知识点和评分点原文聚合失分；分母为对该评分点有可信评分的不同学生数。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "knowledge_id",
+          "criterion",
+          "affected_student_count",
+          "observed_student_count",
+          "affected_record_count",
+          "prevalence",
+          "example_record_ids"
+        ],
+        "properties": {
+          "knowledge_id": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          },
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "affected_student_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_student_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "affected_record_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prevalence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "example_record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^R-[0-9]{4}$"
+            },
+            "uniqueItems": true,
+            "maxItems": 5
+          }
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "0.3.0"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "required": [
+          "node_id",
+          "rubric_patterns"
+        ],
+        "properties": {
+          "coverage_summary": {
+            "required": [
+              "students_with_known_scope"
+            ]
+          },
+          "knowledge_distribution": {
+            "items": {
+              "required": [
+                "mixed_count",
+                "not_applicable_count",
+                "observed_student_count",
+                "mean_score_ratio"
+              ]
+            }
+          },
+          "common_issues": {
+            "items": {
+              "required": [
+                "denominator",
+                "denominator_basis"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
 }

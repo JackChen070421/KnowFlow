@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/input/records.schema.json",
   "title": "records.csv row",
-  "description": "一行 = 一条作答记录。assigned=是否被布置；attempted=是否作答；待评分 = attempted=true 且 score=null；未作答 = attempted=false 且 score=null。canonical v0.2。",
+  "description": "canonical v0.3：原有记录字段保留；可选 node_id/event_id 保留测验与修订边界；score_points 只包含可信的结构化评分，不含作答全文。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -39,7 +39,10 @@
       "description": "是否有作答内容。false 仅用于“未作答”记录；待评分与已评分都为 true"
     },
     "score": {
-      "type": ["number", "null"],
+      "type": [
+        "number",
+        "null"
+      ],
       "minimum": 0,
       "description": "得分；未作答与待评分均为 null。待评分靠 attempted=true 与未作答区分"
     },
@@ -49,47 +52,116 @@
       "description": "满分，必须 > 0"
     },
     "is_correct": {
-      "type": ["boolean", "null"],
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "是否答对；为空则按 score == max_score 推导。禁止用字符串比对答案重算，官方得分优先"
     },
     "answer": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "作答内容；默认不落库、不送 LLM"
     },
     "submitted_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
       "description": "提交时间，ISO 8601 带时区"
     },
     "duration_seconds": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "minimum": 0,
       "description": "用时（秒）；未提供则不分析"
     },
     "attempt_no": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "minimum": 1,
       "description": "第几次作答，从 1 开始"
     },
     "source": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "来源标记，如 synthetic"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2,3}$"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "score_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "point_id",
+          "label",
+          "score",
+          "max_score"
+        ],
+        "properties": {
+          "point_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_score": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
     }
   },
   "allOf": [
     {
       "if": {
-        "properties": {"attempted": {"const": false}},
-        "required": ["attempted"]
+        "properties": {
+          "attempted": {
+            "const": false
+          }
+        },
+        "required": [
+          "attempted"
+        ]
       },
       "then": {
         "properties": {
-          "score": {"type": "null"},
-          "is_correct": {"type": "null"}
+          "score": {
+            "type": "null"
+          },
+          "is_correct": {
+            "type": "null"
+          }
         }
       }
     }
   ],
-  "x-primary-key": ["record_id"],
+  "x-primary-key": [
+    "record_id"
+  ],
   "x-file": "records.csv"
 }

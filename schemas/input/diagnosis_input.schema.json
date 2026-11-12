@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/input/diagnosis_input.schema.json",
+  "title": "诊断输入包",
+  "description": "R1/R2交接：仅诊断所需元数据、已清洗记录、节点范围及追溯索引；不是任务1知识底座。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "generated_at",
+    "raw_root",
+    "students",
+    "knowledge",
+    "materials",
+    "nodes",
+    "participation",
+    "records",
+    "record_sources",
+    "id_map",
+    "quality_report",
+    "mapping_source"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.3.0"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "raw_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "students": {
+      "type": "array",
+      "items": {
+        "$ref": "https://knowflow.local/schemas/input/students.schema.json"
+      }
+    },
+    "knowledge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "knowledge_id",
+          "objective_id",
+          "name",
+          "source_indicator_id"
+        ],
+        "properties": {
+          "knowledge_id": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          },
+          "objective_id": {
+            "type": "string",
+            "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_indicator_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "material_id",
+          "source_material_id",
+          "topic_id",
+          "max_score",
+          "knowledge_ids",
+          "point_definitions"
+        ],
+        "properties": {
+          "material_id": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$"
+          },
+          "source_material_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "topic_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "max_score": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "knowledge_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^K-[0-9]{2,3}$"
+            },
+            "uniqueItems": true
+          },
+          "point_definitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "point_id",
+                "label",
+                "max_score"
+              ],
+              "properties": {
+                "point_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "max_score": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "node_id",
+          "date",
+          "material_ids"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "pattern": "^N[0-9]{2,3}$"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "material_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^M-[0-9]{3}$"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "participation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "student_id",
+          "node_id"
+        ],
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "pattern": "^S[0-9]{3}$"
+          },
+          "node_id": {
+            "type": "string",
+            "pattern": "^N[0-9]{2,3}$"
+          }
+        }
+      },
+      "uniqueItems": true
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://knowflow.local/schemas/input/records.schema.json"
+          },
+          {
+            "required": [
+              "node_id",
+              "event_id",
+              "score_points",
+              "is_correct",
+              "submitted_at",
+              "attempt_no"
+            ]
+          }
+        ]
+      }
+    },
+    "record_sources": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^R-[0-9]{4}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relative_path",
+          "source_row",
+          "source_record_id"
+        ],
+        "properties": {
+          "relative_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_row": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "source_record_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "id_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "students",
+        "knowledge",
+        "materials"
+      ],
+      "properties": {
+        "students": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^S[0-9]{3}$"
+          }
+        },
+        "knowledge": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          }
+        },
+        "materials": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$"
+          }
+        }
+      }
+    },
+    "quality_report": {
+      "$ref": "https://knowflow.local/schemas/output/data_quality_report.schema.json"
+    },
+    "mapping_source": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

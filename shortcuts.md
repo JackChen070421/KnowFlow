@@ -234,6 +234,16 @@ git merge <source_branch>
 
 ## 6. 参考
 
+任务2本机开发常用命令（不提交、不推送数据）：
+
+```powershell
+.\.venv\Scripts\python.exe -m knowflow run --dataset official-v1
+.\.venv\Scripts\python.exe -m knowflow verify-run --run <控制台返回的output目录>
+.\.venv\Scripts\python.exe -m pytest
+```
+
+`run`只实现任务2，实际参数及输出哈希随运行保存。功能分支中的v0.3契约扩展须由R1/R4评审后合并。正式数据、适配后的中间包和运行结果均在Git忽略目录，`git status`不显示它们是正常情况。
+
 - [Git pull](https://git-scm.com/docs/git-pull)
 - [GitHub CLI: pr merge](https://cli.github.com/manual/gh_pr_merge)
 - [GitHub CLI: auth login](https://cli.github.com/manual/gh_auth_login)

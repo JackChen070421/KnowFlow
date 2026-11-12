@@ -1,6 +1,6 @@
 # data/ · 本机数据（第 2 层，默认不入库）
 
-> 最后更新：2026-11-09
+> 最后更新：2026-11-10
 > **这里的数据不进 Git、不进 LLM、不进公开仓库。**
 > 仓库只保留目录与 `.gitkeep`；`data/raw/official-v1/` 下有本机的官方资料包副本，被 Git 忽略。
 
@@ -90,6 +90,10 @@ data/
 - `manifests/<dataset_id>.structure.json`：`sha256` + 字节数 + 行数，**允许入库**；是复现的判定基准。
 - `interim/<dataset_id>/`：适配后的 canonical 表，字段见 [`../schemas/CONTRACT.md`](../schemas/CONTRACT.md)。
 - 运行产物放 `artifacts/run/<run_id>/`（gitignore）；不放进 `data/`。
+
+任务2适配器现在会生成 `interim/<dataset>/diagnosis_input.json`、`id_map.json`、`students.csv`、`records.csv`。前者保留节点范围、参与证据和评分点；不含学生原始答案或解题过程。它只提供诊断所需的最小材料元数据，不是完整任务1知识底座。中间表可重建，原始资料始终不改写。
+
+运行 `python -m knowflow run --dataset official-v1` 可生成两个节点的画像。`python -m knowflow evidence --run <运行目录> --record <记录ID>` 可按来源哈希和CSV逻辑行号把原始答案/过程导出至该次运行的 `evidence/`，仅供本机人工复核，不得上传。
 
 ---
 

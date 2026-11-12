@@ -1,6 +1,6 @@
 # schemas/ · 机器契约（第 1 层）
 
-> 最后更新：2026-11-09
+> 最后更新：2026-11-10
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 
 ---
@@ -22,7 +22,7 @@ schemas/
    └─ llm_response          # LLM 输出
 ```
 
-- `input/*` 校验 CSV 的**一行**；整表还要查主键/外键。
+- `input/diagnosis_input.schema.json`校验整个任务2输入包；其他 `input/*` 校验 CSV 的**一行**；整表还要查主键/外键。
 - `output/*` 校验整份 JSON；`knowledge_base` 通过 `$ref` 复用 `input/*`。
 - `llm/*` 是边界契约：只有 `llm_summary` 可以进模型。
 
@@ -83,6 +83,12 @@ assert errors == [], errors
 ---
 
 ## 5. 常见问题
+
+### v0.3诊断结果怎样验证？
+
+`python -m knowflow verify-run --run artifacts/run/<运行目录>` 会核对结果文件哈希、完整输出集合、Schema、引用、五态计数、覆盖率、Beta结果、评分点与班级汇总。它只覆盖任务2，不代表任务3约束或赛事提交审核通过。
+
+新增 `mixed_performance`、`not_applicable`、`performance_gap`、`score_point_gap`，覆盖率和班级覆盖均值可能为null。v0.3输出通过条件Schema要求新字段；消费者需按 `CONTRACT.md` §8 更新。
 
 ### 为什么 `state_counts` 里一定有 `pending`？
 

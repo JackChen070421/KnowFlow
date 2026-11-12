@@ -5,7 +5,14 @@
   "description": "唯一允许送进 LLM 的对象：聚合计数/比率/状态/错误模式，不含原始作答、姓名、自由文本。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["summary_id", "scope", "ref_id", "locale", "facts", "constraints"],
+  "required": [
+    "summary_id",
+    "scope",
+    "ref_id",
+    "locale",
+    "facts",
+    "constraints"
+  ],
   "properties": {
     "summary_id": {
       "type": "string",
@@ -13,7 +20,11 @@
     },
     "scope": {
       "type": "string",
-      "enum": ["student", "class", "issue"]
+      "enum": [
+        "student",
+        "class",
+        "issue"
+      ]
     },
     "ref_id": {
       "type": "string",
@@ -41,14 +52,46 @@
         "error_patterns"
       ],
       "properties": {
-        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-        "observed_records": {"type": "integer", "minimum": 0},
-        "correct": {"type": "integer", "minimum": 0},
-        "wrong": {"type": "integer", "minimum": 0},
-        "not_attempted": {"type": "integer", "minimum": 0},
-        "mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
-        "evidence_count": {"type": "integer", "minimum": 0},
+        "dataset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "observed_records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "correct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wrong": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_attempted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mastery": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "evidence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
         "status": {
           "type": "string",
           "enum": [
@@ -56,47 +99,85 @@
             "likely_weak",
             "insufficient_evidence",
             "likely_mastered",
-            "confirmed_mastered"
+            "confirmed_mastered",
+            "mixed_performance",
+            "not_applicable"
           ]
         },
-        "coverage_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "coverage_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
         "error_patterns": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["label", "count", "material_ids"],
+            "required": [
+              "label",
+              "count",
+              "material_ids"
+            ],
             "properties": {
-              "label": {"type": "string", "minLength": 1},
-              "count": {"type": "integer", "minimum": 0},
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
               "material_ids": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^M-[0-9]{3}$"
+                },
                 "uniqueItems": true
               }
             }
           }
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
     "constraints": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["must_not_infer", "allowed_numbers", "allowed_ids"],
+      "required": [
+        "must_not_infer",
+        "allowed_numbers",
+        "allowed_ids"
+      ],
       "properties": {
         "must_not_infer": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1},
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         },
         "allowed_numbers": {
           "type": "array",
-          "items": {"type": "number"},
+          "items": {
+            "type": "number"
+          },
           "uniqueItems": true
         },
         "allowed_ids": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1},
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         }
       }

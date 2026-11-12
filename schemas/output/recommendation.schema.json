@@ -30,10 +30,19 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dataset_id", "profile_generated_at"],
+      "required": [
+        "dataset_id",
+        "profile_generated_at"
+      ],
       "properties": {
-        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-        "profile_generated_at": {"type": "string", "format": "date-time"},
+        "dataset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "profile_generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "profile_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$",
@@ -44,11 +53,24 @@
     "generated_by": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "model", "prompt_version"],
+      "required": [
+        "provider",
+        "model",
+        "prompt_version"
+      ],
       "properties": {
-        "provider": {"type": "string", "minLength": 1},
-        "model": {"type": "string", "minLength": 1},
-        "prompt_version": {"type": "string", "minLength": 1}
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "plan": {
@@ -72,12 +94,24 @@
           "teacher_adjustable"
         ],
         "properties": {
-          "seq": {"type": "integer", "minimum": 1},
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
-          "activity": {"type": "string", "minLength": 1},
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+          },
+          "activity": {
+            "type": "string",
+            "minLength": 1
+          },
           "material_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^M-[0-9]{3}$"
+            },
             "minItems": 1,
             "uniqueItems": true
           },
@@ -86,10 +120,16 @@
             "pattern": "^M-[0-9]{3}$",
             "description": "必须是 material_ids 之一；G4 检查"
           },
-          "objective_id": {"type": "string", "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"},
+          "objective_id": {
+            "type": "string",
+            "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"
+          },
           "knowledge_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^K-[0-9]{2,3}$"
+            },
             "minItems": 1,
             "uniqueItems": true
           },
@@ -103,37 +143,67 @@
             "minLength": 1,
             "description": "可验证的检查方式，如“3 题对 2 题”"
           },
-          "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
-          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+          "est_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "difficulty": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
           "prerequisite_check": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["satisfied", "missing_knowledge_ids"],
+            "required": [
+              "satisfied",
+              "missing_knowledge_ids"
+            ],
             "properties": {
-              "satisfied": {"type": "boolean"},
+              "satisfied": {
+                "type": "boolean"
+              },
               "missing_knowledge_ids": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^K-[0-9]{2,3}$"
+                },
                 "uniqueItems": true
               }
             }
           },
-          "teacher_adjustable": {"type": "boolean"}
+          "teacher_adjustable": {
+            "type": "boolean"
+          }
         }
       }
     },
     "probe_plan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["needed", "items", "purpose"],
+      "required": [
+        "needed",
+        "items",
+        "purpose"
+      ],
       "properties": {
-        "needed": {"type": "boolean"},
+        "needed": {
+          "type": "boolean"
+        },
         "items": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+          "items": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$"
+          },
           "uniqueItems": true
         },
-        "purpose": {"type": "string", "minLength": 1}
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   }

@@ -9,7 +9,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
-> 当前状态：**M0 地基**。仓库只保留数据契约、合成样例、契约检查与最小目录；业务模块随任务逐步增加。
+> 当前状态：**任务2基础流程已实现**。可在本机完成正式CSV适配、清洗、分节点个人/班级画像及复算；任务1完整知识底座与任务3建议模块仍待接入。
 > 入口：[`AGENT.md`](AGENT.md) · 数据契约：[`schemas/CONTRACT.md`](schemas/CONTRACT.md) · Git 操作：[`shortcuts.md`](shortcuts.md)
 
 ---
@@ -40,13 +40,13 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 16 schemas |
-| **2 数据层** | `data/`、未来 `src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | 🟡 目录/schema，适配待 M1 |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 17 schemas；v0.3扩展需队友评审 |
+| **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 任务2所需字段适配 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 schema，构建待 M1 |
-| **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
+| **4 诊断层** | `src/knowflow/cleaning/`、`diagnosis/` | 修订清洗、五态、覆盖度、Beta、评分点、个体/班级画像 | ✅ 基础统计流程；无LLM依赖 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 三脚本 + 12 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py` | 格式检查、引用与计算复核、输出指纹 | ✅ 任务2；任务3约束待实现 |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -62,13 +62,13 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前 M0 只实现第 1 层、第 2 层目录、第 7 层检查、第 8 层协作；第 3–6 层先冻结 schema，再按 M1–M3 逐步加代码，不预先铺空目录。
+任务2已使用官方明确的题目—观察指标映射运行；不生成课标原文、先修图、题目难度或学习建议。R1完整知识底座可通过 `--knowledge-base` 接入。算法与兼容性见 `schemas/CONTRACT.md` §8。
 
 三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（8 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。另有 `scripts/ingest_raw.py`：把官方材料原样落地到 `data/raw/<dataset_id>/` 并生成指纹（**不是** IO 适配层，不做列映射）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
-| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (16 schemas)` |
+| `scripts/check_contracts.py` | 必需目录/文件、schema 解析与 `$id` 唯一、`data/raw` 与 `data/interim` 下的文件**必须被 Git 忽略**、`.gitignore` 规则 | `OK (17 schemas)` |
 | `scripts/check_examples.py` | `examples/synthetic/input/` 8 张 CSV 的表头、必填、类型、主键、逐行 schema | `OK (8 tables)` |
 | `scripts/validate_outputs.py` | 一份 JSON 对一份 schema | `OK (0 errors)` |
 | `scripts/ingest_raw.py` | 官方材料落地 + `sha256`/行数指纹；`--check` 对照入库的 `data/manifests/*.structure.json` 自检；`--export-structure` 重新钉指纹 | `INGEST OK` / `CHECK OK` |
@@ -82,8 +82,8 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # 目前只有 __init__ / __main__ / cli / contracts
-├─ tests/                   # contract + fixtures
+├─ src/knowflow/            # cli / contracts / io / cleaning / diagnosis
+├─ tests/                   # contract + fixtures + diagnosis（纯合成测试）
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
@@ -128,7 +128,42 @@ python scripts/validate_outputs.py `
   --data tests/fixtures/student_profile.min.json
 ```
 
-> `python -m knowflow.cli run ...` 等业务入口随 M1–M3 落地；当前 CLI 只提供 `check` / `validate` / `version`。
+任务2完整运行（在仓库根目录；不调用第三方API）：
+
+```powershell
+.\.venv\Scripts\python.exe -m knowflow run --dataset official-v1
+```
+
+控制台返回本次 `output` 路径，默认是 `artifacts/run/<数据集>-<时间戳>/`。每次生成新目录，不覆盖历史运行。
+
+| 输出 | 内容 |
+|---|---|
+| `data_quality_report.json` | 输入/保留/替代/隔离计数、逐行处理决定、异常原因 |
+| `nodes/N01或N02/students/Sxxx.json` | 个人覆盖、知识点/课标视图、评分点证据、三张清单 |
+| `nodes/N01或N02/classes/G1或G2或ALL.json` | 两个班及总体的分布、学习需求分组、分点评分共性问题 |
+| `coverage_matrix.csv` | 学生×节点×知识点，包含五态计数和部分得分 |
+| `case_candidates.json` | 部分得分、相对表现较好、记录不足的三个展示候选，仍需人工选择 |
+| `diagnosis_input.json` / `run_manifest.json` | 本次输入快照、参数、结果哈希；支持复核 |
+| `validation_report.json` / `运行说明.md` | 任务2校验范围、结果与阅读说明 |
+
+其他命令（`<运行目录>`替换为控制台返回的路径）：
+
+```powershell
+# 只做适配；生成 data/interim/official-v1/diagnosis_input.json 及学生/记录CSV
+.\.venv\Scripts\python.exe -m knowflow adapt --dataset official-v1
+# 只分析最新节点；也可 --node N01 或 --node N02
+.\.venv\Scripts\python.exe -m knowflow run --dataset official-v1 --node latest
+# 重用中间包，隔离诊断代码与官方列名
+.\.venv\Scripts\python.exe -m knowflow run --input data/interim/official-v1/diagnosis_input.json
+# 核对一份保存的运行
+.\.venv\Scripts\python.exe -m knowflow verify-run --run <运行目录>
+# 按画像引用的record_id导出原始答案和过程，仅写本机evidence目录
+.\.venv\Scripts\python.exe -m knowflow evidence --run <运行目录> --record R-0001
+```
+
+`--config <JSON>` 可覆盖 `DiagnosisConfig` 中的参数，每次运行保存实际参数。默认模型估计满分成功率；部分得分保留在 `performance` 和评分点证据中。原始答案不会进入诊断输入包；`evidence` 导出的原文只供本机人工核对。
+
+代码模块：`io/adapters.py`读官方CSV并接R1映射；`cleaning/records.py`处理修订和异常；`diagnosis/mastery.py`管理参数和估计；`profiles.py`生成个人/群体结果；`validation.py`复算；`pipeline.py`管理输入输出。CI测试仅使用临时生成的合成数据。
 
 ---
 
@@ -208,8 +243,8 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
-| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | ⬜ |
-| **M2 诊断** | 五态、覆盖度、Beta、画像 | ⬜ |
+| **M1 知识底座** | 任务2数据适配已实现；完整knowledge/Q-matrix/图由R1接入 | 🟡 |
+| **M2 诊断** | 五态、覆盖度、Beta、评分点、个人/班级画像、复算 | ✅ 基础版；阈值和案例需团队复核 |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |
 

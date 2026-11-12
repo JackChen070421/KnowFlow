@@ -46,6 +46,8 @@ def coerce(value: str | None, schema: dict[str, Any]) -> Any:
                 return int(raw)
             if type_name == "number":
                 return float(raw)
+            if type_name in {"array", "object"}:
+                return json.loads(raw)
             if type_name == "boolean":
                 lowered = raw.lower()
                 if lowered in {"true", "1", "yes"}:

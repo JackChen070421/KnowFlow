@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-09 · v0.5
+> 最后更新：2026-11-10 · v0.6
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -15,7 +15,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 **一句话：数字由代码算，语言由模型写；所有结论必须能追到 ID。**
 
-当前是 **M0 地基**：只保留数据契约、合成样例、契约检查与最小目录；业务模块随任务逐步增加。
+当前已实现 **任务2基础流程**：本机CSV适配、修订清洗、分节点个人/班级画像、分点评分统计及复算。完整任务1知识底座、任务3建议与LLM仍待接入。
 
 ## 1. 八条准则
 
@@ -40,9 +40,9 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
-| **2 数据层** | `data/`、未来 `io/` | `raw → canonical → interim`；隔离官方格式 | 🟡 |
+| **2 数据层** | `data/`、`io/` | `raw → canonical → interim`；任务2官方CSV适配 | ✅ |
 | **3 知识层** | 未来 `knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | 🟡 |
-| **4 诊断层** | 未来 `cleaning/`、`diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像 | 🟡 |
+| **4 诊断层** | `cleaning/`、`diagnosis/` | 五态/覆盖度/Beta/问题/评分点/个体与班级画像 | ✅ 基础版 |
 | **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
@@ -56,7 +56,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 - **计算边界**：数值只由 `diagnosis`/`recommend` 的纯函数计算。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要等文字；ID 与数字来自白名单。
 
-第 3–6 层先冻结 schema，按 M1–M3 逐步加代码；暂不建 UI、报告层、交付物目录。
+第3、5、6层继续按分工增加代码。任务2入口为 `python -m knowflow run --dataset official-v1`；输出只进被忽略的 `artifacts/run/`，字段扩展见 `CONTRACT.md` §8。
 
 ## 4. 目录（最小）
 
@@ -66,8 +66,8 @@ KnowFlow/
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 8 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # 目前只有 __init__ / __main__ / contracts / cli
-├─ tests/                   # contract + fixtures
+├─ src/knowflow/            # cli / contracts / io / cleaning / diagnosis
+├─ tests/                   # contract + fixtures + diagnosis
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw
 ├─ data/
 │  ├─ raw/<dataset_id>/     # 官方原始数据，原样放，不进 Git
@@ -118,8 +118,8 @@ KnowFlow/
 | 枚举 | 取值 |
 |---|---|
 | `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `pending` / `unobserved` |
-| `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `likely_mastered` / `confirmed_mastered` |
-| `issue_type` | `concept_confusion` / `procedure_gap` / `reading_error` / `prerequisite_gap` / `transfer_gap` / `insufficient_evidence` |
+| `status` | 原五类 + `mixed_performance` / `not_applicable` |
+| `issue_type` | 原六类 + `performance_gap` / `score_point_gap` |
 | `material_type` | `reference` / `explain` / `example` / `practice` / `assessment` / `probe` |
 
 字段、CSV 列、输出结构以 [`schemas/CONTRACT.md`](schemas/CONTRACT.md) 与 `schemas/` 为准。
@@ -155,12 +155,12 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 |---|---|---|
 | G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples` |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | 待实现（M1） |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 待实现（M2） |
+| G2 引用 | 学生/材料/知识点/节点/记录引用 | 任务2：`python -m knowflow verify-run --run <目录>` |
+| G3 一致性 | 五态、覆盖度、Beta、评分点、班级汇总可复算 | 任务2：同上；任务3约束仍待实现 |
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
-未实现的 G2/G3 不假装通过；在 PR 里写“待实现”。
+任务2校验通过不表示任务1课标审查、任务3建议约束或赛事提交审批通过；人工案例评审仍须完成。
 
 ## 9. LLM 规则
 
@@ -215,6 +215,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.6 | 2026-11-10 | 任务2基础流程、v0.3接口扩展、分节点与分点评分、复算入口；合并前R1/R4审查 |
 | v0.5 | 2026-11-09 | 引入 [`CHANGELOG.md`](CHANGELOG.md)：阅读顺序、§2 仓库边界、§4 目录、§7 工作流（新增第 6 步「记变更」）同步 |
 | v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |
 | v0.3 | 2026-11-09 | M1-a 契约补丁：`evidence_state` 增 `pending`；`state_counts`/`records_by_state` 增 `pending` 记账；写明 `assigned`/`attempted` 判定与 `applicable` 口径；受限目录检查改为 `git check-ignore`；落地 `data/raw/official-v1/` |

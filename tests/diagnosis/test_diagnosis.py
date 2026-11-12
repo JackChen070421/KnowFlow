@@ -1,5 +1,6 @@
 import json
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,12 @@ import pytest
 from knowflow.cli import main
 from knowflow.diagnosis.beta import betainc, betappf
 from knowflow.diagnosis.mastery import DiagnosisConfig, estimate_mastery
-from knowflow.diagnosis.pipeline import build_bundle, export_evidence, run_diagnosis
+from knowflow.diagnosis.pipeline import (
+    build_bundle,
+    export_evidence,
+    latest_run_dir,
+    run_diagnosis,
+)
 from knowflow.diagnosis.profiles import build_class_profile, build_student_profile
 from knowflow.diagnosis.validation import (
     validate_bundle,
@@ -256,3 +262,35 @@ def test_student_profile_recomputes_from_bundle(bundle):
     assert validate_student(p, bundle, DiagnosisConfig()) == []
     p["knowledge_states"][0]["evidence_count"] = 99
     assert validate_student(p, bundle, DiagnosisConfig())
+
+
+def test_latest_run_dir_picks_newest_completed_run(tmp_path):
+    older, newer, unfinished = tmp_path / "a", tmp_path / "b", tmp_path / "c"
+    for path in (older, newer, unfinished):
+        path.mkdir()
+    for path in (older, newer):
+        (path / "run_manifest.json").write_text("{}", encoding="utf-8")
+    os.utime(older, (1_000_000, 1_000_000))
+    os.utime(newer, (2_000_000, 2_000_000))
+    assert latest_run_dir(tmp_path) == newer
+
+
+def test_latest_run_dir_requires_a_completed_run(tmp_path):
+    with pytest.raises(ValueError, match="no runs yet"):
+        latest_run_dir(tmp_path / "missing")
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(ValueError, match="no completed runs"):
+        latest_run_dir(tmp_path)
+
+
+def test_verify_run_rejects_missing_directory_and_placeholder(tmp_path):
+    """`<目录>` is a placeholder: the CLI must explain it instead of raising OSError."""
+
+    assert main(["verify-run", "--run", str(tmp_path / "nope")]) == 2
+    assert main(["verify-run", "--run", "artifacts/run/<目录>"]) == 2
+
+
+def test_verify_run_rejects_incomplete_run(tmp_path):
+    (tmp_path / "half").mkdir()
+    with pytest.raises(ValueError, match="not a completed run"):
+        validate_saved_run(tmp_path / "half")

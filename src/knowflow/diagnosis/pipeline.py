@@ -352,6 +352,22 @@ def _protect_output(output: Path) -> Path:
     return target
 
 
+def latest_run_dir(base: Path | None = None) -> Path:
+    """Newest completed run; ``--run`` may be omitted instead of copying a path."""
+
+    root = Path(base) if base is not None else repo_root() / "artifacts" / "run"
+    if not root.is_dir():
+        raise ValueError(f"no runs yet: {root} does not exist; run `knowflow run` first")
+    candidates = [
+        path
+        for path in root.iterdir()
+        if path.is_dir() and (path / "run_manifest.json").is_file()
+    ]
+    if not candidates:
+        raise ValueError(f"no completed runs under {root}; run `knowflow run` first")
+    return max(candidates, key=lambda path: (path.stat().st_mtime, path.name))
+
+
 def _source_hashes(base: Path) -> list[dict]:
     return [
         {
@@ -636,8 +652,17 @@ def choose_cases(profiles, bundle):
 
 def export_evidence(run: Path, record_id: str) -> Path:
     run = Path(run)
-    bundle = json.loads((run / "diagnosis_input.json").read_text(encoding="utf-8"))
-    manifest = json.loads((run / "run_manifest.json").read_text(encoding="utf-8"))
+    if not run.is_dir():
+        raise ValueError(
+            f"run directory not found: {run} (pass a directory under artifacts/run, "
+            "or omit --run to use the newest run)"
+        )
+    input_path = run / "diagnosis_input.json"
+    manifest_path = run / "run_manifest.json"
+    if not input_path.is_file() or not manifest_path.is_file():
+        raise ValueError(f"not a completed run (missing diagnosis_input/run_manifest): {run}")
+    bundle = json.loads(input_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if record_id not in bundle["record_sources"]:
         raise ValueError("record not in this run's retained evidence")
     source = bundle["record_sources"][record_id]

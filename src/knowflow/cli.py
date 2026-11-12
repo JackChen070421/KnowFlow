@@ -100,10 +100,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_run(value: str | None) -> Path:
+    from .diagnosis.pipeline import latest_run_dir
+
+    if value in (None, "", "latest"):
+        return latest_run_dir()
+    return Path(value)
+
+
 def _cmd_verify_run(args: argparse.Namespace) -> int:
     from .diagnosis.validation import validate_saved_run
 
-    result = validate_saved_run(Path(args.run))
+    result = validate_saved_run(_resolve_run(args.run))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["gate"] == "pass" else 1
 
@@ -111,7 +119,7 @@ def _cmd_verify_run(args: argparse.Namespace) -> int:
 def _cmd_evidence(args: argparse.Namespace) -> int:
     from .diagnosis.pipeline import export_evidence
 
-    path = export_evidence(Path(args.run), args.record)
+    path = export_evidence(_resolve_run(args.run), args.record)
     print(f"LOCAL EVIDENCE {path}")
     return 0
 
@@ -164,13 +172,19 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser = subparsers.add_parser(
         "verify-run", help="revalidate and recompute a saved Task-2 run"
     )
-    verify_parser.add_argument("--run", required=True)
+    verify_parser.add_argument(
+        "--run",
+        help="run directory or 'latest'; defaults to the newest run under artifacts/run",
+    )
     verify_parser.set_defaults(func=_cmd_verify_run)
 
     evidence_parser = subparsers.add_parser(
         "evidence", help="export original answer/steps locally for a cited record"
     )
-    evidence_parser.add_argument("--run", required=True)
+    evidence_parser.add_argument(
+        "--run",
+        help="run directory or 'latest'; defaults to the newest run under artifacts/run",
+    )
     evidence_parser.add_argument("--record", required=True)
     evidence_parser.set_defaults(func=_cmd_evidence)
 

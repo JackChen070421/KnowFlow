@@ -10,9 +10,36 @@
 
 ---
 
+## 2026-11-12 — `--run` 可省略：默认最近一次运行
+
+**待合并** · 分支 `fix/r4-run-argument` → `main`
+
+### 改了什么
+
+- `knowflow verify-run` / `knowflow evidence` 的 `--run` 改为可选：省略或写 `latest` 时自动取 `artifacts/run/` 下最新的完整运行（按 `run_manifest.json` 存在性过滤、按 mtime 排序）。
+- 目录不存在或不是完整运行时，给出可读报错（`run directory not found: …`），不再抛 `[Errno 22] Invalid argument`。
+- `verify-run` 输出增加 `run` 字段，明确这次复核的是哪个目录。
+- 新增 4 项测试（最新目录选择、无完整运行、占位符路径、半截目录）；README/AGENT/shortcuts 同步为"默认最近一次"，并说明 `<目录>` 是占位符。
+
+### 验证
+
+```text
+pytest                 97 passed
+uv run python -m knowflow.cli verify-run
+  gate pass（自动选中最新一次，80 份个人 / 6 份班级）
+uv run python -m knowflow.cli verify-run --run "artifacts/run/<目录>"
+  KnowFlow: run directory not found: artifacts\run\<目录> (…omit --run to use the newest run)
+```
+
+### 回退
+
+revert 本提交；`--run` 恢复为必填，行为与之前一致。
+
+---
+
 ## 2026-11-12 — 文档同步：把过期的计数与状态改回真实值
 
-**待合并** · 分支 `docs/r4-docs-sync` → `main`（纯文档）
+**`c344f2d`** · PR [#12](https://github.com/JackChen070421/KnowFlow/pull/12) · `docs/r4-docs-sync` → `main`（纯文档）
 
 ### 改了什么
 

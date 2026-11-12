@@ -10,6 +10,40 @@
 
 ---
 
+## 2026-11-12 — 任务2诊断层：canonical → 个人/班级画像
+
+**待合并** · 分支 `feat/r2-diagnosis-on-canonical` → `main`（含契约 v0.5 提交）
+
+### 改了什么
+
+- **新增** `src/knowflow/diagnosis/`：`beta.py`（纯 Python 正则不完全 Beta 与反函数）、`mastery.py`（Beta 后验与状态阈值）、`profiles.py`（个人/班级画像、评分点证据）、`pipeline.py`（读 canonical、运行、证据回查）、`validation.py`（复算门）。
+- **入口**：`knowflow run` / `verify-run` / `evidence`；输出只进 `artifacts/run/`（gitignore）。
+- **数据入口改写**：只读 `data/interim/<ds>/` 的 10 张 canonical 表；`score_points` 由 `rubric_scores_json` + `materials.rubric_json` 解析；逐行 `decisions` 由 `record_details.csv` 生成，不再自建适配层。
+- **去重**：删除 PR #9 自带的 `io/adapters.py`、`cleaning/records.py`；复用 `cleaning/states.py` 与 io 层，`records.csv` 仍只有一个生产者。
+- **依赖**：不引入 scipy（误差 <1e-14 已用测试钉住），CI 仍 `uv sync --frozen --extra dev`。
+
+### 验证
+
+```text
+pytest                         93 passed（含 29 项诊断测试）
+check_contracts                OK (18 schemas)
+check_examples                 OK (10 tables)
+knowflow run --dataset official-v1   80 个人画像 / 6 班级画像，gate=pass
+knowflow verify-run             gate=pass（复算 + 产物哈希）
+knowflow evidence --record R-0001     导出成功，源文件被改则拒绝
+```
+
+### 限制
+
+- 未接 R1 `knowledge_base` 覆盖，仍用官方指标映射；无测验节点的数据集不适用。
+- 未涉及任务3建议与 LLM。
+
+### 回退
+
+revert 本提交即可；契约 v0.5 提交可单独保留。无数据迁移（输入表未改）。
+
+---
+
 ## 2026-11-12 — 输出契约 v0.5：把诊断层的字段写进合同
 
 **待评审** · 分支 `feat/r2-diagnosis-contract-v05` → `main`（只动契约，不含实现）

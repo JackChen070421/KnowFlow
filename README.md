@@ -11,7 +11,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
-> 当前状态：**M0 地基**。仓库只保留数据契约、合成样例、契约检查与最小目录；业务模块随任务逐步增加。
+> 当前状态：**任务2 基础流程已实现**。可在本机完成 canonical 数据适配、按节点的个人/班级画像、复算与证据回查；课标知识底座与学习建议模块仍待接入。
 > 入口：[`AGENT.md`](AGENT.md) · 数据契约：[`schemas/CONTRACT.md`](schemas/CONTRACT.md) · Git 操作：[`shortcuts.md`](shortcuts.md)
 
 ---
@@ -45,10 +45,10 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
-| **4 诊断层** | 未来 `src/knowflow/cleaning/`、`diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | 🟡 schema，算法待 M2 |
+| **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、未来 `src/knowflow/validation/` | 三个格式检查 + 数据复检 + 契约测试 + 一致性/约束/隐私检查 → `validation_report` | ✅ 六脚本 + 50 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断复算（五态/覆盖/Beta/班级汇总）→ `validation_report` | ✅ 六脚本 + 93 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -64,7 +64,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前 M0 只实现第 1 层、第 2 层目录、第 7 层检查、第 8 层协作；第 3–6 层先冻结 schema，再按 M1–M3 逐步加代码，不预先铺空目录。
+当前已实现第 1、2、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层（课标知识底座）、第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入，第 3–6 层先冻结 schema 再逐步加代码，不预先铺空目录。
 
 三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据链路另有两个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）与 `build_canonical`（官方 CSV → 10 张 canonical 表 + 数据质量报告）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
@@ -131,14 +131,21 @@ python -m pytest
 python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
 python scripts/export_digest.py --check   # 与仓库里的产物指纹比对，证明"我和你算的一样"
+
+# 任务2：canonical → 个人/班级画像 + 复算（输出只进 artifacts/，gitignore）
+python -m knowflow.cli run --dataset official-v1
+python -m knowflow.cli verify-run --run artifacts/run/<目录>
+python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 ```
+
+任务2不需要 scipy：Beta 分布的分位数与尾概率在 `src/knowflow/diagnosis/beta.py` 里用纯 Python 实现，CI 与本地 `uv sync --extra dev` 即可跑全量测试。
 
 按层装可选依赖（core 只有校验与配置，其余按需）：
 
 | extra | 内容 | 何时需要 |
 |---|---|---|
 | `io` | pandas | M1 数据适配 |
-| `stats` | numpy, scipy | M2 掌握度计算 |
+| `stats` | numpy, scipy | 可选统计库；**当前诊断不依赖**（Beta 用纯 Python 实现） |
 | `llm` | openai | M3 LLM 边缘层 |
 | `app` | streamlit, plotly | 演示界面 |
 | `dev` | pytest, ruff, mypy, pre-commit | 开发与 CI |

@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-12 · v0.9
+> 最后更新：2026-11-12 · v0.10
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -15,7 +15,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 **一句话：数字由代码算，语言由模型写；所有结论必须能追到 ID。**
 
-当前是 **M0 地基**：只保留数据契约、合成样例、契约检查与最小目录；业务模块随任务逐步增加。
+当前已实现 **任务2基础流程**：canonical 数据落盘、按节点的五态/覆盖/Beta 与个人/班级画像、`verify-run` 复算、按记录回查本机原文。课标知识底座（任务1）与学习建议/LLM（任务3）仍待接入。
 
 ## 1. 八条准则
 
@@ -42,7 +42,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | 未来 `knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | 🟡 |
-| **4 诊断层** | 未来 `cleaning/`、`diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像 | 🟡 |
+| **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
 | **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
@@ -157,8 +157,8 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 |---|---|---|
 | G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples` |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | `python scripts/validate_canonical.py --dataset-id official-v1`（M1 已实现） |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 记录级一致性/去重/五态已由 `validate_canonical` 覆盖；`mastery` 复算随 M2 |
+| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `python scripts/validate_canonical.py`；诊断层 `python -m knowflow.cli verify-run --run <目录>` |
+| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态已覆盖；诊断层由 `verify-run` 重算五态、覆盖、Beta、班级汇总并比对产物哈希 |
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
@@ -193,6 +193,11 @@ python scripts/check_examples.py
 python scripts/build_canonical.py --dataset-id official-v1
 python scripts/validate_canonical.py --dataset-id official-v1
 
+# 任务2：canonical → 个人/班级画像（输出只进 artifacts/，gitignore）
+$env:PYTHONPATH='src'; python -m knowflow.cli run --dataset official-v1
+$env:PYTHONPATH='src'; python -m knowflow.cli verify-run --run artifacts/run/<目录>
+$env:PYTHONPATH='src'; python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
+
 # 测试
 python -m pytest
 
@@ -221,6 +226,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.10 | 2026-11-12 | 诊断层落地：`diagnosis/`（Beta 纯 Python 实现、个人/班级画像、`run`/`verify-run`/`evidence`），只读 canonical 表，复用 `cleaning/states.py`；不引入 scipy，不进真实数据；测试 93 项 |
 | v0.9 | 2026-11-12 | 输出契约升 **v0.5**：诊断层字段（`node_id`/`scope_known`/Beta 区间与概率/`rubric_evidence`/`rubric_patterns`）、两种新状态与两类新问题、`issue_id` 改为知识点序号；输入表仍 canonical v0.4。见 [`schemas/CONTRACT.md`](schemas/CONTRACT.md) §8 |
 | v0.8 | 2026-11-12 | 新增证据层 `record_details.csv`（契约 v0.4，10 张表）：原文零加工 + 行号回查 + `kept` 标记；写盘改原子替换；适配错误信息不回显原文；五态记账下沉 `cleaning/states.py` |
 | v0.7 | 2026-11-12 | 合成样例补 `nodes.csv`（输入表 8 → 9 张），`records.node_id` 接入节点；`check_examples` 覆盖 9 张表；补记 v0.3 数据层的 CHANGELOG |

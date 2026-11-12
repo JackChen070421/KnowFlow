@@ -492,8 +492,19 @@ def validate_class(profile: dict, students: list[dict], bundle: dict) -> list[st
 
 def validate_saved_run(path: Path) -> dict:
     path = Path(path)
-    manifest = json.loads((path / "run_manifest.json").read_text(encoding="utf-8"))
-    bundle = json.loads((path / "diagnosis_input.json").read_text(encoding="utf-8"))
+    if not path.is_dir():
+        raise ValueError(
+            f"run directory not found: {path} (pass a directory under artifacts/run, "
+            "or omit --run to use the newest run)"
+        )
+    manifest_path = path / "run_manifest.json"
+    input_path = path / "diagnosis_input.json"
+    if not manifest_path.is_file() or not input_path.is_file():
+        raise ValueError(
+            f"not a completed run (missing run_manifest.json/diagnosis_input.json): {path}"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    bundle = json.loads(input_path.read_text(encoding="utf-8"))
     config = DiagnosisConfig(**manifest["configuration"])
     errors = validate_bundle(bundle)
     valid_nodes = {n["node_id"] for n in bundle["nodes"]}
@@ -557,6 +568,7 @@ def validate_saved_run(path: Path) -> dict:
         for profile in classes:
             errors.extend(validate_class(profile, students, bundle))
     return {
+        "run": str(path),
         "gate": "fail" if errors else "pass",
         "errors": errors,
         "student_profiles": len(students),

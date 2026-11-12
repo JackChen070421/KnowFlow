@@ -150,11 +150,14 @@ uv run python -m knowflow.cli run --dataset official-v1
 #    输出目录形如 artifacts/run/official-v1-<时间戳>/
 
 # 2) 复核：重算五态/覆盖/Beta/班级汇总，并比对产物 sha256
-uv run python -m knowflow.cli verify-run --run artifacts/run/<目录>
+#    不写 --run 就是"最近一次"；也可 --run artifacts/run/<实际目录名>
+uv run python -m knowflow.cli verify-run
 
 # 3) 证据回查：把某条记录的原始作答导出到本机（默认 gitignore）
-uv run python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
+uv run python -m knowflow.cli evidence --record R-0001
 ```
+
+> `<目录>` 是占位符，要替换成 `dir artifacts/run` 里看到的真实名字（Windows 文件名不能含 `<` `>`）；`--run` 省略或写 `latest` 时自动用最新一次运行。
 
 期望结果：`run` 打印 `student_profiles 80 / class_profiles 6 / gate pass`；`verify-run` 打印 `gate pass`；`evidence` 打印 `LOCAL EVIDENCE …/evidence/R-0001.json`。
 

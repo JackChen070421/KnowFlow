@@ -140,6 +140,25 @@ python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 
 任务2不需要 scipy：Beta 分布的分位数与尾概率在 `src/knowflow/diagnosis/beta.py` 里用纯 Python 实现，CI 与本地 `uv sync --extra dev` 即可跑全量测试。
 
+### 跑任务1（知识底座）
+
+```powershell
+uv run python -m knowflow.cli knowledge --dataset official-v1
+# 无本机数据时，用合成样例验证：
+uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/synthetic/input
+```
+
+读取 canonical 的 objectives / knowledge / materials / qmatrix / edges 五张表，输出到
+`artifacts/knowledge/<dataset>-<时间戳>/knowledge_base.json`；可用 `--output` 指定新 JSON 文件。
+保留课标原文、出处、知识点父子关系、Q-matrix 与已有先修/易混边，不更改输入表。
+写出前验证 schema、主键、引用、计数、测评覆盖及包含/先修图无环；已有输出文件不会覆盖。
+可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系。
+标注包含 `dataset_id`、五张 CSV 的 `source_sha256`、`objectives`/`knowledge` 补丁数组和 `edges` 新增数组；
+只允许更新课标原文/出处/备注、知识点 description 和有依据说明的边，禁止改变诊断 ID 或 Q-matrix。
+输入哈希变化时拒绝套用旧标注，需重新复核；真实标注与成果不进 Git。
+先修与易混关系来自 `edges.csv`，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
+课标出处的真实性与关系的教学合理性仍需人工核对。输出仅在本机，默认目录不进 Git。
+
 ### 跑任务2（学情画像）
 
 前置：`data/interim/official-v1/` 已有 10 张 canonical 表（先跑 `build_canonical`，见上一段）。

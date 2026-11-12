@@ -100,6 +100,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_knowledge(args: argparse.Namespace) -> int:
+    from .knowledge.pipeline import apply_curation, build_knowledge_base, write_knowledge_base
+
+    base = Path(args.input) if args.input else repo_root() / "data/interim" / args.dataset
+    data = build_knowledge_base(base, args.dataset)
+    if args.curation:
+        data = apply_curation(data, json.loads(Path(args.curation).read_text(encoding="utf-8")), base)
+    output = Path(args.output) if args.output else repo_root() / "artifacts/knowledge" / f"{args.dataset}-{datetime.now():%Y%m%d-%H%M%S-%f}" / "knowledge_base.json"
+    path = write_knowledge_base(data, output)
+    print(json.dumps({"output": str(path), "counts": data["counts"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _resolve_run(value: str | None) -> Path:
     from .diagnosis.pipeline import latest_run_dir
 
@@ -187,6 +200,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evidence_parser.add_argument("--record", required=True)
     evidence_parser.set_defaults(func=_cmd_evidence)
+
+    knowledge_parser = subparsers.add_parser("knowledge", help="build and validate Task-1 knowledge base")
+    knowledge_parser.add_argument("--dataset", default="official-v1")
+    knowledge_parser.add_argument("--input", help="canonical directory; defaults to data/interim/<dataset>")
+    knowledge_parser.add_argument("--output", help="new JSON file; defaults to artifacts/knowledge/<run>/knowledge_base.json")
+    knowledge_parser.add_argument("--curation", help="reviewed local annotations pinned to canonical hashes")
+    knowledge_parser.set_defaults(func=_cmd_knowledge)
 
     return parser
 

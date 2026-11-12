@@ -1,7 +1,7 @@
 """KnowFlow command line entry point.
 
-Current scope (M0): repository contract checks and single-file schema
-validation. Business commands (``run``/``validate --run``) arrive in M1–M3.
+Repository checks, single-file schema validation, and the Task-2 diagnosis flow
+(``run`` / ``verify-run`` / ``evidence``). Task-3 remains out of scope.
 
 Owner: R4.
 """
@@ -9,7 +9,9 @@ Owner: R4.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from . import __version__
@@ -75,6 +77,45 @@ def _cmd_config(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    from .diagnosis.mastery import DiagnosisConfig
+    from .diagnosis.pipeline import build_bundle, run_diagnosis
+
+    bundle, _ = build_bundle(args.dataset)
+    config = (
+        DiagnosisConfig(**json.loads(Path(args.config).read_text(encoding="utf-8")))
+        if args.config
+        else DiagnosisConfig()
+    )
+    output = (
+        Path(args.output)
+        if args.output
+        else repo_root()
+        / "artifacts"
+        / "run"
+        / f"{bundle['dataset_id']}-{datetime.now():%Y%m%d-%H%M%S-%f}"
+    )
+    result = run_diagnosis(bundle, output, config, args.node)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_verify_run(args: argparse.Namespace) -> int:
+    from .diagnosis.validation import validate_saved_run
+
+    result = validate_saved_run(Path(args.run))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["gate"] == "pass" else 1
+
+
+def _cmd_evidence(args: argparse.Namespace) -> int:
+    from .diagnosis.pipeline import export_evidence
+
+    path = export_evidence(Path(args.run), args.record)
+    print(f"LOCAL EVIDENCE {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowflow",
@@ -107,13 +148,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config_parser.set_defaults(func=_cmd_config)
 
+    run_parser = subparsers.add_parser(
+        "run", help="run Task 2 on canonical tables: cleaning view, profiles, verification"
+    )
+    run_parser.add_argument("--dataset", default="official-v1")
+    run_parser.add_argument(
+        "--node", default="all", help="all, latest, or a node ID such as N02"
+    )
+    run_parser.add_argument("--config", help="JSON diagnosis parameter overrides; recorded in the run")
+    run_parser.add_argument(
+        "--output", help="new run directory; defaults to artifacts/run/<dataset>-<timestamp>"
+    )
+    run_parser.set_defaults(func=_cmd_run)
+
+    verify_parser = subparsers.add_parser(
+        "verify-run", help="revalidate and recompute a saved Task-2 run"
+    )
+    verify_parser.add_argument("--run", required=True)
+    verify_parser.set_defaults(func=_cmd_verify_run)
+
+    evidence_parser = subparsers.add_parser(
+        "evidence", help="export original answer/steps locally for a cited record"
+    )
+    evidence_parser.add_argument("--run", required=True)
+    evidence_parser.add_argument("--record", required=True)
+    evidence_parser.set_defaults(func=_cmd_evidence)
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        print(f"KnowFlow: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

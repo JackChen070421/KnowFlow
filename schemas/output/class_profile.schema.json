@@ -2,18 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/class_profile.schema.json",
   "title": "class_profile.json",
-  "description": "任务 2 群体画像：覆盖、知识点分布、共性错因、分层、群体差异。canonical v0.3。",
+  "description": "任务 2 群体画像（contract v0.5）：按测验节点对个人画像做等权汇总。覆盖、知识点分布、共性错因、评分点模式、分层、群体差异。null 一律排除并在字段里显式给出分母，不补 0。",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "class_id",
+    "node_id",
     "generated_at",
     "source_dataset",
     "student_count",
     "coverage_summary",
     "knowledge_distribution",
     "common_issues",
+    "rubric_patterns",
     "tiers"
   ],
   "properties": {
@@ -24,6 +26,11 @@
     "class_id": {
       "type": "string",
       "pattern": "^(G[0-9]{1,2}|ALL)$"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2}$",
+      "description": "本画像所属测验节点；同一份数据的不同节点分开产出"
     },
     "generated_at": {
       "type": "string",
@@ -43,12 +50,23 @@
       "required": [
         "mean_ratio",
         "students_below_0_5",
-        "students_with_insufficient_evidence"
+        "students_with_insufficient_evidence",
+        "students_with_known_scope"
       ],
       "properties": {
-        "mean_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "mean_ratio": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "仅对 scope_known=true 且 ratio 非 null 的学生取均值；无人可算时为 null"
+        },
         "students_below_0_5": {"type": "integer", "minimum": 0},
-        "students_with_insufficient_evidence": {"type": "integer", "minimum": 0}
+        "students_with_insufficient_evidence": {"type": "integer", "minimum": 0},
+        "students_with_known_scope": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "scope_known=true 的学生数；它是 mean_ratio 的实际分母"
+        }
       }
     },
     "knowledge_distribution": {
@@ -63,6 +81,8 @@
           "mastered_count",
           "weak_count",
           "insufficient_count",
+          "mixed_count",
+          "not_applicable_count",
           "mean_mastery"
         ],
         "properties": {
@@ -72,7 +92,25 @@
           "mastered_count": {"type": "integer", "minimum": 0},
           "weak_count": {"type": "integer", "minimum": 0},
           "insufficient_count": {"type": "integer", "minimum": 0},
-          "mean_mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+          "mixed_count": {"type": "integer", "minimum": 0},
+          "not_applicable_count": {"type": "integer", "minimum": 0},
+          "mean_mastery": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "只对有观测的学生取均值；全为 null 时为 null"
+          },
+          "observed_student_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "evidence_count>0 的学生数；mean_mastery 的实际分母"
+          },
+          "mean_score_ratio": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "部分得分口径的归一化均值；与 mastery 不是同一量"
+          }
         }
       }
     },
@@ -87,6 +125,8 @@
           "statement",
           "student_count",
           "prevalence",
+          "denominator",
+          "denominator_basis",
           "example_student_ids"
         ],
         "properties": {
@@ -98,16 +138,67 @@
               "reading_error",
               "prerequisite_gap",
               "transfer_gap",
-              "insufficient_evidence"
+              "insufficient_evidence",
+              "performance_gap",
+              "score_point_gap"
             ]
           },
           "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
           "statement": {"type": "string", "minLength": 1},
           "student_count": {"type": "integer", "minimum": 0},
           "prevalence": {"type": "number", "minimum": 0, "maximum": 1},
+          "denominator": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "prevalence 的分母；必须与 denominator_basis 一致"
+          },
+          "denominator_basis": {
+            "type": "string",
+            "enum": ["all_students_in_selected_class"],
+            "description": "本版只允许按所选班级全体学生计数；换口径必须换枚举值并升契约版本"
+          },
           "example_student_ids": {
             "type": "array",
             "items": {"type": "string", "pattern": "^S[0-9]{3}$"},
+            "maxItems": 5,
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "rubric_patterns": {
+      "type": "array",
+      "description": "评分点级共性失分；分母是该评分点有可信评分的不同学生数。空数组表示已核查且无失分，不是未计算",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "knowledge_id",
+          "criterion",
+          "affected_student_count",
+          "observed_student_count",
+          "affected_record_count",
+          "prevalence",
+          "example_record_ids"
+        ],
+        "properties": {
+          "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+          "criterion": {
+            "type": "string",
+            "minLength": 1,
+            "description": "官方评分点原文标签；按原文精确分组，不自动做语义合并"
+          },
+          "affected_student_count": {"type": "integer", "minimum": 0},
+          "observed_student_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "该评分点有可信评分的不同学生数；prevalence 的分母"
+          },
+          "affected_record_count": {"type": "integer", "minimum": 0},
+          "prevalence": {"type": "number", "minimum": 0, "maximum": 1},
+          "example_record_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
             "maxItems": 5,
             "uniqueItems": true
           }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/data_quality_report.schema.json",
   "title": "data_quality_report.json",
-  "description": "任务 2 数据处理证据：输入哈希、去重、缺失、异常、处理规则。canonical v0.3。",
+  "description": "任务 2 数据处理证据（contract v0.5）：输入哈希、逐行清洗决策、五态记账、缺失、异常、处理规则。input_records / rejected_records / partial_credit_records / decisions 为 v0.5 可选扩展；诊断运行必须提供，并满足 input_records = total_records + duplicates_removed + rejected_records。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -51,6 +51,21 @@
     "duplicates_removed": {
       "type": "integer",
       "minimum": 0
+    },
+    "input_records": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "官方作答记录原始行数；input_records = total_records + duplicates_removed + rejected_records"
+    },
+    "rejected_records": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "被隔离（不进入分析层）的记录数；每条隔离都要在 decisions 里有对应行"
+    },
+    "partial_credit_records": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "0 < score < max_score 的记录数；属于未满分证据，不等同于答错"
     },
     "records_by_state": {
       "type": "object",
@@ -119,6 +134,45 @@
       "type": "array",
       "items": {"type": "string", "minLength": 1},
       "minItems": 1
+    },
+    "decisions": {
+      "type": "array",
+      "description": "逐行清洗审计：官方 CSV 每一行恰好一条决策，不允许静默丢弃。retained 可无附加原因；superseded / rejected 必须写原因。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_row", "record_id", "decision", "reasons"],
+        "properties": {
+          "source_row": {
+            "type": "integer",
+            "minimum": 2,
+            "description": "官方 CSV 逻辑行号（含表头，1 起），不是物理文本行"
+          },
+          "record_id": {
+            "type": ["string", "null"],
+            "pattern": "^R-[0-9]{4}$"
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["retained", "superseded", "rejected"]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {"decision": {"enum": ["superseded", "rejected"]}},
+              "required": ["decision"]
+            },
+            "then": {
+              "properties": {"reasons": {"minItems": 1}}
+            }
+          }
+        ]
+      }
     }
   }
 }

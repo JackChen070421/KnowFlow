@@ -137,7 +137,7 @@ python scripts/validate_outputs.py `
 - 退出码 0 才算通过；失败逐条看 `  - ...` 或 `/json/pointer: message`。
 - `check_contracts` 失败先修目录/schema/隐私，不要继续提交。
 - `check_examples` 只校验合成样例，不校验 `data/raw` 官方数据。
-- `validate_outputs` 只校验“一份 JSON 对一份 schema”，不查引用/一致性/约束（G2–G4 待实现）。
+- `validate_outputs` 只校验“一份 JSON 对一份 schema”，不查引用/一致性/约束；G2/G3 由 `validate_canonical`（数据层）与 `knowflow verify-run`（诊断层）覆盖，G4 由 `check_contracts` 覆盖。
 - 任何一步非 0：不要提交；把命令、失败项、修复计划贴进 PR/Issue。
 
 ### “推送到 GitHub”

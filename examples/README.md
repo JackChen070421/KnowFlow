@@ -56,7 +56,7 @@ python scripts/validate_outputs.py `
   --data tests/fixtures/student_profile.min.json
 ```
 
-> 当前 M0 只提供契约与 fixtures；完整管线在 M1–M3 落地，配置随代码一起加。
+> 合成样例只用于契约与流程回归；真实数据放 `data/raw/`，canonical 放 `data/interim/`，两者都不进 Git。任务2的端到端入口是 `knowflow run`（见仓库 README「跑任务2」）。
 
 ---
 

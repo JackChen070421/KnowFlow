@@ -48,7 +48,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
-| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断复算（五态/覆盖/Beta/班级汇总）→ `validation_report` | ✅ 六脚本 + 93 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断复算（五态/覆盖/Beta/班级汇总）→ `validation_report` | ✅ 七脚本 + 93 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -64,9 +64,9 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前已实现第 1、2、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层（课标知识底座）、第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入，第 3–6 层先冻结 schema 再逐步加代码，不预先铺空目录。
+当前已实现第 1、2、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层（课标知识底座）、第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入；这三层先冻结 schema 再逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据链路另有两个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）与 `build_canonical`（官方 CSV → 10 张 canonical 表 + 数据质量报告）。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据与诊断另有四个脚本/入口：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
@@ -87,9 +87,9 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # __init__ / __main__ / cli / contracts / io
-├─ tests/                   # contract + io + fixtures
-├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / diagnosis
+├─ tests/                   # contract + io + diagnosis + fixtures
+├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
@@ -140,11 +140,46 @@ python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 
 任务2不需要 scipy：Beta 分布的分位数与尾概率在 `src/knowflow/diagnosis/beta.py` 里用纯 Python 实现，CI 与本地 `uv sync --extra dev` 即可跑全量测试。
 
+### 跑任务2（学情画像）
+
+前置：`data/interim/official-v1/` 已有 10 张 canonical 表（先跑 `build_canonical`，见上一段）。
+
+```powershell
+# 1) 生成：默认跑全部节点；也可 --node latest 或 --node N02
+uv run python -m knowflow.cli run --dataset official-v1
+#    输出目录形如 artifacts/run/official-v1-<时间戳>/
+
+# 2) 复核：重算五态/覆盖/Beta/班级汇总，并比对产物 sha256
+uv run python -m knowflow.cli verify-run --run artifacts/run/<目录>
+
+# 3) 证据回查：把某条记录的原始作答导出到本机（默认 gitignore）
+uv run python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
+```
+
+期望结果：`run` 打印 `student_profiles 80 / class_profiles 6 / gate pass`；`verify-run` 打印 `gate pass`；`evidence` 打印 `LOCAL EVIDENCE …/evidence/R-0001.json`。
+
+产物（都在 `artifacts/`，gitignore）：
+
+```text
+artifacts/run/<目录>/
+├─ nodes/<节点>/students/Sxxx.json    # 个人画像
+├─ nodes/<节点>/classes/G1|G2|ALL.json # 班级画像
+├─ diagnosis_input.json               # 本 run 的输入快照（不含原文）
+├─ data_quality_report.json           # 逐行清洗决策 + 五态记账
+├─ coverage_matrix.csv                # 学生×知识点的覆盖/掌握度总表
+├─ case_candidates.json               # 规则选出的展示候选（需人工核对）
+├─ run_manifest.json                  # 产物与源文件哈希、配置
+├─ validation_report.json             # 复算门结果
+└─ 运行说明.md                        # 一页纸说明，可直接贴进报告
+```
+
+失败时先看 `validation_report.json` 的 `checks[]`；`gate=fail` 表示复算与产物不一致，不要照样品提交。
+
 按层装可选依赖（core 只有校验与配置，其余按需）：
 
 | extra | 内容 | 何时需要 |
 |---|---|---|
-| `io` | pandas | M1 数据适配 |
+| `io` | pandas | 可选：当前 io 层用标准库 `csv`，不依赖 pandas |
 | `stats` | numpy, scipy | 可选统计库；**当前诊断不依赖**（Beta 用纯 Python 实现） |
 | `llm` | openai | M3 LLM 边缘层 |
 | `app` | streamlit, plotly | 演示界面 |
@@ -167,7 +202,7 @@ python scripts/validate_outputs.py `
   --data tests/fixtures/student_profile.min.json
 ```
 
-> `python -m knowflow.cli run ...` 等业务入口随 M2–M3 落地；当前 CLI 提供 `check` / `validate` / `config` / `version`；数据处理用脚本 `build_canonical` / `validate_canonical`。
+> 任务2 的业务入口是 `knowflow run` / `verify-run` / `evidence`（见上）；`check` / `validate` / `config` / `version` 仍在。数据处理仍由脚本完成（`build_canonical` / `validate_canonical` / `export_digest`）。
 
 ---
 
@@ -248,7 +283,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
 | **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 适配器 + Q-matrix + contains 边已落地；课标解析与先修/易混图待做 |
-| **M2 诊断** | 五态、覆盖度、Beta、画像 | ⬜ |
+| **M2 诊断** | 五态、覆盖度、Beta、画像 | ✅ 基础版（按节点、可复算、证据可回查） |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |
 

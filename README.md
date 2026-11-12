@@ -11,7 +11,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
-> 当前状态：**任务2 基础流程已实现**。可在本机完成 canonical 数据适配、按节点的个人/班级画像、复算与证据回查；课标知识底座与学习建议模块仍待接入。
+> 当前状态：**任务2 基础流程已实现**。可在本机完成 canonical 数据适配、按节点的个人/班级画像、复算与证据回查；任务1知识底座支持生成、校验和本机核对标注接入；学习建议模块仍待接入。
 > 入口：[`AGENT.md`](AGENT.md) · 数据契约：[`schemas/CONTRACT.md`](schemas/CONTRACT.md) · Git 操作：[`shortcuts.md`](shortcuts.md)
 
 ---
@@ -44,7 +44,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
-| **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
+| **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
@@ -64,7 +64,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前已实现第 1、2、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层（课标知识底座）、第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入；这三层先冻结 schema 再逐步加代码，不预先铺空目录。
+当前已实现第 1、2、3、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层支持知识底座生成与本机核对标注接入；第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入，这两层先冻结 schema 再逐步加代码，不预先铺空目录。
 
 三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据与诊断另有四个脚本/入口：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
@@ -304,7 +304,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
-| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 适配器 + Q-matrix + contains 边已落地；课标解析与先修/易混图待做 |
+| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | ✅ 适配器、知识底座与图校验、本机核对标注接入；官方内容成果本机保存，需人工复核 |
 | **M2 诊断** | 五态、覆盖度、Beta、画像 | ✅ 基础版（按节点、可复算、证据可回查） |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |

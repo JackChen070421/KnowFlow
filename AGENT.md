@@ -41,7 +41,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
-| **3 知识层** | 未来 `knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | 🟡 |
+| **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | ✅ 生成/校验与本机标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
 | **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
@@ -56,7 +56,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 - **计算边界**：数值只由 `diagnosis`/`recommend` 的纯函数计算。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要等文字；ID 与数字来自白名单。
 
-第 3、5、6 层先冻结 schema，逐步加代码；任务2（第 4 层）已完成基础版，任务3 与 LLM 仍待接入；暂不建 UI、报告层、交付物目录。
+第 3 层已接入知识底座生成/校验与本机核对标注；第 5、6 层先冻结 schema，逐步加代码；任务2（第 4 层）已完成基础版，任务3 与 LLM 仍待接入；暂不建 UI、报告层、交付物目录。
 
 ## 4. 目录（最小）
 

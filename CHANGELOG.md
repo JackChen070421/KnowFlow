@@ -19,7 +19,7 @@
 - `knowflow verify-run` / `knowflow evidence` 的 `--run` 改为可选：省略或写 `latest` 时自动取 `artifacts/run/` 下最新的完整运行（按 `run_manifest.json` 存在性过滤、按 mtime 排序）。
 - 目录不存在或不是完整运行时，给出可读报错（`run directory not found: …`），不再抛 `[Errno 22] Invalid argument`。
 - `verify-run` 输出增加 `run` 字段，明确这次复核的是哪个目录。
-- 新增 4 项测试（最新目录选择、无完整运行、占位符路径、半截目录）；README/AGENT/shortcuts 同步为"默认最近一次"，并说明 `<目录>` 是占位符。
+- 新增 4 项测试（最新目录选择、无完整运行、占位符路径、半截目录）；README/AGENT/shortcuts/PR 模板同步为"默认最近一次"，并说明 `<目录>` 是占位符。
 
 ### 验证
 

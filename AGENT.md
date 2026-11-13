@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-12 · v0.12
+> 最后更新：2026-11-13 · v0.13
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -66,7 +66,7 @@ KnowFlow/
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / diagnosis
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
 ├─ tests/                   # contract + io + diagnosis + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/
@@ -227,6 +227,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.13 | 2026-11-13 | 同步任务1生成/校验入口、本机标注接入状态与 knowledge 目录；教学关系仍待人工复核 |
 | v0.12 | 2026-11-12 | `verify-run` / `evidence` 的 `--run` 可省略（默认最近一次），`latest` 亦可；目录不存在时给可读报错而不是 `[Errno 22]`；文档去掉“照抄 `<目录>`”的坑 |
 | v0.11 | 2026-11-12 | 文档同步：脚本/schema/测试/表数计数校正（七脚本、18 schemas、10 表、93 tests）；里程碑与 G2/G3 状态更新；README 增加「跑任务2」；PR 模板加 `verify-run` 检查 |
 | v0.10 | 2026-11-12 | 诊断层落地：`diagnosis/`（Beta 纯 Python 实现、个人/班级画像、`run`/`verify-run`/`evidence`），只读 canonical 表，复用 `cleaning/states.py`；不引入 scipy，不进真实数据；测试 93 项 |

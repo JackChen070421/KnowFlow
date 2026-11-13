@@ -66,7 +66,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 
 当前已实现第 1、2、3、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层支持知识底座生成与本机核对标注接入；第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入，这两层先冻结 schema 再逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据与诊断另有四个脚本/入口：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据层另有四个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；知识底座走 CLI 的 `knowledge`；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
@@ -87,7 +87,7 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / diagnosis
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
 ├─ tests/                   # contract + io + diagnosis + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
@@ -304,7 +304,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
-| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | ✅ 适配器、知识底座与图校验、本机核对标注接入；官方内容成果本机保存，需人工复核 |
+| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 生成/校验入口与本机标注已接入；先修/易混关系待人工复核，官方内容成果本机保存 |
 | **M2 诊断** | 五态、覆盖度、Beta、画像 | ✅ 基础版（按节点、可复算、证据可回查） |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |

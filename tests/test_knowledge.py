@@ -160,3 +160,23 @@ def test_curation_rejects_unsafe_updates(base, curation, fault):
         curation["knowledge"] = [row, row]
     with pytest.raises(ValueError):
         apply_curation(base, curation, repo_root() / "examples/synthetic/input")
+
+
+@pytest.mark.parametrize("input_kind", ["default", "missing", "file"])
+def test_cli_missing_canonical_directory(tmp_path, monkeypatch, capsys, input_kind):
+    import knowflow.cli as cli
+
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path)
+    output = tmp_path / "output.json"
+    args = ["knowledge", "--dataset", "does-not-exist", "--output", str(output)]
+    base = tmp_path / "data/interim/does-not-exist"
+    if input_kind != "default":
+        base = tmp_path / "canonical"
+        if input_kind == "file":
+            base.write_text("not a directory", encoding="utf-8")
+        args += ["--input", str(base)]
+    assert main(args) == 2
+    error = capsys.readouterr().err
+    assert f"canonical tables not found: {base}; run scripts/build_canonical.py first" in error
+    assert "Errno" not in error
+    assert not output.exists()

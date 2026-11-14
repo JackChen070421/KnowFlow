@@ -11,7 +11,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
-> 当前状态：**任务2 基础流程已实现**。可在本机完成 canonical 数据适配、按节点的个人/班级画像、复算与证据回查；课标知识底座与学习建议模块仍待接入。
+> 当前状态：**任务2 基础流程已实现**。可在本机完成 canonical 数据适配、按节点的个人/班级画像、复算与证据回查；任务1知识底座支持生成、校验和本机核对标注接入；学习建议模块仍待接入。
 > 入口：[`AGENT.md`](AGENT.md) · 数据契约：[`schemas/CONTRACT.md`](schemas/CONTRACT.md) · Git 操作：[`shortcuts.md`](shortcuts.md)
 
 ---
@@ -44,7 +44,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 |---|---|---|---|
 | **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
-| **3 知识层** | 未来 `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | 🟡 Q-matrix 与 contains 边已由数据层产出；课标解析、先修/易混图待做 |
+| **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | 未来 `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | 🟡 schema，算法待 M3 |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待 M3 |
@@ -64,9 +64,9 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前已实现第 1、2、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层（课标知识底座）、第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入；这三层先冻结 schema 再逐步加代码，不预先铺空目录。
+当前已实现第 1、2、3、4、7、8 层：契约、canonical 数据层、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）。第 3 层支持知识底座生成与本机核对标注接入；第 5 层（学习建议）、第 6 层（LLM 边缘）仍待接入，这两层先冻结 schema 再逐步加代码，不预先铺空目录。
 
-三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据与诊断另有四个脚本/入口：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
+三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据层另有四个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；知识底座走 CLI 的 `knowledge`；诊断走 CLI 的 `run` / `verify-run` / `evidence`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
 | 脚本 | 作用 | 成功标志 |
 |---|---|---|
@@ -87,7 +87,7 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / diagnosis
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
 ├─ tests/                   # contract + io + diagnosis + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
@@ -139,6 +139,25 @@ python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 ```
 
 任务2不需要 scipy：Beta 分布的分位数与尾概率在 `src/knowflow/diagnosis/beta.py` 里用纯 Python 实现，CI 与本地 `uv sync --extra dev` 即可跑全量测试。
+
+### 跑任务1（知识底座）
+
+```powershell
+uv run python -m knowflow.cli knowledge --dataset official-v1
+# 无本机数据时，用合成样例验证：
+uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/synthetic/input
+```
+
+读取 canonical 的 objectives / knowledge / materials / qmatrix / edges 五张表，输出到
+`artifacts/knowledge/<dataset>-<时间戳>/knowledge_base.json`；可用 `--output` 指定新 JSON 文件。
+保留课标原文、出处、知识点父子关系、Q-matrix 与已有先修/易混边，不更改输入表。
+写出前验证 schema、主键、引用、计数、测评覆盖及包含/先修图无环；已有输出文件不会覆盖。
+可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系。
+标注包含 `dataset_id`、五张 CSV 的 `source_sha256`、`objectives`/`knowledge` 补丁数组和 `edges` 新增数组；
+只允许更新课标原文/出处/备注、知识点 description 和有依据说明的边，禁止改变诊断 ID 或 Q-matrix。
+输入哈希变化时拒绝套用旧标注，需重新复核；真实标注与成果不进 Git。
+先修与易混关系来自 `edges.csv`，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
+课标出处的真实性与关系的教学合理性仍需人工核对。输出仅在本机，默认目录不进 Git。
 
 ### 跑任务2（学情画像）
 
@@ -285,7 +304,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
-| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 适配器 + Q-matrix + contains 边已落地；课标解析与先修/易混图待做 |
+| **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 生成/校验入口与本机标注已接入；先修/易混关系待人工复核，官方内容成果本机保存 |
 | **M2 诊断** | 五态、覆盖度、Beta、画像 | ✅ 基础版（按节点、可复算、证据可回查） |
 | **M3 建议** | 检索、约束、LLM 理由、validator | ⬜ |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |

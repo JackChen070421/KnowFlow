@@ -26,6 +26,7 @@
 - [ ] `python -m pytest` 通过
 - [ ] 产物 `validate_outputs.py` 通过（如适用）
 - [ ] 诊断产物 `python -m knowflow.cli verify-run` 通过（默认最近一次；也可 `--run <目录>`）
+- [ ] 建议产物 `python -m knowflow.cli verify-recommend` 通过（默认最近一次；也可 `--run <目录>`）
 - [ ] 新增/修改逻辑有测试或 fixture
 - [ ] 已在 [`CHANGELOG.md`](../CHANGELOG.md) 顶部记一条（改了什么 / 验证 / 回退）
 

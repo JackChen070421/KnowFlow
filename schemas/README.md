@@ -1,6 +1,6 @@
 # schemas/ · 机器契约（第 1 层）
 
-> 最后更新：2026-11-09
+> 最后更新：2026-11-14（契约 v0.6，任务3建议层）
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 
 ---
@@ -38,7 +38,7 @@ schemas/
 | 可空 | `["string","null"]`，不要用 `0`/`false`/`""` 冒充“不知道”；官方无难度、教材无主题时就是 `null` |
 | 主键 | `x-primary-key`；整表校验时查唯一 |
 | 日期 | ISO 8601 带时区 |
-| 数值 | mastery/ratio 0–1；difficulty 1–5；est_minutes 1–120 |
+| 数值 | mastery/ratio 0–1；difficulty 1–5；est_minutes 1–120。任务3 的这两个值是**规则推算**，不是官方元数据（见 [`CONTRACT.md`](CONTRACT.md) §9） |
 
 ---
 

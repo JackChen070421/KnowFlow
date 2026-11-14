@@ -85,8 +85,8 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | `data_quality_report.json` | `schema_version, dataset_id, generated_at, input_files, input_records, total_records, duplicates_removed, rejected_records, partial_credit_records, records_by_state, missing, anomalies, field_quality, handling_rules, decisions` |
 | `student_profile.json` | `schema_version, student_id, group_id, node_id, generated_at, source_dataset, coverage, knowledge_states, objective_states, issues, lists` |
 | `class_profile.json` | `schema_version, class_id, node_id, generated_at, source_dataset, student_count, coverage_summary, knowledge_distribution, common_issues, rubric_patterns, tiers, group_differences?` |
-| `recommendation.json` | `schema_version, student_id, generated_at, source, generated_by, plan, probe_plan` |
-| `validation_report.json` | `schema_version, run_id, generated_at, targets, checks, summary, gate` |
+| `recommendation.json` | `schema_version, student_id, node_id?, generated_at, source, generated_by, plan, probe_plan` |
+| `validation_report.json` | `schema_version, run_id, generated_at, targets, checks, summary, gate, errors?, policy_version?` |
 
 诊断粒度：`knowledge_states[]` 是唯一计算源；`objective_states[]` 是按 `evidence_count` 加权的派生视图，必须列出 `derived_from` 与 `unobserved_knowledge_ids`。画像按测验节点产出，`node_id` 必填；同一学生不同节点是两份画像，不合并。
 
@@ -258,10 +258,49 @@ v0.5 只做一件事：**把 M2 诊断层已经算出来的东西写进契约**�
 
 ---
 
-## 9. 变更记录
+## 9. v0.6：任务3建议层输出契约
+
+v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false` 时全流程可跑通。任务3 的输入是**任务2 的同一节点画像 + 任务1 的 `knowledge_base.json`**，不新增输入表。
+
+**产物（`recommendation.json`）**
+
+| 字段 | 约束 | 为什么 |
+|---|---|---|
+| `node_id` | 可选，`^N[0-9]{2}$` | 默认按最新节点生成；同一学生不同节点不混用证据 |
+| `plan[].activity_type` | 可选枚举 `explain/practice/consolidate/probe/review/extend` | 教师筛选；不改变 `seq` 语义 |
+| `plan[].issue_id` | 必须来自该生画像的 `issues[]` | 建议必须回应一个已识别问题 |
+| `plan[].material_ids` | 非空、唯一、真实存在；`primary_material_id` 必在列表 | 不手写材料 ID |
+| `plan[].primary_material_id` | 优先测评材料；讲解卡可作辅助 | 支持“先讲后练”，但主材料可检查 |
+| `plan[].reason` | 必须引用 `issue_id`；数字只能来自该 issue 证据、状态计数或策略常量（1/2/3/5） | 数字锁，不让模型改数字 |
+| `plan[].check` | 可验证：做哪几题、哪个评分点满分、至少几题全对 | 教师可当场复核 |
+| `plan[].difficulty` / `est_minutes` | 必填整数；本版为**规则推算值**，不是官方难度或精确用时 | 官方材料无这两个字段；运行说明必须声明 |
+| `plan[].prerequisite_check` | 由 `knowledge_base.edges` 的 `prerequisite` 边计算；无边时 `satisfied=true` | 不编造先修关系 |
+| `probe_plan.items` | 该生在该节点**未作答**的测评题；`needed` 必须等于 `items` 非空 | 补充观测不能拿旧作答冒充新证据 |
+
+**生成规则（`r3-rules-1`）**
+
+- 每个学生最多 3 条计划：薄弱/评分点失分优先，其次证据不足；不把“证据不足”写成“未掌握”。
+- 已确认/疑似薄弱：讲解卡（若有）+ 同评分点复测 + 同知识点新题；没有新题时允许重做错题。
+- 证据不足：只给未作答测评题，并在 `probe_plan` 中列同一批题；达到至少 3 次有效评分后再判断。
+- 参与范围未知（`scope_known=false`）：计划为空，提示先确认范围。
+- 表现较好且无 issue：不强行加练；计划为空、`probe_plan.needed=false`。
+
+**材料范围**
+
+- 测评题只用节点 `available_material_ids` 内、且 Q-matrix 映射到该知识点的材料。
+- 讲解卡/教材切片不在节点测评范围时仍可使用（已登记材料），validator 记 warning，不伪装成节点内材料。
+
+**明确不做**
+
+- 不接 LLM；不生成自由文本数字；不把 `difficulty=null` 当 1；本轮只做个人建议，不做班级级建议。
+
+---
+
+## 10. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.6** | 任务3建议层输出契约：`recommendation.json` 加可选 `node_id`、`plan[].activity_type`；明确 `issue_id`/材料/`check`/`probe_plan` 的约束与 `difficulty`/`est_minutes` 的启发式口径；`validation_report.json` 加可选 `errors`/`policy_version` | **minor（输出）**：只加可选字段，无字段删除、无既有取值语义变更；任务2 产物不受影响 |
 | **v0.5** | 诊断层输出契约：个人/群体画像加 `node_id`、`scope_known`、Beta 统计（区间/两侧概率）、`applicable_items`、`status_reason`、`performance`、`rubric_evidence`、`rubric_patterns`；`status` 加 `mixed_performance`/`not_applicable`，`issue_type` 加 `performance_gap`/`score_point_gap`；`issue_id` 第二段改为知识点序号（跨节点稳定）；质量报告加逐行 `decisions` 等可选字段与三条不变式 | **minor（输出）**：无字段删除、无既有取值语义变更；输入表 canonical 仍 `0.4.0`，`records.csv` 不变。消费方需显式处理新增状态/类型与可空 `ratio` |
 | **v0.4** | 新增证据层 `record_details.csv`（原文零加工 + `csv_record_number` 回查 + `kept` 标记被替代的修订）；`records` 字段不变，仍为分析层；写盘改为临时文件 + 原子替换；适配错误信息不再回显单元格原文；五态记账下沉到 `src/knowflow/cleaning/states.py` | **minor**：只新增表，无字段删除、无既有取值语义变更；消费方只读 `records` 的无需改动 |
 | **v0.3** | 新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`，`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.objective_id`、`materials.difficulty`、`qmatrix.difficulty` 允许 `null`；去重改为节点内；§5.3 明确 applicable 数据源；§7 增 ID 映射附录 | **minor**：只加可选字段/新增表/放宽 required；无字段删除、无已有取值语义变更；消费方需处理 `null` |

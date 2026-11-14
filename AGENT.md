@@ -15,7 +15,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 **一句话：数字由代码算，语言由模型写；所有结论必须能追到 ID。**
 
-当前已实现 **任务2基础流程**：canonical 数据落盘、按节点的五态/覆盖/Beta 与个人/班级画像、`verify-run` 复算、按记录回查本机原文。任务1已提供 `knowledge` 生成与校验入口，可用本机 `--curation` 接入核对后的课标和关系；学习建议/LLM（任务3）仍待接入。
+当前已实现 **任务1/2/3 基础流程**：canonical 数据落盘、知识底座生成、按节点的五态/覆盖/Beta 与个人/班级画像、`verify-run` 复算、按记录回查本机原文，以及任务3规则版建议（`issue_id → material_id → reason/check → seq`，`verify-recommend` 复算）。LLM 语言层仍待接入；规则版在 `llm.enabled=false` 时全流程可跑通。
 
 ## 1. 八条准则
 
@@ -43,7 +43,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | ✅ 生成/校验与本机标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
-| **5 建议层** | 未来 `recommend/` | 检索/约束/排序/理由/探测小测/validator | 🟡 |
+| **5 建议层** | `src/knowflow/recommend/` | 检索/约束/排序/理由/探测小测/validator | ✅ 规则版（模板生成、可复算；LLM 未接） |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
 | **8 协作层** | `AGENT/README/shortcuts/.github` | 准则/流程/分支/PR/CI | ✅ |
@@ -56,7 +56,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 - **计算边界**：数值只由 `diagnosis`/`recommend` 的纯函数计算。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要等文字；ID 与数字来自白名单。
 
-第 3 层已接入知识底座生成/校验与本机核对标注；第 5、6 层先冻结 schema，逐步加代码；任务2（第 4 层）已完成基础版，任务3 与 LLM 仍待接入；暂不建 UI、报告层、交付物目录。
+第 3 层已接入知识底座生成/校验与本机核对标注；第 4 层是任务2基础版；第 5 层是任务3规则版（模板生成、validator、可复算）；第 6 层 LLM 仍未接，接的时候只改 `reason`/`check` 的文字；暂不建 UI、报告层、交付物目录。
 
 ## 4. 目录（最小）
 
@@ -66,8 +66,8 @@ KnowFlow/
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
-├─ tests/                   # contract + io + diagnosis + fixtures
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend
+├─ tests/                   # contract + io + diagnosis（含任务3）+ fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/
 │  ├─ raw/<dataset_id>/     # 官方原始数据，原样放，不进 Git
@@ -162,7 +162,7 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
-G2/G3 已覆盖 canonical 数据层与任务2诊断层；任务3 的约束/排序校验尚未实现，**不假装通过**，在 PR 里写“待实现”。
+G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任务3 的门禁是 `python -m knowflow.cli verify-recommend`（schema、issue/材料引用、数字锁、probe 未作答、产物哈希）。LLM 语言层仍未实现，**不假装通过**。
 
 ## 9. LLM 规则
 
@@ -199,6 +199,11 @@ $env:PYTHONPATH='src'; python -m knowflow.cli run --dataset official-v1
 $env:PYTHONPATH='src'; python -m knowflow.cli verify-run
 $env:PYTHONPATH='src'; python -m knowflow.cli evidence --record R-0001
 
+# 任务3：任务2画像 + 任务1知识底座 → 个人学习建议（默认最新节点）
+$env:PYTHONPATH='src'; python -m knowflow.cli recommend `
+  --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json
+$env:PYTHONPATH='src'; python -m knowflow.cli verify-recommend
+
 # 测试
 python -m pytest
 
@@ -227,6 +232,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.14 | 2026-11-14 | 任务3规则版落地：`recommend/`、`recommend` / `verify-recommend`、契约 v0.6（`node_id`/`activity_type`/数字锁/probe 未作答）；更新分层状态、质量门与命令；测试 125 项 |
 | v0.13 | 2026-11-13 | 同步任务1生成/校验入口、本机标注接入状态与 knowledge 目录；教学关系仍待人工复核 |
 | v0.12 | 2026-11-12 | `verify-run` / `evidence` 的 `--run` 可省略（默认最近一次），`latest` 亦可；目录不存在时给可读报错而不是 `[Errno 22]`；文档去掉“照抄 `<目录>`”的坑 |
 | v0.11 | 2026-11-12 | 文档同步：脚本/schema/测试/表数计数校正（七脚本、18 schemas、10 表、93 tests）；里程碑与 G2/G3 状态更新；README 增加「跑任务2」；PR 模板加 `verify-run` 检查 |

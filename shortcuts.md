@@ -105,6 +105,8 @@ python -m pytest
 | “跑个人/班级画像”<br>“生成学情诊断” | `python -m knowflow.cli run --dataset official-v1` | 读 `data/interim/<ds>/` 的 canonical 表 → `artifacts/run/<目录>/`：按节点的个人/班级画像、质量报告、覆盖矩阵、案例候选；输出 gitignore |
 | “这次结果算得对吗”<br>“复算一下画像” | `python -m knowflow.cli verify-run`（默认最近一次；可 `--run <目录>`） | 重算五态/覆盖/Beta/班级汇总并与产物逐字节比对；不通过 exit 1 |
 | “看看这道题的原始作答”<br>“证据回查” | `python -m knowflow.cli evidence --record R-0001`（默认最近一次；可 `--run <目录>`） | 从 `record_details.csv` 导出本机原文与行号；源文件变了会拒绝导出 |
+| “生成学习建议”<br>“跑任务3”<br>“按画像给每个学生排计划” | `python -m knowflow.cli recommend --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json`（默认最新节点；`--node all` 两次都出） | 读任务2最近一次 run + 任务1知识底座 → `artifacts/recommend/<目录>/`：个人建议、index、validation_report、运行说明；输出 gitignore |
+| “建议算得对吗”<br>“复核任务3” | `python -m knowflow.cli verify-recommend`（默认最近一次；可 `--run <目录>`） | 校验 schema、issue/材料引用、数字锁、probe 未作答与产物 sha256；不通过 exit 1 |
 | “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 10 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
 | “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |
@@ -137,7 +139,7 @@ python scripts/validate_outputs.py `
 - 退出码 0 才算通过；失败逐条看 `  - ...` 或 `/json/pointer: message`。
 - `check_contracts` 失败先修目录/schema/隐私，不要继续提交。
 - `check_examples` 只校验合成样例，不校验 `data/raw` 官方数据。
-- `validate_outputs` 只校验“一份 JSON 对一份 schema”，不查引用/一致性/约束；G2/G3 由 `validate_canonical`（数据层）与 `knowflow verify-run`（诊断层）覆盖，G4 由 `check_contracts` 覆盖。
+- `validate_outputs` 只校验“一份 JSON 对一份 schema”，不查引用/一致性/约束；G2/G3 由 `validate_canonical`（数据层）、`knowflow verify-run`（诊断层）与 `knowflow verify-recommend`（建议层）覆盖，G4 由 `check_contracts` 覆盖。
 - 任何一步非 0：不要提交；把命令、失败项、修复计划贴进 PR/Issue。
 
 ### “推送到 GitHub”

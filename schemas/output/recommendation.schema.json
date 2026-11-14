@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/recommendation.schema.json",
   "title": "recommendation.json",
-  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。canonical v0.3。",
+  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。契约 v0.6；canonical v0.5。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,6 +22,11 @@
     "student_id": {
       "type": "string",
       "pattern": "^S[0-9]{3}$"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^N[0-9]{2}$",
+      "description": "可选：该建议对应的测验节点；缺省时按 source.profile_sha256 追溯画像"
     },
     "generated_at": {
       "type": "string",
@@ -75,6 +80,11 @@
           "seq": {"type": "integer", "minimum": 1},
           "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
           "activity": {"type": "string", "minLength": 1},
+          "activity_type": {
+            "type": "string",
+            "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"],
+            "description": "可选：活动类型，便于教师筛选；不改变排课语义"
+          },
           "material_ids": {
             "type": "array",
             "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},

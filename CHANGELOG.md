@@ -10,6 +10,19 @@
 
 ---
 
+## 2026-11-14 — 任务3规则版：issue → 材料 → reason/check
+
+**待合并** · `feat/r3-recommend` → `main`
+
+- 新增 `src/knowflow/recommend/`：规则选材料、模板写 `reason`/`check`、`probe_plan`、validator；不接 LLM。
+- CLI 加 `recommend` / `verify-recommend`；默认最新节点，`--node all` 两次都出；每生 ≤3 条计划。
+- 契约 v0.6：`node_id`/`activity_type`、数字锁、probe 必须未作答；`validation_report` 加可选 `errors`/`policy_version`。
+- `difficulty`/`est_minutes` 为规则推算（官方无此字段），运行说明与校验报告标注。
+- 验证：`pytest 125 passed`；官方数据 40 人 / 99 计划 / 39 人需补观测 / `gate pass`；三个格式检查通过。
+- 回退：revert 本提交，删 `recommend/` 与两条 CLI；契约 v0.6 向后兼容，可单独保留。
+
+---
+
 ## 2026-11-13 — 任务1评审修订
 
 - M1恢复为待复核状态，区分canonical可复现产物与本机内容成果；同步协作说明。

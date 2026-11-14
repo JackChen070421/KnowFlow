@@ -1,7 +1,8 @@
 """KnowFlow command line entry point.
 
-Repository checks, single-file schema validation, and the Task-2 diagnosis flow
-(``run`` / ``verify-run`` / ``evidence``). Task-3 remains out of scope.
+Repository checks, single-file schema validation, the Task-2 diagnosis flow
+(``run`` / ``verify-run`` / ``evidence``), and the Task-3 recommendation flow
+(``recommend`` / ``verify-recommend``).  The LLM edge stays optional and disabled.
 
 Owner: R4.
 """
@@ -150,6 +151,27 @@ def _cmd_evidence(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_recommend(args: argparse.Namespace) -> int:
+    from .recommend.pipeline import recommend_run
+
+    result = recommend_run(
+        run=args.run,
+        knowledge=args.knowledge,
+        node=args.node,
+        output=args.output,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["gate"] == "pass" else 1
+
+
+def _cmd_verify_recommend(args: argparse.Namespace) -> int:
+    from .recommend.pipeline import verify_recommend
+
+    result = verify_recommend(args.run)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["gate"] == "pass" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="knowflow",
@@ -228,6 +250,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--curation", help="reviewed local annotations pinned to canonical hashes"
     )
     knowledge_parser.set_defaults(func=_cmd_knowledge)
+
+    recommend_parser = subparsers.add_parser(
+        "recommend", help="build Task-3 learning plans from a Task-2 run and knowledge base"
+    )
+    recommend_parser.add_argument(
+        "--run",
+        help="Task-2 run directory or 'latest'; defaults to the newest run under artifacts/run",
+    )
+    recommend_parser.add_argument(
+        "--knowledge",
+        help="Task-1 knowledge_base.json; defaults to artifacts/knowledge/official-v1-frozen/",
+    )
+    recommend_parser.add_argument(
+        "--node", default="latest", help="latest, all, or a node ID such as N02"
+    )
+    recommend_parser.add_argument(
+        "--output", help="new recommendation directory; defaults to artifacts/recommend/<dataset>-<timestamp>"
+    )
+    recommend_parser.set_defaults(func=_cmd_recommend)
+
+    verify_recommend_parser = subparsers.add_parser(
+        "verify-recommend", help="revalidate a saved Task-3 recommendation run"
+    )
+    verify_recommend_parser.add_argument(
+        "--run",
+        help="recommendation directory or 'latest'; defaults to the newest under artifacts/recommend",
+    )
+    verify_recommend_parser.set_defaults(func=_cmd_verify_recommend)
 
     return parser
 

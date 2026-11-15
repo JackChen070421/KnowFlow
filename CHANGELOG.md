@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-15 — 修复重复启动导致设置页 404
+
+**本机未提交** · `fix/web-single-instance`
+
+- 根因：Windows 的 `SO_REUSEADDR` 允许两个 `knowflow.web` 同时绑定 8765。静态文件每次从磁盘读，所以旧进程也能显示新齿轮，但没有 `/api/settings/llm`，请求随机落到旧进程就报“找不到页面”。
+- 修复：新增 `LocalHTTPServer`，Windows 上禁用地址复用，重复启动直接失败；端口占用时打印可操作中文提示。
+- 前端：设置接口返回 404 时提示“后端进程还是旧版本，请关闭所有启动窗口后重跑”，不再只显示通用错误。
+- 验证：清理 3 个残留进程后只保留 1 个监听；`/api/settings/llm` 与 `/teacher` 均 200；第二个实例 exit 1；`pytest 146 passed`、`ruff`、`node --check` 通过。
+- 回退：恢复 `ThreadingHTTPServer` 并移除提示分支；不影响设置页本身。
+
+---
+
 ## 2026-11-15 — 网页设置面板：LLM 开关与配置
 
 **本机未提交** · `feat/web-llm-settings`

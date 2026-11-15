@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -20,6 +21,18 @@ ASSETS = {
     "/favicon.svg": "image/svg+xml",
 }
 MAX_SETTINGS_BODY = 8192
+
+
+class LocalHTTPServer(ThreadingHTTPServer):
+    """Refuse a second bind on Windows.
+
+    ``allow_reuse_address`` is inherited as True from ``HTTPServer``; on Windows
+    that lets a second dashboard share the port, so requests randomly land on
+    an older process and hit missing routes. POSIX keeps the reuse flag so a
+    restart after TIME_WAIT still works.
+    """
+
+    allow_reuse_address = sys.platform != "win32"
 
 
 def create_server(
@@ -162,4 +175,4 @@ def create_server(
                 return
             self.json(settings)
 
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    return LocalHTTPServer(("127.0.0.1", port), Handler)

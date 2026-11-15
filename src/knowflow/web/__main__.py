@@ -37,7 +37,17 @@ def main() -> int:
         if args.prepare_only:
             return 0
         server = create_server(run, snapshot, args.port)
-    except (ValueError, OSError) as exc:
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 10048 or getattr(exc, "errno", None) == 98:
+            print(
+                f"Dashboard could not start: 端口 {args.port} 已被占用。"
+                "请先关闭旧的启动窗口（可能有多个），或用 --port 8766 换一个端口。",
+                flush=True,
+            )
+        else:
+            print(f"Dashboard could not start: {exc}", flush=True)
+        return 1
+    except ValueError as exc:
         print(f"Dashboard could not start: {exc}", flush=True)
         return 1
     url = f"http://127.0.0.1:{server.server_port}/teacher"

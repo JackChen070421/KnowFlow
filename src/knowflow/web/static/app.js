@@ -364,7 +364,9 @@ async function getJSON(url) {
     try {
       message = (await r.json()).error || message;
     } catch {}
-    throw Error(message);
+    const error = Error(message);
+    error.status = r.status;
+    throw error;
   }
   return r.json();
 }
@@ -422,7 +424,9 @@ function render() {
     ensureSettings().then(() => {
       if (state.view === 'settings') render();
     }).catch(error => {
-      settingsError = error.message;
+      settingsError = error.status === 404
+        ? '当前后端进程还是旧版本，没有设置接口。请关闭所有启动窗口后重新运行 start-dashboard.cmd（不要同时开多个）。'
+        : error.message;
       if (state.view === 'settings') render();
     });
   }

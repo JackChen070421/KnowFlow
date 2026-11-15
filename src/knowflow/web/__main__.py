@@ -14,10 +14,24 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--open", action="store_true", help="启动后打开浏览器")
     parser.add_argument("--prepare-only", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--llm",
+        dest="llm",
+        action="store_true",
+        default=None,
+        help="rebuild with the optional language layer; later starts reuse that mode",
+    )
+    mode.add_argument(
+        "--no-llm",
+        dest="llm",
+        action="store_false",
+        help="rebuild with rule templates only",
+    )
     parser.add_argument("--run", type=Path, help="复用 artifacts/web 中已有的整套运行目录")
     args = parser.parse_args()
     try:
-        run = args.run or prepare(refresh=args.refresh)
+        run = args.run or prepare(refresh=args.refresh, llm=args.llm)
         snapshot = load_dashboard(run)
         print(f"Validated dashboard data: {run}", flush=True)
         if args.prepare_only:

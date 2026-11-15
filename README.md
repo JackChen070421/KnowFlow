@@ -11,7 +11,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 2. **学情画像**：五态证据（含 `pending`）、覆盖度、Beta-Binomial 掌握度、问题清单；
 3. **学习建议**：`issue_id` → `material_id` → `reason` → `check` → `seq`。
 
-> 当前状态：**任务1/2/3 的基础流程都已实现**。可在本机完成 canonical 数据适配、知识底座生成、按节点的个人/班级画像、规则版学习建议，以及三层的复算与证据回查；LLM 语言层仍待接入，规则版关掉 LLM 也能跑通。
+> 当前状态：**任务1/2/3 的基础流程都已实现**。可在本机完成 canonical 数据适配、知识底座生成、按节点的个人/班级画像、规则版学习建议，以及三层的复算与证据回查；LLM 文字层已接入但**默认关闭**，只改写 `reason`/`check` 的文字，关闭或调用失败时自动回退模板。
 > 入口：[`AGENT.md`](AGENT.md) · 数据契约：[`schemas/CONTRACT.md`](schemas/CONTRACT.md) · Git 操作：[`shortcuts.md`](shortcuts.md)
 
 ---
@@ -32,9 +32,9 @@ Set-Location 'D:\桌面\KnowFlow'
 - 新练习提交保存在同一浏览器的 `localStorage`，教师页可查看，标记为“待评阅”。没有新提交时显示“未记录”，不会自动改写历史成绩或画像。这是一台电脑上的双视角演示，不是多用户登录系统。
 - 图表口径：已评分得分率保留部分分；观测覆盖以节点可测题为分母；历史作答完成以有明确布置记录的题为分母。两个节点题目范围不同，折线只比较已评分记录量，不表示成绩增长。
 
-首次启动需要已安装项目依赖、并已按数据说明放入 `data/raw/official-v1`。程序在 **Git 忽略的 `artifacts/web/<时间>/`** 中独立生成 canonical、知识底座、两个节点的画像与建议，经过校验后展示；不会覆盖原有 `data/interim` 和其他成果。后续启动复用缓存；数据或 Python/schema 变化会重建。强制刷新用 `python -m knowflow.web --refresh`，端口占用时用 `--port 8766`。也可用 `--run artifacts/web/<时间>` 复用某次已生成成果；该目录中的知识底座、画像和建议必须是同一版本，启动时会复核。
+首次启动需要已安装项目依赖、并已按数据说明放入 `data/raw/official-v1`。程序在 **Git 忽略的 `artifacts/web/<时间>/`** 中独立生成 canonical、知识底座、两个节点的画像与建议，经过校验后展示；不会覆盖原有 `data/interim` 和其他成果。后续启动复用缓存；数据或 Python/schema 变化会重建。强制刷新用 `python -m knowflow.web --refresh`，端口占用时用 `--port 8766`；想让页面里的建议文字走 LLM，用 `python -m knowflow.web --refresh --llm`（之后普通启动沿用该模式，要关掉用 `--no-llm --refresh`；未配置 Key 或调用失败会自动回退模板，页面照常显示）。也可用 `--run artifacts/web/<时间>` 复用某次已生成成果；该目录中的知识底座、画像和建议必须是同一版本，启动时会复核。
 
-新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。浏览器只连接本机，不需要 Node/npm、云服务器或模型密钥。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
+新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。默认只连接本机，不需要 Node/npm、云服务器或模型密钥；只有 `--llm` 才需要 Key。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
 
 新增代码入口：`web/data.py` 连接三项任务并整理图表数据，`web/server.py` 提供本机页面与受限资料接口，`web/static/app.js` 实现双视角交互，`web/static/charts.js` 绘制图表，`web/static/styles.css` 管理页面样式。`scripts/start_dashboard.ps1` 是 Windows 启动脚本。回归测试位于 `tests/diagnosis/test_web.py`，只用合成数据。
 
@@ -72,9 +72,9 @@ Set-Location 'D:\桌面\KnowFlow'
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
-| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；LLM 未接） |
-| **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待接 |
-| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 131 tests |
+| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
+| **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、ID 锁、重试 2 次降级模板 | ✅ 可选，默认关闭 |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 139 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -90,7 +90,7 @@ data/raw → 适配层(io) → data/interim → knowledge → diagnosis → reco
 - **计算边界**：数值只由代码计算，LLM 不改数字。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要；ID 与数字来自白名单。
 
-当前已实现第 1、2、3、4、5、7、8 层：契约、canonical 数据层、知识底座、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）与任务3规则版建议（`issue_id → material_id → reason/check → seq`，输出可核对）。第 5 层先用规则+模板保证可复算；第 6 层（LLM 边缘）仍待接入，接的时候只改 `reason`/`check` 的文字，不改数字与 ID。
+当前已实现第 1、2、3、4、5、6、7、8 层：契约、canonical 数据层、知识底座、任务2诊断（按节点的五态/覆盖/Beta、个人与班级画像、复算与证据回查）、任务3建议（`issue_id → material_id → reason/check → seq`），以及可选的 LLM 文字层。第 5 层默认用规则+模板保证可复算；第 6 层只在显式 `--llm` 时改写 `reason`/`check`，数字与 ID 仍来自白名单，校验失败或调用失败会回退规则文本并记录在 `run_manifest.json` 的 `llm` 块里。
 
 三个格式检查：`check_contracts`（结构/契约/隐私）、`check_examples`（10 张合成 CSV）、`validate_outputs`（单份 JSON 对 schema）。数据层另有四个脚本：`ingest_raw`（官方包原样落地 + 指纹，**不是** IO 适配层）、`build_canonical`（官方 CSV → 10 张 canonical 表 + 质量报告）、`validate_canonical`（canonical 复检）、`export_digest`（产物指纹互证）；知识底座走 CLI 的 `knowledge`；诊断走 CLI 的 `run` / `verify-run` / `evidence`；建议走 CLI 的 `recommend` / `verify-recommend`。自然语言映射见 [`shortcuts.md`](shortcuts.md)。
 
@@ -260,13 +260,36 @@ artifacts/recommend/<目录>/
 - `probe_plan.items` 只用该生在该节点**未作答**的测评题；`needed` 必须等于 `items` 非空。
 - `difficulty`/`est_minutes` 是**规则推算值**：官方材料没有这两个字段，按题型/认知类型估算，运行说明里已声明，不能当作官方难度或精确用时。
 
+### 可选：接入 LLM 文字层
+
+默认关闭。打开后只改写任务3的 `reason`/`check`，不碰任何数字、ID 或诊断结论：
+
+```powershell
+# 1) 安装可选依赖，并在 .env 填写 KEY（.env 已被 Git 忽略）
+uv sync --extra llm
+#    开发者同时要保留测试工具：uv sync --extra dev --extra llm
+#    KNOWFLOW_LLM_ENABLED=true
+#    KNOWFLOW_LLM_API_KEY=...
+
+# 2) 批量：任务3 生成时润色，逐条失败自动回退模板
+uv run python -m knowflow.cli recommend --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json --llm
+
+# 3) 单题解释：只发一份聚合摘要，同时落盘输入与输出
+uv run python -m knowflow.cli explain --student S001 --knowledge-id K-07
+```
+
+- 输入只有 `llm_summary`（计数、比率、状态、错误模式 + 数字/ID 白名单），不含原始作答、姓名或自由文本。
+- 输出必须通过 `schemas/llm/llm_response.schema.json` 与 `src/knowflow/llm/guard.py`：schema、数字锁、ID 锁、必须引用 `issue_id` 与至少一个材料。
+- 每项最多 3 次（首次 + 重试 2 次），仍不合格就回退模板；`run_manifest.json` 的 `llm` 块记录 `items_used` / `items_fallback` / `attempts` / `errors`。
+- `explain` 把 `llm_summary.json` 与 `explain.json` 写到 `artifacts/explain/`（Git 忽略），可直接作为答辩证据。
+
 按层装可选依赖（core 只有校验与配置，其余按需）：
 
 | extra | 内容 | 何时需要 |
 |---|---|---|
 | `io` | pandas | 可选：当前 io 层用标准库 `csv`，不依赖 pandas |
 | `stats` | numpy, scipy | 可选统计库；**当前诊断不依赖**（Beta 用纯 Python 实现） |
-| `llm` | openai | 任务3 的 LLM 文字层（规则版不需要） |
+| `llm` | openai | 任务3 的 LLM 文字层（默认关闭；`--llm` / `explain` 才需要） |
 | `app` | streamlit, plotly | 演示界面 |
 | `dev` | pytest, ruff, mypy, pre-commit | 开发与 CI |
 
@@ -369,7 +392,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 | **M0 地基** | 最小目录、契约、合成样例、契约检查 | ✅ |
 | **M1 知识底座** | 适配器、knowledge/Q-matrix/图 | 🟡 生成/校验入口与本机标注已接入；先修/易混关系待人工复核，官方内容成果本机保存 |
 | **M2 诊断** | 五态、覆盖度、Beta、画像 | ✅ 基础版（按节点、可复算、证据可回查） |
-| **M3 建议** | 检索、约束、规则理由、validator | ✅ 规则版（模板生成、可复算；LLM 未接） |
+| **M3 建议** | 检索、约束、规则理由、validator；可选 LLM 润色 | ✅ 规则版 + 可选 LLM 文字层 |
 | **M4 交付** | 演示与提交（仓库外） | ⬜ |
 
 每步只加当前需要的模块；不预先铺空目录。

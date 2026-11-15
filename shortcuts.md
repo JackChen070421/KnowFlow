@@ -107,6 +107,8 @@ python -m pytest
 | “看看这道题的原始作答”<br>“证据回查” | `python -m knowflow.cli evidence --record R-0001`（默认最近一次；可 `--run <目录>`） | 从 `record_details.csv` 导出本机原文与行号；源文件变了会拒绝导出 |
 | “生成学习建议”<br>“跑任务3”<br>“按画像给每个学生排计划” | `python -m knowflow.cli recommend --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json`（默认最新节点；`--node all` 两次都出） | 读任务2最近一次 run + 任务1知识底座 → `artifacts/recommend/<目录>/`：个人建议、index、validation_report、运行说明；输出 gitignore |
 | “建议算得对吗”<br>“复核任务3” | `python -m knowflow.cli verify-recommend`（默认最近一次；可 `--run <目录>`） | 校验 schema、issue/材料引用、数字锁、probe 未作答与产物 sha256；不通过 exit 1 |
+| “让模型润色学习建议”<br>“接 LLM” | `python -m knowflow.cli recommend --llm`（需要 `.env` 里的 `KNOWFLOW_LLM_ENABLED` 与 `KEY`） | 只改写 `reason`/`check`；数字/ID 锁校验，失败逐条回退模板；`run_manifest.json` 的 `llm` 块记录使用与回退 |
+| “解释某个学生某个知识点”<br>“用模型讲一下这个诊断” | `python -m knowflow.cli explain --student S001 --knowledge-id K-07` | 只发一份聚合摘要；`artifacts/explain/<目录>/llm_summary.json` + `explain.json` 可直接复核 |
 | “检查合成 CSV 格式”<br>“样例字段/表头对不对” | `python scripts/check_examples.py` | `examples/synthetic/input/` 的 10 张 CSV：表头、必填列、类型、主键唯一、逐行 schema |
 | “校验这个 JSON 产物”<br>“这个输出符合 schema 吗” | `python scripts/validate_outputs.py --schema <schema> --data <json>` | 一份 JSON 是否通过指定 schema；适合 `knowledge_base` / `student_profile` / `recommendation` / `llm_summary` 等 |
 | “提交前全检”<br>“把格式检查都跑一遍” | 依次跑上面三个检查 + `python -m pytest` | 结构/契约 → 合成 CSV → 本次产物 → 测试 |

@@ -10,6 +10,20 @@
 
 ---
 
+## 2026-11-15 — LLM 文字层接入与仓库清洗
+
+**本机未提交** · `feat/llm-edge`
+
+- 新增 `src/knowflow/llm/`：`llm_summary` 白名单构造、prompt、OpenAI 兼容客户端（懒加载）、数字/ID 锁 guard、重试 2 次回退模板。
+- 新增 `knowflow explain`（单题、只发摘要、落盘输入与输出）与 `recommend --llm`（批量润色 `reason`/`check`）；`run_manifest.json` 新增 `llm` 块，`policy.llm_enabled` 反映真实请求。
+- `llm_summary.status` 枚举补 `mixed_performance`；Web 在 LLM 生效时标注“规则推荐 + LLM 润色”，并新增 `knowflow.web --llm` 重建入口。
+- 契约修正：`.env` 不再要求“不存在”，改为必须被 Git 忽略；本地配置 Key 时 `check_contracts` 仍全绿。
+- 清洗：删除静态原型 `webui-prototype/`、缓存目录与旧 artifacts，保留当前 `knowflow.web` 与 harness 文档。
+- 验证：`pytest 139 passed`；`check_contracts` / `check_examples` / 两个 fixture / `verify-run` / `verify-recommend` 全部通过；**未调用真实 API**。
+- 回退：移除 `llm/` 与 `--llm`/`explain`，恢复旧 `.env` 检查；规则版不受影响。
+
+---
+
 ## 2026-11-15 — 本机教师与学生展示页
 
 **本机未提交** · `feat/teacher-student-dashboard`

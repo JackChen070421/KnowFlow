@@ -55,6 +55,7 @@
             "confirmed_weak",
             "likely_weak",
             "insufficient_evidence",
+            "mixed_performance",
             "likely_mastered",
             "confirmed_mastered"
           ]

@@ -15,7 +15,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 
 **一句话：数字由代码算，语言由模型写；所有结论必须能追到 ID。**
 
-当前已实现 **任务1/2/3 基础流程**：canonical 数据落盘、知识底座生成、按节点的五态/覆盖/Beta 与个人/班级画像、`verify-run` 复算、按记录回查本机原文，以及任务3规则版建议（`issue_id → material_id → reason/check → seq`，`verify-recommend` 复算）。LLM 语言层仍待接入；规则版在 `llm.enabled=false` 时全流程可跑通。
+当前已实现 **任务1/2/3 基础流程**：canonical 数据落盘、知识底座生成、按节点的五态/覆盖/Beta 与个人/班级画像、`verify-run` 复算、按记录回查本机原文，以及任务3建议（`issue_id → material_id → reason/check → seq`，`verify-recommend` 复算）。LLM 文字层可选接入、默认关闭；`llm.enabled=false` 与调用失败时全流程按模板跑通。
 
 ## 1. 八条准则
 
@@ -43,8 +43,8 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | ✅ 生成/校验与本机标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
-| **5 建议层** | `src/knowflow/recommend/` | 检索/约束/排序/理由/探测小测/validator | ✅ 规则版（模板生成、可复算；LLM 未接） |
-| **6 LLM 边缘层** | `schemas/llm/`、未来 `llm/` | 只读摘要，写 `reason`/`check`；数字锁/降级 | 🟡 |
+| **5 建议层** | `src/knowflow/recommend/` | 检索/约束/排序/理由/探测小测/validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色文字） |
+| **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读摘要，写 `reason`/`check`；数字锁/ID 锁/降级 | ✅ 可选，默认关闭 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
 | **8 协作层** | `AGENT/README/shortcuts/.github` | 准则/流程/分支/PR/CI | ✅ |
 
@@ -56,7 +56,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 - **计算边界**：数值只由 `diagnosis`/`recommend` 的纯函数计算。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要等文字；ID 与数字来自白名单。
 
-第 3 层已接入知识底座生成/校验与本机核对标注；第 4 层是任务2基础版；第 5 层是任务3规则版（模板生成、validator、可复算）；第 6 层 LLM 仍未接，接的时候只改 `reason`/`check` 的文字。按校赛展示需求增加 `src/knowflow/web/` 本机双视角展示层，复用三项任务的成果，不修改公共契约。启动和口径见 README 的“本机教师页与学生页”；展示产物只写入被忽略的 `artifacts/web/`。新练习仅保存在浏览器，提交与评阅分开，不自动改写正式画像。报告层与对外交付物目录仍不在仓库内建立。
+第 3 层已接入知识底座生成/校验与本机核对标注；第 4 层是任务2基础版；第 5 层是任务3规则版（模板生成、validator、可复算）；第 6 层已接入 `llm_summary → llm_response` 的可选文字层，默认关闭，只改 `reason`/`check` 且失败回退模板。按校赛展示需求增加 `src/knowflow/web/` 本机双视角展示层，复用三项任务的成果，不修改公共契约。启动和口径见 README 的“本机教师页与学生页”；展示产物只写入被忽略的 `artifacts/web/`。新练习仅保存在浏览器，提交与评阅分开，不自动改写正式画像。报告层与对外交付物目录仍不在仓库内建立。
 
 ## 4. 目录（最小）
 
@@ -162,7 +162,7 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
-G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任务3 的门禁是 `python -m knowflow.cli verify-recommend`（schema、issue/材料引用、数字锁、probe 未作答、产物哈希）。LLM 语言层仍未实现，**不假装通过**。
+G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任务3 的门禁是 `python -m knowflow.cli verify-recommend`（schema、issue/材料引用、数字锁、probe 未作答、产物哈希）。LLM 文字层已接入并有独立单测（假客户端，不联网）；未运行真实 API 时不得声称模型效果已验证。
 
 ## 9. LLM 规则
 
@@ -170,6 +170,7 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - 输出只能是 `schemas/llm/llm_response.schema.json`：`reason`/`check`/摘要/错因标签。
 - **数字锁/ID 锁**：输出中的数字与 ID 必须来自输入白名单；不合规重试 ≤2 后降级模板。
 - `llm.enabled=false` 时全流程必须能跑通（模板/规则），LLM 可关闭。
+- 实现位于 `src/knowflow/llm/`：`summary.py` 构造白名单摘要，`guard.py` 做 schema/数字/ID 三重检查，`service.py` 负责重试与回退；`recommend --llm` 与 `explain` 是仅有的调用入口。`run_manifest.json` 的 `llm` 块必须记录实际使用、回退与错误，不得把回退写成“已用模型”。
 - prompt 与代码同审；不把真实数据/密钥/姓名放进 prompt 或示例。
 
 ## 10. 数据安全
@@ -204,6 +205,10 @@ $env:PYTHONPATH='src'; python -m knowflow.cli recommend `
   --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json
 $env:PYTHONPATH='src'; python -m knowflow.cli verify-recommend
 
+# 可选：LLM 文字层（只改 reason/check，失败回退模板）
+$env:PYTHONPATH='src'; python -m knowflow.cli recommend --llm
+$env:PYTHONPATH='src'; python -m knowflow.cli explain --student S001 --knowledge-id K-07
+
 # 测试
 python -m pytest
 
@@ -232,6 +237,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.16 | 2026-11-15 | 接入可选的 LLM 文字层（summary-only、数字/ID 锁、重试 2 次回退模板）；新增 `explain` 与 `recommend --llm`；`.env` 契约改为“必须被 Git 忽略”；测试 139 项 |
 | v0.15 | 2026-11-15 | 本机双视角展示层、隔离成果目录、课程与学情可视化、本机练习与自编实验；公共契约不变；131 项测试 |
 | v0.14 | 2026-11-14 | 任务3规则版落地：`recommend/`、`recommend` / `verify-recommend`、契约 v0.6（`node_id`/`activity_type`/数字锁/probe 未作答）；更新分层状态、质量门与命令；测试 125 项 |
 | v0.13 | 2026-11-13 | 同步任务1生成/校验入口、本机标注接入状态与 knowledge 目录；教学关系仍待人工复核 |

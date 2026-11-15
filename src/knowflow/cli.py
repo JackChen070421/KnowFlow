@@ -1,8 +1,9 @@
 """KnowFlow command line entry point.
 
 Repository checks, single-file schema validation, the Task-2 diagnosis flow
-(``run`` / ``verify-run`` / ``evidence``), and the Task-3 recommendation flow
-(``recommend`` / ``verify-recommend``).  The LLM edge stays optional and disabled.
+(``run`` / ``verify-run`` / ``evidence``), the Task-3 recommendation flow
+(``recommend`` / ``verify-recommend``), and the optional language layer
+(``explain``).  The LLM edge is off by default; rules remain the fallback.
 
 Owner: R4.
 """
@@ -159,9 +160,25 @@ def _cmd_recommend(args: argparse.Namespace) -> int:
         knowledge=args.knowledge,
         node=args.node,
         output=args.output,
+        llm=args.llm,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["gate"] == "pass" else 1
+
+
+def _cmd_explain(args: argparse.Namespace) -> int:
+    from .llm.explain import explain_student
+
+    result = explain_student(
+        student=args.student,
+        knowledge_id=args.knowledge_id,
+        node=args.node,
+        run=args.run,
+        knowledge=args.knowledge,
+        output=args.output,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 def _cmd_verify_recommend(args: argparse.Namespace) -> int:
@@ -268,7 +285,27 @@ def build_parser() -> argparse.ArgumentParser:
     recommend_parser.add_argument(
         "--output", help="new recommendation directory; defaults to artifacts/recommend/<dataset>-<timestamp>"
     )
+    recommend_parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="let the optional language layer rewrite reason/check (falls back to templates)",
+    )
     recommend_parser.set_defaults(func=_cmd_recommend)
+
+    explain_parser = subparsers.add_parser(
+        "explain", help="explain one saved issue with the optional language layer"
+    )
+    explain_parser.add_argument("--run", help="Task-2 run directory or 'latest'")
+    explain_parser.add_argument("--node", help="node ID; defaults to the newest node")
+    explain_parser.add_argument("--student", required=True, help="student ID such as S001")
+    explain_parser.add_argument("--knowledge-id", required=True, help="knowledge ID such as K-07")
+    explain_parser.add_argument(
+        "--knowledge", help="Task-1 knowledge_base.json; defaults to the frozen copy"
+    )
+    explain_parser.add_argument(
+        "--output", help="new directory; defaults to artifacts/explain/<dataset>-<timestamp>"
+    )
+    explain_parser.set_defaults(func=_cmd_explain)
 
     verify_recommend_parser = subparsers.add_parser(
         "verify-recommend", help="revalidate a saved Task-3 recommendation run"

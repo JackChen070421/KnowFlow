@@ -106,6 +106,18 @@ def _index_entry(rec: dict, path: str, scope_known: bool) -> dict:
     }
 
 
+def _llm_mode(manifest: dict) -> str:
+    llm = manifest.get("llm") or {}
+    if llm.get("items_used"):
+        return (
+            f"开启（仅改写 reason/check，成功 {llm['items_used']} 项，"
+            f"回退模板 {llm.get('items_fallback', 0)} 项）"
+        )
+    if llm.get("requested"):
+        return "已请求但未生效（未配置 Key 或全部回退模板）"
+    return "关闭（模板生成，可复算）"
+
+
 def _summary_text(manifest: dict, index: dict) -> list[str]:
     policy = manifest["policy"]
     counts = manifest["counts"]
@@ -118,7 +130,7 @@ def _summary_text(manifest: dict, index: dict) -> list[str]:
         "",
         "## 规则与边界",
         "",
-        f"- 规则版本：{policy['version']}；LLM：关闭（模板生成，可复算）。",
+        f"- 规则版本：{policy['version']}；LLM：{_llm_mode(manifest)}。",
         "- 每条建议都绑定 issue_id；材料只来自任务1知识底座，测评题优先节点内材料。",
         "- 证据不足不推断“未掌握”：只给补充观测题，并在 probe_plan 中说明。",
         "- difficulty 与 est_minutes 为规则推算值：官方材料没有这两个字段，"
@@ -157,6 +169,8 @@ def recommend_run(
     node: str | None = "latest",
     output: str | None = None,
     generated_at: str | None = None,
+    llm: bool = False,
+    client=None,
 ) -> dict:
     run_dir = _resolve_run(run)
     knowledge_path = Path(knowledge) if knowledge else default_knowledge_path()
@@ -183,6 +197,22 @@ def recommend_run(
     (target / "inputs").mkdir()
     shutil.copy2(run_dir / "diagnosis_input.json", target / "inputs" / "diagnosis_input.json")
 
+    # The language layer is optional and injected: tests pass a fake client, and
+    # a missing extra/key degrades to templates instead of failing the run.
+    from knowflow.config import get_settings
+    from knowflow.llm.client import build_client
+    from knowflow.llm.integrate import rewrite_plan
+    from knowflow.llm.service import PROMPT_VERSION, ReasonWriter
+
+    settings = get_settings()
+    llm_requested = bool(llm)
+    llm_ready = bool(client is not None or settings.llm_ready)
+    llm_client = (
+        client if client is not None else (build_client(settings) if llm_requested else None)
+    )
+    writer = ReasonWriter(llm_client) if (llm_requested and llm_client is not None) else None
+    llm_stats = {"items_used": 0, "items_fallback": 0, "attempts": 0, "errors": []}
+
     recs: list[tuple[Path, dict]] = []
     index_students = []
     for node_id in node_ids:
@@ -200,6 +230,11 @@ def recommend_run(
                 timestamp,
                 profile_sha,
             )
+            if writer is not None:
+                stats = rewrite_plan(rec, profile, catalog, bundle["dataset_id"], writer)
+                for key in ("items_used", "items_fallback", "attempts"):
+                    llm_stats[key] += stats[key]
+                llm_stats["errors"].extend(stats["errors"])
             relative = Path("nodes") / node_id / "students" / profile_path.name
             write_json(target / relative, rec)
             recs.append((target / relative, rec))
@@ -253,11 +288,22 @@ def recommend_run(
         "policy": {
             "name": "rule-template",
             "version": POLICY_VERSION,
-            "llm_enabled": False,
+            "llm_enabled": llm_requested,
             "difficulty": "heuristic",
             "time": "heuristic",
             "material_scope": "catalog_prefer_node",
             "max_plan_items": 3,
+        },
+        "llm": {
+            "requested": llm_requested,
+            "ready": llm_ready,
+            "provider": getattr(llm_client, "provider", None),
+            "model": getattr(llm_client, "model", None),
+            "prompt_version": PROMPT_VERSION,
+            "items_used": llm_stats["items_used"],
+            "items_fallback": llm_stats["items_fallback"],
+            "attempts": llm_stats["attempts"],
+            "errors": llm_stats["errors"][:5],
         },
         "targets": targets,
         "auxiliary_files": {

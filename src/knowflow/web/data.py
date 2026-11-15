@@ -62,18 +62,28 @@ def source_fingerprint(root: Path, raw: Path) -> str:
     return digest.hexdigest()
 
 
-def prepare(refresh: bool = False) -> Path:
-    """Build a private, isolated snapshot from official raw data, or reuse its cache."""
+def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
+    """Build a private, isolated snapshot from official raw data, or reuse its cache.
+
+    ``llm=None`` keeps whichever mode the cached snapshot used, so starting the
+    dashboard after one ``--llm`` build does not silently rebuild with templates.
+    """
+
     root = repo_root()
     raw = root / "data/raw/official-v1"
     if not raw.is_dir():
         raise ValueError("请先把赛事资料按 README 放入 data/raw/official-v1。Git 不包含官方数据。")
     fingerprint = source_fingerprint(root, raw)
     cache = root / "artifacts/web/latest.json"
-    if cache.is_file() and not refresh:
-        cached = read_json(cache)
+    cached = read_json(cache) if cache.is_file() else {}
+    effective_llm = llm if llm is not None else bool(cached.get("llm", False))
+    if cached and not refresh:
         run = root / cached["run"]
-        if cached.get("fingerprint") == fingerprint and (run / "knowledge_base.json").is_file():
+        if (
+            cached.get("fingerprint") == fingerprint
+            and bool(cached.get("llm", False)) == effective_llm
+            and (run / "knowledge_base.json").is_file()
+        ):
             return run
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     run = root / "artifacts/web" / stamp
@@ -92,10 +102,18 @@ def prepare(refresh: bool = False) -> Path:
         knowledge=str(run / "knowledge_base.json"),
         node="all",
         output=str(run / "recommendations"),
+        llm=effective_llm,
     )
     if report["gate"] != "pass":
         raise ValueError("建议校验未通过，请查看本机运行目录中的 validation_report.json。")
-    write_json(cache, {"run": run.relative_to(root).as_posix(), "fingerprint": fingerprint})
+    write_json(
+        cache,
+        {
+            "run": run.relative_to(root).as_posix(),
+            "fingerprint": fingerprint,
+            "llm": effective_llm,
+        },
+    )
     return run
 
 
@@ -174,6 +192,8 @@ def load_dashboard(run: Path) -> dict:
     view_knowledge["materials"] = [
         {k: m.get(k) for k in material_fields} for m in knowledge["materials"]
     ]
+    recommendation_manifest = read_json(run / "recommendations" / "run_manifest.json")
+    llm_items = int((recommendation_manifest.get("llm") or {}).get("items_used") or 0)
     return {
         "meta": {
             "dataset_id": bundle["dataset_id"],
@@ -183,7 +203,7 @@ def load_dashboard(run: Path) -> dict:
             "subject": knowledge["subject"],
             "grade": knowledge["grade"],
             "local_only": True,
-            "recommendation_mode": "规则推荐",
+            "recommendation_mode": "规则推荐 + LLM 润色" if llm_items else "规则推荐",
             "validation": {"knowledge": "pass", "diagnosis": "pass", "recommendation": "pass"},
         },
         "students": [

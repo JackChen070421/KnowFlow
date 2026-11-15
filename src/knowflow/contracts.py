@@ -131,6 +131,26 @@ def _git_ignored(root: Path, rels: list[str]) -> set[str] | None:
     return {chunk for chunk in proc.stdout.split("\0") if chunk}
 
 
+def _git_tracked(root: Path, rels: list[str]) -> set[str] | None:
+    """Return the subset of *rels* tracked by Git, or ``None`` if Git is unusable."""
+
+    if not rels:
+        return set()
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--", *rels],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return {chunk for chunk in proc.stdout.split("\0") if chunk}
+
+
 def _check_restricted_dir(root: Path, rel: str) -> Iterable[str]:
     """Restricted data may sit on disk; it must never be committed.
 
@@ -213,7 +233,14 @@ def check_repo(root: Path | None = None) -> list[str]:
 
     env_file = base / ".env"
     if env_file.exists():
-        errors.append(".env must not be committed; use .env.example for variable names")
+        # A local .env is the documented way to hold the DeepSeek key; the risk
+        # is committing it, not having it.  Ask Git, not the filesystem.
+        tracked = _git_tracked(base, [".env"])
+        ignored = _git_ignored(base, [".env"])
+        if tracked and ".env" in tracked:
+            errors.append(".env is tracked by Git; remove it and rotate the key")
+        elif ignored is not None and ".env" not in ignored:
+            errors.append(".env is not git-ignored; keys must never be committed")
 
     gitignore_path = base / ".gitignore"
     if gitignore_path.is_file():

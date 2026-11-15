@@ -206,6 +206,26 @@ def test_explain_writes_summary_and_guarded_text(bundle, tmp_path):
     assert "M-" in explain["reason"]
 
 
+def test_writer_redacts_key_shaped_secrets_in_errors(bundle):
+    summary, _, _ = issue_summary(bundle)
+
+    class LeakyClient:
+        provider = "fake"
+        model = "fake-model"
+
+        def complete(self, system: str, user: str) -> str:
+            raise RuntimeError("401 Incorrect API key provided: sk-live-abcdef123456")
+
+    reason, check, meta = ReasonWriter(LeakyClient(), max_attempts=1).write(
+        summary, "模板理由", "模板检查"
+    )
+    assert (reason, check) == ("模板理由", "模板检查")
+    assert meta.source == "template"
+    assert meta.errors
+    assert all("sk-live-abcdef123456" not in error for error in meta.errors)
+    assert any("sk-***" in error for error in meta.errors)
+
+
 def test_explain_requires_a_configured_client(bundle, tmp_path, monkeypatch):
     run_dir, kb_path = _recommend_run(bundle, tmp_path)
     monkeypatch.setenv("KNOWFLOW_LLM_ENABLED", "false")

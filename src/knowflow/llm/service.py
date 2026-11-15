@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from .client import ChatClient
@@ -9,6 +10,13 @@ from .guard import parse_json, response_errors
 from .prompt import SYSTEM_PROMPT, user_prompt
 
 PROMPT_VERSION = "llm-reason-1"
+_SECRET = re.compile(r"sk-[A-Za-z0-9._\-]{4,}")
+
+
+def redact(text: str) -> str:
+    """Remove key-shaped tokens before an error reaches any artifact."""
+
+    return _SECRET.sub("sk-***", text)
 
 
 @dataclass(frozen=True)
@@ -48,12 +56,12 @@ class ReasonWriter:
             try:
                 raw = self.client.complete(SYSTEM_PROMPT, user_prompt(summary))
             except Exception as exc:  # network/SDK errors degrade, never abort the run
-                errors.append(f"{type(exc).__name__}: {str(exc)[:120]}")
+                errors.append(redact(f"{type(exc).__name__}: {exc}")[:200])
                 continue
             try:
                 response = parse_json(raw)
             except (ValueError, TypeError) as exc:
-                errors.append(f"invalid_json: {str(exc)[:120]}")
+                errors.append(redact(f"invalid_json: {exc}")[:160])
                 continue
             problems = response_errors(response, summary)
             if not problems:

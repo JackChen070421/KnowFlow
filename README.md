@@ -372,6 +372,7 @@ git check-ignore -v data/raw/<dataset_id>/records.csv
 ## 数据与隐私
 
 - `data/raw/`、`data/interim/` 被 `.gitignore` 忽略；真实 CSV/模型权重/密钥永不提交。
+- 网页设置写入的 API Key 只在仓库根目录 `.env`（`.gitignore` 第 8 行）；不要 `git add -f .env`，也不要直接打包整个项目目录提交（`.gitignore` 不会作用于 zip）。录屏/截图前把 Key 输入框留空或先关闭 LLM。
 - 公开仓只放 `examples/` 下的**合成样例**；真实数据只在本地处理。
 - 送进 LLM 的只有 `llm_summary`（计数/比率/状态/错误模式），不含原始作答、姓名、自由文本。
 - 赛后按要求删除数据，保留 manifest（文件名/哈希/行数）与删除记录，不保留数据副本。

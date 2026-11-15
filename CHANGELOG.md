@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-15 — 密钥泄露审计与错误脱敏
+
+**本机未提交** · `fix/secret-redaction`
+
+- 审计：`.env` 被 `.gitignore:8` 忽略、从未被跟踪、从未进入任何提交；`HEAD` 中没有 `sk-` 开头的长 token（仅测试假值 `sk-test-*`）。
+- 脱敏：模型/网络错误写入 `run_manifest.json`、`explain.json` 前，把 `sk-...` 形状替换为 `sk-***`，避免供应商报错回显 Key。
+- 文档：补充“不要 `git add -f .env`、不要打包整个项目目录提交、录屏前清空 Key”。
+- 验证：新增脱敏单测；`pytest 148 passed`、`ruff` 通过。
+- 回退：移除 `redact` 调用即可，不影响正常路径。
+
+---
+
 ## 2026-11-15 — 设置保存不再出现 Failed to fetch
 
 **本机未提交** · `fix/web-settings-network`

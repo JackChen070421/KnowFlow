@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-13 · v0.13
+> 最后更新：2026-11-15 · v0.15
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -56,7 +56,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 - **计算边界**：数值只由 `diagnosis`/`recommend` 的纯函数计算。
 - **语言边界**：LLM 只填 `reason`/`check`/摘要等文字；ID 与数字来自白名单。
 
-第 3 层已接入知识底座生成/校验与本机核对标注；第 4 层是任务2基础版；第 5 层是任务3规则版（模板生成、validator、可复算）；第 6 层 LLM 仍未接，接的时候只改 `reason`/`check` 的文字；暂不建 UI、报告层、交付物目录。
+第 3 层已接入知识底座生成/校验与本机核对标注；第 4 层是任务2基础版；第 5 层是任务3规则版（模板生成、validator、可复算）；第 6 层 LLM 仍未接，接的时候只改 `reason`/`check` 的文字。按校赛展示需求增加 `src/knowflow/web/` 本机双视角展示层，复用三项任务的成果，不修改公共契约。启动和口径见 README 的“本机教师页与学生页”；展示产物只写入被忽略的 `artifacts/web/`。新练习仅保存在浏览器，提交与评阅分开，不自动改写正式画像。报告层与对外交付物目录仍不在仓库内建立。
 
 ## 4. 目录（最小）
 
@@ -66,7 +66,7 @@ KnowFlow/
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend / web
 ├─ tests/                   # contract + io + diagnosis（含任务3）+ fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/
@@ -232,6 +232,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.15 | 2026-11-15 | 本机双视角展示层、隔离成果目录、课程与学情可视化、本机练习与自编实验；公共契约不变；131 项测试 |
 | v0.14 | 2026-11-14 | 任务3规则版落地：`recommend/`、`recommend` / `verify-recommend`、契约 v0.6（`node_id`/`activity_type`/数字锁/probe 未作答）；更新分层状态、质量门与命令；测试 125 项 |
 | v0.13 | 2026-11-13 | 同步任务1生成/校验入口、本机标注接入状态与 knowledge 目录；教学关系仍待人工复核 |
 | v0.12 | 2026-11-12 | `verify-run` / `evidence` 的 `--run` 可省略（默认最近一次），`latest` 亦可；目录不存在时给可读报错而不是 `[Errno 22]`；文档去掉“照抄 `<目录>`”的坑 |

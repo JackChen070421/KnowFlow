@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-15 · v0.18
+> 最后更新：2026-11-15 · v0.20
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -172,6 +172,7 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - `llm.enabled=false` 时全流程必须能跑通（模板/规则），LLM 可关闭。
 - 实现位于 `src/knowflow/llm/`：`summary.py` 构造白名单摘要，`guard.py` 做 schema/数字/ID 三重检查，`service.py` 负责重试与回退；`recommend --llm` 与 `explain` 是仅有的调用入口。`run_manifest.json` 的 `llm` 块必须记录实际使用、回退与错误，不得把回退写成“已用模型”。
 - 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
+- 网页对话 `/api/chat` 复用 `llm/chat.py` 的事实卡与白名单（仅回环、要求 `X-KnowFlow-Chat` 头）；上下文只来自已校验快照，不读 `data/raw`。
 - prompt 与代码同审；不把真实数据/密钥/姓名放进 prompt 或示例。
 
 ## 10. 数据安全
@@ -238,6 +239,8 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.20 | 2026-11-15 | 放宽对话数字校验：允许四舍五入/百分比换算、0–10 小序数与年份；ID 白名单扩到快照全部真实 ID；首次不合格带反馈重试；测试 156 项 |
+| v0.19 | 2026-11-15 | 左下角「AI 学伴」对话：`llm/chat.py` 事实卡 + 数字/ID 锁 + 规则兜底；`POST /api/chat`（回环 + 专用请求头）；前端悬浮按钮/面板/引用跳转；测试 154 项 |
 | v0.18 | 2026-11-15 | 网页「设置」：侧栏齿轮 + LLM 开关/厂商/Key，写入本机 `.env`（回环 + 请求头校验、Key 不回显）；错误脱敏与单实例保护；测试 149 项 |
 | v0.17 | 2026-11-15 | 接入可选的 LLM 文字层（summary-only、数字/ID 锁、重试 2 次回退模板）；新增 `explain` 与 `recommend --llm`；测试 139 项 |
 | v0.16 | 2026-11-15 | 契约检查按 Git 状态判断 `.env`：本地持有合法，被跟踪/未忽略才报错；补回归测试；测试 132 项 |

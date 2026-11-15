@@ -17,7 +17,10 @@ let D, kb, storageOK = true,
   activeTask = null,
   drawerOrigin = null,
   llmSettings = null,
-  settingsError = null;
+  settingsError = null,
+  chatOpen = new URLSearchParams(location.search).get('chat') === '1',
+  chatBusy = false,
+  chatMessages = [];
 const params = new URLSearchParams(location.search);
 const state = {
   role: location.pathname === '/student' ? 'student' : 'teacher',
@@ -130,7 +133,7 @@ function navItems() {
 
 function shell() {
   const active = navItems().find(n => n[0] === state.view) || ['settings', '设置', 'settings'];
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>让学习有迹可循</small></div></a><div class="sidebar-label">${state.role==='teacher'?'TEACHING WORKSPACE':'MY LEARNING SPACE'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">EVIDENCE INTO ACTION</div><h3>看见学习的联系<br>找到下一步方向</h3><p>课程要求 · 学情证据 · 学习行动<br>每一条建议，都有据可循。</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>知识 · 画像 · 建议，校验通过<br>赛事模拟数据 / 本机演示</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow / 从理解课程，到理解每一个学生。</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · 规则推荐 · 本机展示</span></footer></main></div>`;
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>让学习有迹可循</small></div></a><div class="sidebar-label">${state.role==='teacher'?'TEACHING WORKSPACE':'MY LEARNING SPACE'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">EVIDENCE INTO ACTION</div><h3>看见学习的联系<br>找到下一步方向</h3><p>课程要求 · 学情证据 · 学习行动<br>每一条建议，都有据可循。</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>知识 · 画像 · 建议，校验通过<br>赛事模拟数据 / 本机演示</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow / 从理解课程，到理解每一个学生。</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · 规则推荐 · 本机展示</span></footer></main></div>${chatWidget()}`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -485,13 +488,92 @@ function exportSummary() {
   toast('已导出本机摘要，请勿将学生成果提交公开仓库。');
 }
 
-async function postJSON(url, body) {
+function chatContextLabel() {
+  return `${state.node} · ${groupName(state.group)}${state.student ? ' · ' + state.student : ''}`;
+}
+
+function citeChip(id) {
+  if (id.startsWith('M-')) return `<button type="button" class="chat-cite" data-material="${esc(id)}">${esc(id)}</button>`;
+  if (id.startsWith('K-')) return `<button type="button" class="chat-cite" data-knowledge="${esc(id)}">${esc(id)}</button>`;
+  if (id.startsWith('S')) return `<button type="button" class="chat-cite" data-student="${esc(id)}">${esc(id)}</button>`;
+  return `<span class="chat-cite">${esc(id)}</span>`;
+}
+
+function chatLog() {
+  if (!chatMessages.length) {
+    return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
+  }
+  return chatMessages.map(message => `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${message.source?`<small class="chat-source">${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`).join('');
+}
+
+function chatPanel() {
+  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话"><header class="chat-head"><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><textarea id="chat-input" rows="2" maxlength="500" placeholder="问当前班级、学生或知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></form><div class="chat-foot">只发送聚合摘要 · 回答中的 ID 可点击查看依据</div></section>`;
+}
+
+function chatWidget() {
+  return `<div id="chat-host">${chatOpen ? chatPanel() : ''}</div><button type="button" class="chat-fab ${chatOpen?'open':''}" id="chat-fab" aria-label="与 AI 对话" aria-expanded="${chatOpen}" title="与 AI 对话">${icon('chat',22)}<span>AI 学伴</span></button>`;
+}
+
+function scrollChat() {
+  const log = document.querySelector('#chat-log');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function renderChat() {
+  const host = document.querySelector('#chat-host');
+  if (host) host.innerHTML = chatOpen ? chatPanel() : '';
+  const fab = document.querySelector('#chat-fab');
+  if (fab) {
+    fab.classList.toggle('open', chatOpen);
+    fab.setAttribute('aria-expanded', String(chatOpen));
+  }
+  scrollChat();
+}
+
+async function sendChat(raw) {
+  const text = (raw || '').trim();
+  if (!text || chatBusy) return;
+  chatMessages.push({
+    role: 'user',
+    text
+  });
+  chatBusy = true;
+  renderChat();
+  try {
+    const data = await postJSON('/api/chat', {
+      message: text,
+      context: {
+        node_id: state.node,
+        group_id: state.group,
+        student_id: state.student
+      }
+    }, 'X-KnowFlow-Chat');
+    chatMessages.push({
+      role: 'assistant',
+      text: data.answer,
+      citations: data.citations || [],
+      source: data.source,
+      note: data.note
+    });
+  } catch (error) {
+    chatMessages.push({
+      role: 'assistant',
+      text: error.message,
+      error: true
+    });
+  } finally {
+    chatBusy = false;
+    renderChat();
+  }
+}
+
+async function postJSON(url, body, header = 'X-KnowFlow-Settings') {
   const send = () => fetch(url, {
     method: 'POST',
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
-      'X-KnowFlow-Settings': '1'
+      [header]: '1'
     },
     body: JSON.stringify(body)
   });
@@ -585,6 +667,21 @@ function settingsPage() {
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b) return;
+  if (b.id === 'chat-fab') {
+    chatOpen = !chatOpen;
+    renderChat();
+    if (chatOpen) document.querySelector('#chat-input')?.focus();
+    return;
+  }
+  if (b.hasAttribute('data-chat-close')) {
+    chatOpen = false;
+    renderChat();
+    return;
+  }
+  if (b.dataset.chatPrompt) {
+    sendChat(b.dataset.chatPrompt);
+    return;
+  }
   if (b.hasAttribute('data-close')) {
     closeDrawer();
     return;
@@ -689,6 +786,14 @@ document.addEventListener('input', event => {
   if (event.target.id === 'people') updateBudget();
 });
 document.addEventListener('submit', async event => {
+  if (event.target.id === 'chat-form') {
+    event.preventDefault();
+    const input = document.querySelector('#chat-input');
+    const text = input ? input.value : '';
+    if (input) input.value = '';
+    await sendChat(text);
+    return;
+  }
   if (event.target.id === 'settings-form') {
     event.preventDefault();
     const result = document.querySelector('#settings-result');
@@ -756,6 +861,20 @@ $('#drawer').addEventListener('click', event => {
 $('#drawer').addEventListener('cancel', () => {
   ++requestVersion;
   activeTask = null;
+});
+document.addEventListener('keydown', event => {
+  if (document.querySelector('#drawer')?.open) return;
+  if (event.key === 'Escape' && chatOpen) {
+    chatOpen = false;
+    renderChat();
+    return;
+  }
+  if (event.key === 'Enter' && !event.shiftKey && event.target.id === 'chat-input') {
+    event.preventDefault();
+    const value = event.target.value;
+    event.target.value = '';
+    sendChat(value);
+  }
 });
 window.addEventListener('storage', event => {
   if (event.key === 'knowflow.practice.v1' && D) {

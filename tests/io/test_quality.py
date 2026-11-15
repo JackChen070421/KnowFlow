@@ -6,8 +6,7 @@ import csv
 
 import pytest
 
-from knowflow.io import AdaptError, run_adapt
-from knowflow.io import quality
+from knowflow.io import AdaptError, quality, run_adapt
 from knowflow.io.adapters import parse_rubric
 
 RECORDS_REL = "4_赛题数据/模拟学情数据/作答记录.csv"

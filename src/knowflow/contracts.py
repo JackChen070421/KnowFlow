@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SCHEMA_GLOB = "schemas/**/*.schema.json"
 SCHEMA_ID_PREFIX = "https://knowflow.local/schemas/"
@@ -211,9 +212,16 @@ def check_repo(root: Path | None = None) -> list[str]:
     for rel in RESTRICTED_DIRS:
         errors.extend(_check_restricted_dir(base, rel))
 
+    # A local ``.env`` is how a developer configures the optional LLM edge, so its
+    # presence is expected; what must never happen is committing it.  Mirror the
+    # restricted-data rule and ask Git itself instead of forbidding the file.
     env_file = base / ".env"
     if env_file.exists():
-        errors.append(".env must not be committed; use .env.example for variable names")
+        ignored = _git_ignored(base, [".env"])
+        if ignored is not None and ".env" not in ignored:
+            errors.append(
+                ".env is on disk but not git-ignored; copy .env.example instead of committing it"
+            )
 
     gitignore_path = base / ".gitignore"
     if gitignore_path.is_file():

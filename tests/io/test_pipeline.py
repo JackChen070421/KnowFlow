@@ -71,7 +71,7 @@ def test_build_end_to_end(mini_dataset) -> None:  # type: ignore[no-untyped-def]
     assert bundle.counts() == EXPECTED_COUNTS
 
     registry = build_registry()
-    for name, filename in TABLES.items():
+    for name, _filename in TABLES.items():
         schema = load_json(repo_root() / "schemas" / "input" / f"{name}.schema.json")
         validator = Draft202012Validator(schema, registry=registry)
         rows = bundle.tables[name]

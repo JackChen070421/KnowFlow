@@ -6,7 +6,7 @@ import itertools
 import json
 from dataclasses import dataclass
 
-from ..cleaning.states import classify_state, state_counts
+from ..cleaning.states import classify_state, state_counts  # noqa: F401 - re-exported API
 from . import adapters, mapping
 from .errors import AdaptError
 

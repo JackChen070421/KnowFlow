@@ -9,6 +9,7 @@ from test_recommend import knowledge_base
 
 from knowflow.diagnosis.pipeline import run_diagnosis
 from knowflow.knowledge.pipeline import write_knowledge_base
+from knowflow.llm.settings_store import MANAGED_KEYS
 from knowflow.recommend.pipeline import recommend_run
 from knowflow.web.data import load_dashboard, read_json, record_summary, write_json
 from knowflow.web.server import create_server
@@ -135,6 +136,68 @@ def test_local_server_routes_and_explicit_evidence(dashboard_run):
             request("/api/material/" + data["knowledge_base"]["materials"][0]["material_id"])[0]
             == 200
         )
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+def test_settings_endpoint_is_local_and_csrf_protected(dashboard_run, tmp_path, monkeypatch):
+    for key in MANAGED_KEYS:
+        monkeypatch.setenv(key, "")
+    monkeypatch.setenv("KNOWFLOW_LLM_ENABLED", "false")
+    data = load_dashboard(dashboard_run)
+    env_file = tmp_path / ".env"
+    server = create_server(dashboard_run, data, port=0, settings_path=env_file)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+
+        def call(method, path, body=None, headers=None, host=None):
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            all_headers = dict(headers or {})
+            if host:
+                all_headers["Host"] = host
+            connection.request(method, path, body=body, headers=all_headers)
+            response = connection.getresponse()
+            payload = response.read()
+            status = response.status
+            connection.close()
+            return status, payload
+
+        status, payload = call("GET", "/api/settings/llm")
+        assert status == 200
+        assert json.loads(payload)["enabled"] is False
+
+        body = json.dumps(
+            {"enabled": True, "provider": "deepseek", "api_key": "sk-test-only"}
+        ).encode()
+        assert call("POST", "/api/settings/llm", body, {"Content-Type": "application/json"})[0] == 403
+        assert (
+            call(
+                "POST",
+                "/api/settings/llm",
+                body,
+                {"Content-Type": "application/json", "X-KnowFlow-Settings": "1"},
+                host="untrusted.example",
+            )[0]
+            == 403
+        )
+        status, payload = call(
+            "POST",
+            "/api/settings/llm",
+            body,
+            {"Content-Type": "application/json", "X-KnowFlow-Settings": "1"},
+        )
+        assert status == 200
+        assert json.loads(payload)["enabled"] is True
+        assert b"sk-test-only" not in payload
+        assert "KNOWFLOW_LLM_API_KEY=sk-test-only" in env_file.read_text(encoding="utf-8")
+
+        status, payload = call("GET", "/api/settings/llm")
+        assert status == 200
+        assert json.loads(payload)["api_key_set"] is True
+        assert b"sk-test-only" not in payload
     finally:
         server.shutdown()
         server.server_close()

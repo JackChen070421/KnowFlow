@@ -22,12 +22,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ENV_PREFIX = "KNOWFLOW_"
 
 
+def _env_file() -> str:
+    """Prefer the repository ``.env`` even when the process starts elsewhere.
+
+    The web settings page writes this file, so the server and a later CLI run
+    must resolve the same path regardless of the current directory.
+    """
+
+    root = Path(__file__).resolve().parents[2]
+    return str(root / ".env") if (root / "pyproject.toml").is_file() else ".env"
+
+
 class Settings(BaseSettings):
     """Runtime configuration; see ``.env.example`` for the full list."""
 
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
-        env_file=".env",
+        env_file=_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

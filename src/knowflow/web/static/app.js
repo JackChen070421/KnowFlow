@@ -15,7 +15,9 @@ import {
 
 let D, kb, storageOK = true,
   activeTask = null,
-  drawerOrigin = null;
+  drawerOrigin = null,
+  llmSettings = null,
+  settingsError = null;
 const params = new URLSearchParams(location.search);
 const state = {
   role: location.pathname === '/student' ? 'student' : 'teacher',
@@ -30,6 +32,7 @@ const state = {
   allHeatmap: false
 };
 const $ = s => document.querySelector(s);
+const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'settings' ? '设置' : '工作台');
 const nameFor = id => kb.knowledge.find(k => k.knowledge_id === id)?.name || id;
 const objectiveFor = id => kb.objectives.find(o => o.objective_id === id);
 const materialFor = id => kb.materials.find(m => m.material_id === id);
@@ -108,7 +111,7 @@ function normalize() {
   if (!D.nodes.some(n => n.node_id === state.node)) state.node = D.nodes.at(-1).node_id;
   if (!D.students.some(s => s.student_id === state.student)) state.student = D.students[0].student_id;
   if (!['ALL', ...groups()].includes(state.group)) state.group = 'ALL';
-  if (!navItems().some(x => x[0] === state.view)) state.view = 'overview';
+  if (![...navItems().map(x => x[0]), 'settings'].includes(state.view)) state.view = 'overview';
 }
 
 function navItems() {
@@ -126,8 +129,8 @@ function navItems() {
 }
 
 function shell() {
-  const active = navItems().find(n => n[0] === state.view);
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>让学习有迹可循</small></div></a><div class="sidebar-label">${state.role==='teacher'?'TEACHING WORKSPACE':'MY LEARNING SPACE'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="side-story"><div class="eyebrow">EVIDENCE INTO ACTION</div><h3>看见学习的联系<br>找到下一步方向</h3><p>课程要求 · 学情证据 · 学习行动<br>每一条建议，都有据可循。</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>知识 · 画像 · 建议，校验通过<br>赛事模拟数据 / 本机演示</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow / 从理解课程，到理解每一个学生。</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · 规则推荐 · 本机展示</span></footer></main></div>`;
+  const active = navItems().find(n => n[0] === state.view) || ['settings', '设置', 'settings'];
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>让学习有迹可循</small></div></a><div class="sidebar-label">${state.role==='teacher'?'TEACHING WORKSPACE':'MY LEARNING SPACE'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">EVIDENCE INTO ACTION</div><h3>看见学习的联系<br>找到下一步方向</h3><p>课程要求 · 学情证据 · 学习行动<br>每一条建议，都有据可循。</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>知识 · 画像 · 建议，校验通过<br>赛事模拟数据 / 本机演示</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow / 从理解课程，到理解每一个学生。</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · 规则推荐 · 本机展示</span></footer></main></div>`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -139,6 +142,7 @@ function filters(student = false) {
 }
 
 function content() {
+  if (state.view === 'settings') return settingsPage();
   if (state.role === 'student') {
     if (state.view === 'course') return coursePage(true);
     if (state.view === 'plan') return studentPlans();
@@ -413,7 +417,15 @@ function render() {
   normalize();
   saveURL();
   $('#app').innerHTML = shell();
-  document.title = `${navItems().find(x=>x[0]===state.view)[1]} · KnowFlow`;
+  document.title = `${viewLabel(state.view)} · KnowFlow`;
+  if (state.view === 'settings' && !llmSettings && !settingsError) {
+    ensureSettings().then(() => {
+      if (state.view === 'settings') render();
+    }).catch(error => {
+      settingsError = error.message;
+      if (state.view === 'settings') render();
+    });
+  }
   if (state.view === 'explore') {
     if (state.lab === 'axis') updateAxis();
     else updateBudget();
@@ -467,6 +479,86 @@ function exportSummary() {
   toast('已导出本机摘要，请勿将学生成果提交公开仓库。');
 }
 
+async function postJSON(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-KnowFlow-Settings': '1'
+    },
+    body: JSON.stringify(body)
+  });
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {}
+  if (!response.ok) throw Error(data.error || `保存失败（${response.status}）`);
+  return data;
+}
+
+async function ensureSettings() {
+  if (llmSettings) return llmSettings;
+  llmSettings = await getJSON('/api/settings/llm');
+  return llmSettings;
+}
+
+function settingsPage() {
+  if (settingsError) {
+    return `${hero('SETTINGS / 06','设置暂时读不到。','后端没有返回本机配置，请确认启动窗口仍在运行。')}<section class="panel"><div class="error-box">${esc(settingsError)}</div><button class="button light section-gap" data-view="settings">重试 ${icon('arrow',14)}</button></section>`;
+  }
+  if (!llmSettings) {
+    return `${hero('SETTINGS / 06','正在读取本机配置…','设置只写这台电脑上的 .env，不会离开本机。')}<section class="panel"><div class="empty">读取中…</div></section>`;
+  }
+  const s = llmSettings;
+  const provider = s.providers.find(p => p.value === s.provider) || s.providers[0];
+  return `${hero('SETTINGS / 06','把模型接进来，但数字仍由代码算。','这里改的是本机后端配置；保存后对之后生成的建议生效，页面上已有成果不会自动重算。')}
+  <div class="settings-grid">
+    <section class="panel">
+      ${panelHead('LLM 文字层','只改写 reason/check；输出要过数字锁与 ID 锁，失败逐条回退模板。','<span class="pill">本机设置</span>')}
+      <form id="settings-form" class="settings-form" autocomplete="off">
+        <label class="switch">
+          <input type="checkbox" id="llm-enabled" ${s.enabled ? 'checked' : ''}>
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-copy"><strong>启用 LLM 模式</strong><small>关闭时只用规则模板，不产生任何外部请求。</small></span>
+        </label>
+        <div id="llm-config" class="llm-config" ${s.enabled ? '' : 'hidden'}>
+          <div class="field">
+            <label for="llm-provider">模型厂商</label>
+            <select id="llm-provider">${s.providers.map(p => `<option value="${esc(p.value)}" ${p.value === s.provider ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select>
+          </div>
+          <div class="field">
+            <label for="llm-api-key">API Key</label>
+            <input id="llm-api-key" type="password" value="" maxlength="200" autocomplete="new-password" placeholder="${s.api_key_set ? '已保存；留空表示不修改' : '粘贴 API Key'}">
+            <small>只写入本机 .env（Git 忽略），不会回显，也不会进入页面快照。</small>
+          </div>
+          <div class="settings-row">
+            <div class="field"><label for="llm-model">模型</label><input id="llm-model" value="${esc(s.model)}" maxlength="100"></div>
+            <div class="field"><label for="llm-base-url">Base URL</label><input id="llm-base-url" value="${esc(s.base_url)}" maxlength="200"></div>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="button primary" type="submit">保存设置</button>
+          <span id="settings-result" class="settings-result" role="status"></span>
+        </div>
+      </form>
+    </section>
+    <section class="panel">
+      ${panelHead('当前状态','后端已解析的值；保存成功后立即刷新。')}
+      <div class="settings-status">
+        <div><span>开关</span><strong>${s.enabled ? '已启用' : '未启用'}</strong></div>
+        <div><span>可调用</span><strong>${s.ready ? '是' : '否（缺 Key 或未启用）'}</strong></div>
+        <div><span>厂商</span><strong>${esc(provider.label)}</strong></div>
+        <div><span>模型</span><strong>${esc(s.model)}</strong></div>
+        <div><span>API Key</span><strong>${s.api_key_set ? '已保存' : '未保存'}</strong></div>
+        <div><span>写入文件</span><code>${esc(s.env_file)}</code></div>
+      </div>
+      <div class="notice"><strong>生效方式：</strong>保存只改后端配置，已有成果不自动重算。要让页面里的建议文字也更新：<br><code>python -m knowflow.web --refresh --llm</code></div>
+      <div class="notice"><strong>边界：</strong>模型只接收聚合摘要（计数、比率、状态），不接收原始作答；输出必须引用 issue_id 与真实材料 ID。</div>
+    </section>
+  </div>`;
+}
+
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b) return;
@@ -476,6 +568,10 @@ document.addEventListener('click', event => {
   }
   if (b.dataset.view) {
     state.view = b.dataset.view;
+    if (state.view === 'settings') {
+      llmSettings = null;
+      settingsError = null;
+    }
     render();
     window.scrollTo(0, 0);
     return;
@@ -530,6 +626,19 @@ document.addEventListener('click', event => {
   if (b.hasAttribute('data-export')) exportSummary();
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'llm-enabled') {
+    const config = document.querySelector('#llm-config');
+    if (config) config.hidden = !event.target.checked;
+  }
+  if (event.target.id === 'llm-provider') {
+    const preset = llmSettings?.providers.find(p => p.value === event.target.value);
+    if (preset && preset.value !== 'custom') {
+      const model = document.querySelector('#llm-model');
+      const baseUrl = document.querySelector('#llm-base-url');
+      if (model) model.value = preset.model;
+      if (baseUrl) baseUrl.value = preset.base_url;
+    }
+  }
   if (event.target.id === 'node-select') {
     state.node = event.target.value;
     render();
@@ -556,7 +665,27 @@ document.addEventListener('input', event => {
   if (event.target.id === 'factor') updateAxis();
   if (event.target.id === 'people') updateBudget();
 });
-document.addEventListener('submit', event => {
+document.addEventListener('submit', async event => {
+  if (event.target.id === 'settings-form') {
+    event.preventDefault();
+    const result = document.querySelector('#settings-result');
+    if (result) result.textContent = '正在保存…';
+    try {
+      llmSettings = await postJSON('/api/settings/llm', {
+        enabled: document.querySelector('#llm-enabled').checked,
+        provider: document.querySelector('#llm-provider').value,
+        model: document.querySelector('#llm-model').value.trim(),
+        base_url: document.querySelector('#llm-base-url').value.trim(),
+        api_key: document.querySelector('#llm-api-key').value
+      });
+      settingsError = null;
+      render();
+      toast('LLM 设置已保存到本机 .env');
+    } catch (error) {
+      if (result) result.textContent = error.message;
+    }
+    return;
+  }
   if (event.target.id === 'student-form') {
     event.preventDefault();
     const id = $('#student-id').value.trim().toUpperCase();

@@ -171,6 +171,7 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - **数字锁/ID 锁**：输出中的数字与 ID 必须来自输入白名单；不合规重试 ≤2 后降级模板。
 - `llm.enabled=false` 时全流程必须能跑通（模板/规则），LLM 可关闭。
 - 实现位于 `src/knowflow/llm/`：`summary.py` 构造白名单摘要，`guard.py` 做 schema/数字/ID 三重检查，`service.py` 负责重试与回退；`recommend --llm` 与 `explain` 是仅有的调用入口。`run_manifest.json` 的 `llm` 块必须记录实际使用、回退与错误，不得把回退写成“已用模型”。
+- 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
 - prompt 与代码同审；不把真实数据/密钥/姓名放进 prompt 或示例。
 
 ## 10. 数据安全
@@ -237,6 +238,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.17 | 2026-11-15 | 网页「设置」：侧栏齿轮 + LLM 开关/厂商/Key，写入本机 `.env`（回环 + 请求头校验、Key 不回显）；测试 146 项 |
 | v0.16 | 2026-11-15 | 接入可选的 LLM 文字层（summary-only、数字/ID 锁、重试 2 次回退模板）；新增 `explain` 与 `recommend --llm`；`.env` 契约改为“必须被 Git 忽略”；测试 139 项 |
 | v0.15 | 2026-11-15 | 本机双视角展示层、隔离成果目录、课程与学情可视化、本机练习与自编实验；公共契约不变；131 项测试 |
 | v0.14 | 2026-11-14 | 任务3规则版落地：`recommend/`、`recommend` / `verify-recommend`、契约 v0.6（`node_id`/`activity_type`/数字锁/probe 未作答）；更新分层状态、质量门与命令；测试 125 项 |

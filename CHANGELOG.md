@@ -10,6 +10,19 @@
 
 ---
 
+## 2026-11-15 — 网页设置面板：LLM 开关与配置
+
+**本机未提交** · `feat/web-llm-settings`
+
+- 侧栏新增齿轮「设置」；页面内提供 LLM 开关、厂商（DeepSeek/OpenAI/通义千问/自定义）、API Key、模型与 Base URL。
+- 新增 `src/knowflow/llm/settings_store.py`：校验后原子改写本机 `.env`，保留其他行；Key 只写不读，接口仅返回 `api_key_set`。
+- 后端新增 `GET/POST /api/settings/llm`：仍只监听回环，POST 要求 `X-KnowFlow-Settings` 头（跨站预检不会通过）并限制 8 KB；请求体先读后判，避免 Windows 连接重置。
+- `.env` 路径固定为仓库根目录，网页保存与后续 CLI 读取同一份配置；保存只改配置，不自动重算已有成果。
+- 验证：`pytest 146 passed`（新增设置存储与接口测试）；`ruff check` 通过；实际启动后 GET 返回脱敏配置、POST 保存 200、缺头 403、Key 未出现在响应中；前端 `node --check` 通过。
+- 回退：移除设置页与 `/api/settings/llm`、删除 `settings_store.py`；LLM 文字层仍可通过 `.env` + `--llm` 使用。
+
+---
+
 ## 2026-11-15 — LLM 文字层接入与仓库清洗
 
 **本机未提交** · `feat/llm-edge`

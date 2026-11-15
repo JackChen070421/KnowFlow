@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlsplit
 
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import export_evidence
+from knowflow.llm.settings_store import read_llm_settings, save_llm_settings
 from knowflow.web.data import read_json
 
 STATIC = Path(__file__).with_name("static")
@@ -18,9 +19,15 @@ ASSETS = {
     "/styles.css": "text/css",
     "/favicon.svg": "image/svg+xml",
 }
+MAX_SETTINGS_BODY = 8192
 
 
-def create_server(run: Path, snapshot: dict, port: int = 8765) -> ThreadingHTTPServer:
+def create_server(
+    run: Path,
+    snapshot: dict,
+    port: int = 8765,
+    settings_path: Path | None = None,
+) -> ThreadingHTTPServer:
     materials = {m["material_id"]: m for m in read_json(run / "knowledge_base.json")["materials"]}
     raw = (repo_root() / "data/raw" / snapshot["meta"]["dataset_id"]).resolve()
     documents = {}
@@ -66,12 +73,14 @@ def create_server(run: Path, snapshot: dict, port: int = 8765) -> ThreadingHTTPS
         def do_HEAD(self):
             self.do_GET()
 
-        def do_GET(self):
-            allowed = {
+        def allowed_host(self) -> bool:
+            return self.headers.get("Host") in {
                 f"127.0.0.1:{self.server.server_port}",
                 f"localhost:{self.server.server_port}",
             }
-            if self.headers.get("Host") not in allowed:
+
+        def do_GET(self):
+            if not self.allowed_host():
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
@@ -81,6 +90,8 @@ def create_server(run: Path, snapshot: dict, port: int = 8765) -> ThreadingHTTPS
                 self.respond((STATIC / path[1:]).read_bytes(), ASSETS[path])
             elif path == "/api/snapshot":
                 self.respond(snapshot_bytes, "application/json")
+            elif path == "/api/settings/llm":
+                self.json(read_llm_settings())
             elif (
                 path.startswith("/api/document/")
                 and path.removeprefix("/api/document/") in documents
@@ -104,5 +115,51 @@ def create_server(run: Path, snapshot: dict, port: int = 8765) -> ThreadingHTTPS
                     self.json({"error": "原始证据文件不可用或已变化，请重新生成展示数据。"}, 409)
             else:
                 self.json({"error": "没有找到该页面或资料。"}, 404)
+
+        def do_POST(self):
+            # Loopback-only, same-origin-only settings write. The custom header
+            # forces a CORS preflight, which this server never answers, so a
+            # random web page cannot silently overwrite the local config.
+            # Drain the (small) body first: answering before reading it makes
+            # Windows reset the connection instead of delivering the 4xx.
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if length > MAX_SETTINGS_BODY:
+                self.close_connection = True
+                self.json({"error": "请求体过大。"}, 413)
+                return
+            body = self.rfile.read(length) if length > 0 else b""
+            if not self.allowed_host():
+                self.json({"error": "仅允许本机访问。"}, 403)
+                return
+            path = unquote(urlsplit(self.path).path)
+            if path != "/api/settings/llm":
+                self.json({"error": "没有找到该接口。"}, 404)
+                return
+            if self.headers.get("X-KnowFlow-Settings") != "1":
+                self.json({"error": "缺少本机设置请求头，已拒绝写入。"}, 403)
+                return
+            content_type = (
+                (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            )
+            if content_type != "application/json":
+                self.json({"error": "请求必须是 application/json。"}, 415)
+                return
+            if not body:
+                self.json({"error": "请求体为空。"}, 400)
+                return
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self.json({"error": "请求体不是合法 JSON。"}, 400)
+                return
+            try:
+                settings = save_llm_settings(payload, path=settings_path)
+            except ValueError as exc:
+                self.json({"error": str(exc)}, 400)
+                return
+            self.json(settings)
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)

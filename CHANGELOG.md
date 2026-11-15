@@ -10,6 +10,17 @@
 
 ---
 
+## 2026-11-15 — 合并 origin/main（PR #19）并推送
+
+**待推送** · `main` ← `origin/main`
+
+- 远端 PR #19 改了 `.env` 契约检查（`_git_tracked` + `_git_ignored`）；本地已有同类改动，合并时保留远端实现，本地 LLM/设置页提交重放到其后。
+- 冲突处理：`contracts.py` 采用远端 `.env` 分支；`AGENT.md` 版本表调整为先契约检查（v0.16）、再 LLM（v0.17）、再设置页（v0.18）；`CHANGELOG.md` 两边条目按时间合并且不丢记录。
+- 验证：合并后 `pytest 149 passed`（含远端新增 `.env` 回归测试）；`ruff`、`check_contracts` 通过。
+- 回退：`git revert -m 1 <merge>` 可退回合并前，本地 6 个提交仍在。
+
+---
+
 ## 2026-11-15 — 密钥泄露审计与错误脱敏
 
 **本机未提交** · `fix/secret-redaction`
@@ -71,6 +82,18 @@
 - 清洗：删除静态原型 `webui-prototype/`、缓存目录与旧 artifacts，保留当前 `knowflow.web` 与 harness 文档。
 - 验证：`pytest 139 passed`；`check_contracts` / `check_examples` / 两个 fixture / `verify-run` / `verify-recommend` 全部通过；**未调用真实 API**。
 - 回退：移除 `llm/` 与 `--llm`/`explain`，恢复旧 `.env` 检查；规则版不受影响。
+
+---
+
+## 2026-11-15 — 契约检查：本地 `.env` 允许存在，只禁止被提交
+
+**待合并** · `fix/env-tracked-check` → `main`
+
+- `contracts.check_repo()` 不再“磁盘上看到 `.env` 就报错”：改为问 Git——`git ls-files` 判断是否被跟踪、`git check-ignore` 判断是否被忽略；本地持有 `.env`（放 DeepSeek key）是文档允许的正常状态，风险只在提交。
+- 新增 `_git_tracked()`；Git 不可用时退化为只报“未被忽略”，不把本地文件当违规。
+- 影响：本地有 `.env` 的开发者跑 `pytest` 与 `check_contracts.py` 不再假红；CI（无 `.env`）行为不变。
+- 验证：`pytest 132 passed`（含新增 `test_local_env_is_allowed_but_tracked_env_is_not`）；`check_contracts.py` 通过；`git add -f .env` 时报 `tracked by Git`。
+- 回退：revert 本提交即恢复“存在即报错”；只影响检查逻辑，不碰 schema 与产物。
 
 ---
 

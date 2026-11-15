@@ -76,7 +76,7 @@ Set-Location 'D:\桌面\KnowFlow'
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、ID 锁、重试 2 次降级模板 | ✅ 可选，默认关闭 |
-| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 154 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 156 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：

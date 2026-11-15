@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-15 · v0.19
+> 最后更新：2026-11-15 · v0.20
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -239,6 +239,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.20 | 2026-11-15 | 放宽对话数字校验：允许四舍五入/百分比换算、0–10 小序数与年份；ID 白名单扩到快照全部真实 ID；首次不合格带反馈重试；测试 156 项 |
 | v0.19 | 2026-11-15 | 左下角「AI 学伴」对话：`llm/chat.py` 事实卡 + 数字/ID 锁 + 规则兜底；`POST /api/chat`（回环 + 专用请求头）；前端悬浮按钮/面板/引用跳转；测试 154 项 |
 | v0.18 | 2026-11-15 | 网页「设置」：侧栏齿轮 + LLM 开关/厂商/Key，写入本机 `.env`（回环 + 请求头校验、Key 不回显）；错误脱敏与单实例保护；测试 149 项 |
 | v0.17 | 2026-11-15 | 接入可选的 LLM 文字层（summary-only、数字/ID 锁、重试 2 次回退模板）；新增 `explain` 与 `recommend --llm`；测试 139 项 |

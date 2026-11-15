@@ -503,7 +503,7 @@ function chatLog() {
   if (!chatMessages.length) {
     return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
   }
-  return chatMessages.map(message => `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${message.source?`<small class="chat-source">${message.source === 'llm' ? 'LLM 生成 · 已过数字/ID 校验' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`).join('');
+  return chatMessages.map(message => `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${message.source?`<small class="chat-source">${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`).join('');
 }
 
 function chatPanel() {

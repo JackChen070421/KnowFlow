@@ -267,7 +267,7 @@ def test_chat_falls_back_to_rules_without_a_client(dashboard_run, monkeypatch):
     assert "synthetic-private-answer" not in json.dumps(result, ensure_ascii=False)
 
 
-def test_chat_rejects_unlocked_numbers_and_falls_back(dashboard_run, monkeypatch):
+def test_chat_rejects_fabricated_numbers_and_falls_back(dashboard_run, monkeypatch):
     data = load_dashboard(dashboard_run)
     client = SequenceClient(["S002 的班级共有 999 人需要补课。"])
     result = answer_question(
@@ -278,7 +278,48 @@ def test_chat_rejects_unlocked_numbers_and_falls_back(dashboard_run, monkeypatch
     )
     assert result["source"] == "rules"
     assert "999" not in result["answer"]
-    assert "未通过" in (result.get("note") or "")
+    assert "无法核对" in (result.get("note") or "")
+    assert client.calls == 2
+
+
+def test_chat_accepts_rounded_numbers_and_small_ordinals(dashboard_run):
+    data = load_dashboard(dashboard_run)
+
+    def rounded(user: str) -> str:
+        payload = user.split("FACTS（唯一可用信息）：\n", 1)[1].split("\n\n用户问题：", 1)[0]
+        facts = json.loads(payload)
+        student = facts["student"]
+        percent = round(student["coverage"]["ratio"] * 100)
+        return f"{student['id']} 的观测覆盖约 {percent}%，建议先补 3 个知识点。"
+
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=SequenceClient([rounded]),
+    )
+    assert result["source"] == "llm"
+
+
+def test_chat_retries_with_feedback_before_falling_back(dashboard_run):
+    data = load_dashboard(dashboard_run)
+
+    def grounded(user: str) -> str:
+        payload = user.split("FACTS（唯一可用信息）：\n", 1)[1].split("\n\n用户问题：", 1)[0]
+        facts = json.loads(payload)
+        student = facts.get("student", {}).get("id") or facts["class"]["id"]
+        knowledge = facts["knowledge"][0]["id"] if facts.get("knowledge") else "课程要求"
+        return f"{student} 目前优先关注 {knowledge}；具体材料见学习建议。"
+
+    client = SequenceClient(["S002 共有 999 人。", grounded])
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=client,
+    )
+    assert result["source"] == "llm"
+    assert client.calls == 2
 
 
 def test_chat_accepts_grounded_answer_from_client(dashboard_run):
@@ -318,7 +359,7 @@ def test_chat_reports_model_call_failure(dashboard_run):
         client=BrokenClient(),
     )
     assert result["source"] == "rules"
-    assert "调用失败" in (result.get("note") or "")
+    assert "调用不通" in (result.get("note") or "")
 
 
 def test_chat_endpoint_is_local_and_validates_input(dashboard_run, monkeypatch):

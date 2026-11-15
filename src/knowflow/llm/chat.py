@@ -212,6 +212,56 @@ def allowed_sets(facts: dict) -> tuple[set[float], set[str]]:
     return numbers, ids
 
 
+def snapshot_ids(snapshot: dict) -> set[str]:
+    """Every real ID in the snapshot; citing one is verifiable even outside the card."""
+
+    ids: set[str] = set()
+    for student in snapshot["students"]:
+        ids.add(student["student_id"])
+        ids.add(student["group_id"])
+    for node in snapshot["nodes"]:
+        ids.add(node["node_id"])
+    kb = snapshot["knowledge_base"]
+    for item in kb["knowledge"]:
+        ids.add(item["knowledge_id"])
+        ids.add(item["objective_id"])
+    for item in kb["materials"]:
+        ids.add(item["material_id"])
+    for node_profiles in snapshot["profiles"].values():
+        for profile in node_profiles.values():
+            for issue in profile.get("issues", []):
+                ids.add(issue["issue_id"])
+    for record in snapshot["records"]:
+        ids.add(record["record_id"])
+    return ids
+
+
+def _number_ok(value: float, allowed: set[float]) -> bool:
+    """Accept exact facts plus reasonable rounding of them.
+
+    A model may write "24%" for 0.2422 or "约 67%" for 0.666667; those are still
+    traceable.  Small ordinals ("3 个步骤") and years are harmless.  A fabricated
+    count such as "999 人" stays rejected.
+    """
+
+    if value in allowed:
+        return True
+    if float(value).is_integer():
+        integer = int(value)
+        if 0 <= integer <= 10 or 2000 <= integer <= 2100:
+            return True
+    for base in allowed:
+        if abs(value - base) <= 0.005:
+            return True
+        if 0 < base < 1 and abs(value / 100 - base) <= 0.015:
+            return True
+        if abs(value - base * 100) <= 1.5:
+            return True
+        if float(value).is_integer() and abs(value - round(base)) <= 0.5:
+            return True
+    return False
+
+
 def validate_answer(answer: str, numbers: set[float], ids: set[str]) -> list[str]:
     problems: list[str] = []
     text = (answer or "").strip()
@@ -219,7 +269,7 @@ def validate_answer(answer: str, numbers: set[float], ids: set[str]) -> list[str
         problems.append("empty answer")
     if len(text) > MAX_ANSWER:
         problems.append("answer too long")
-    unlocked = {float(value) for value in NUMBER.findall(text)} - numbers
+    unlocked = {float(value) for value in NUMBER.findall(text) if not _number_ok(float(value), numbers)}
     if unlocked:
         problems.append(f"numbers outside facts: {sorted(unlocked)}")
     unknown = set(ID.findall(text)) - ids
@@ -304,24 +354,27 @@ def answer_question(
         raise ValueError("问题过长，请控制在 500 字以内")
     facts = build_facts(snapshot, text, context)
     numbers, ids = allowed_sets(facts)
+    ids |= snapshot_ids(snapshot)
 
     llm = client if client is not None else build_client(get_settings())
     note = None
     llm_failed = False
     if llm is not None:
-        user_prompt = (
+        base_prompt = (
             "FACTS（唯一可用信息）：\n"
             + json.dumps(facts, ensure_ascii=False)
             + "\n\n用户问题："
             + text
         )
+        feedback = ""
         for _ in range(2):
             try:
-                answer = llm.complete(SYSTEM_PROMPT, user_prompt).strip()
+                answer = llm.complete(SYSTEM_PROMPT, base_prompt + feedback).strip()
             except Exception:
                 llm_failed = True
                 break
-            if not validate_answer(answer, numbers, ids):
+            problems = validate_answer(answer, numbers, ids)
+            if not problems:
                 citations = sorted(set(ID.findall(answer)))[:8]
                 return {
                     "answer": answer,
@@ -329,14 +382,19 @@ def answer_question(
                     "citations": citations,
                     "model": getattr(llm, "model", "unknown"),
                 }
+            feedback = (
+                "\n\n上一次回答没有通过核对："
+                + "；".join(problems)
+                + "。请改写：只使用 FACTS 中的数字，能不用数字就不用；ID 必须真实存在。"
+            )
     else:
         note = "未启用 LLM：当前为本地规则回答。可在左下角「设置」中开启。"
 
     if llm is not None:
         note = (
-            "模型调用失败，已回退为本地规则回答。"
+            "模型暂时调用不通，已改用本地规则回答。"
             if llm_failed
-            else "模型回答未通过数字/ID 校验，已回退为本地规则回答。"
+            else "模型这次给了无法核对的数字或编号，已改用本地规则回答。"
         )
     answer = rules_answer(facts)
     return {

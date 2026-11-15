@@ -11,6 +11,7 @@ from urllib.parse import unquote, urlsplit
 
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import export_evidence
+from knowflow.llm.chat import answer_question
 from knowflow.llm.settings_store import read_llm_settings, save_llm_settings
 from knowflow.web.data import read_json
 
@@ -22,6 +23,7 @@ ASSETS = {
     "/favicon.svg": "image/svg+xml",
 }
 MAX_SETTINGS_BODY = 8192
+MAX_CHAT_BODY = 16384
 
 
 class LocalHTTPServer(ThreadingHTTPServer):
@@ -135,16 +137,16 @@ def create_server(
                 self.json({"error": "没有找到该页面或资料。"}, 404)
 
         def do_POST(self):
-            # Loopback-only, same-origin-only settings write. The custom header
-            # forces a CORS preflight, which this server never answers, so a
-            # random web page cannot silently overwrite the local config.
-            # Drain the (small) body first: answering before reading it makes
-            # Windows reset the connection instead of delivering the 4xx.
+            # Loopback-only, same-origin-only writes. The custom headers force a
+            # CORS preflight, which this server never answers, so a random web
+            # page cannot silently write settings or ask questions.
+            # Drain the body first: answering before reading it makes Windows
+            # reset the connection instead of delivering the 4xx.
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = 0
-            if length > MAX_SETTINGS_BODY:
+            if length > MAX_CHAT_BODY:
                 self.close_connection = True
                 self.json({"error": "请求体过大。"}, 413)
                 return
@@ -153,11 +155,14 @@ def create_server(
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
-            if path != "/api/settings/llm":
+            if path not in ("/api/settings/llm", "/api/chat"):
                 self.json({"error": "没有找到该接口。"}, 404)
                 return
-            if self.headers.get("X-KnowFlow-Settings") != "1":
-                self.json({"error": "缺少本机设置请求头，已拒绝写入。"}, 403)
+            required_header = (
+                "X-KnowFlow-Settings" if path == "/api/settings/llm" else "X-KnowFlow-Chat"
+            )
+            if self.headers.get(required_header) != "1":
+                self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
                 return
             content_type = (
                 (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -173,19 +178,44 @@ def create_server(
             except (UnicodeDecodeError, json.JSONDecodeError):
                 self.json({"error": "请求体不是合法 JSON。"}, 400)
                 return
+            if not isinstance(payload, dict):
+                self.json({"error": "请求体必须是 JSON 对象。"}, 400)
+                return
+
+            if path == "/api/settings/llm":
+                if length > MAX_SETTINGS_BODY:
+                    self.json({"error": "请求体过大。"}, 413)
+                    return
+                try:
+                    settings = save_llm_settings(payload, path=settings_path)
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                    return
+                except Exception as exc:  # write/permission/parse errors stay HTTP
+                    traceback.print_exc()
+                    self.json(
+                        {"error": f"保存失败（{type(exc).__name__}）：请查看启动窗口日志，"
+                         "或手工检查本机 .env 是否可写。"},
+                        500,
+                    )
+                    return
+                self.json(settings)
+                return
+
+            question = payload.get("message")
+            context = payload.get("context") or {}
+            if not isinstance(question, str) or not isinstance(context, dict):
+                self.json({"error": "message 必须是字符串，context 必须是对象。"}, 400)
+                return
             try:
-                settings = save_llm_settings(payload, path=settings_path)
+                result = answer_question(snapshot=snapshot, message=question, context=context)
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)
                 return
-            except Exception as exc:  # write/permission/parse errors stay HTTP
+            except Exception:  # never drop the connection on a chat failure
                 traceback.print_exc()
-                self.json(
-                    {"error": f"保存失败（{type(exc).__name__}）：请查看启动窗口日志，"
-                     "或手工检查本机 .env 是否可写。"},
-                    500,
-                )
+                self.json({"error": "回答生成失败，请查看启动窗口日志后重试。"}, 500)
                 return
-            self.json(settings)
+            self.json(result)
 
     return LocalHTTPServer(("127.0.0.1", port), Handler)

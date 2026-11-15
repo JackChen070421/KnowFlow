@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-15 — 左下角 AI 对话窗口
+
+**本机未提交** · `feat/chat-widget`
+
+- 新增 `src/knowflow/llm/chat.py`：从已校验快照构造事实卡（计数/状态/ID/建议，不含原始作答），模型回答必须通过数字与 ID 白名单；连续两次不合格或无 Key 时回退本地规则回答。
+- 新增 `POST /api/chat`：仅回环、要求 `X-KnowFlow-Chat` 头、16 KB 上限；异常返回 JSON，不重置连接。
+- 前端左下角悬浮「AI 学伴」按钮 + 对话面板：欢迎问题、上下文标签（节点/班级/学生）、引用 chip 可点开知识点或材料、Enter 发送、Esc 关闭；`?chat=1` 直接展开。
+- 验证：`pytest 154 passed`（新增规则兜底、数字锁拦截、模型回答、接口鉴权 5 项）；`ruff`、`node --check` 通过；实际启动后规则回答与 Edge 无头截图核对。
+- 回退：移除 `chat.py`、`/api/chat` 与 `chat-fab` 相关前端/样式；其余功能不受影响。
+
+---
+
 ## 2026-11-15 — 合并 origin/main（PR #19）并推送
 
 **待推送** · `main` ← `origin/main`

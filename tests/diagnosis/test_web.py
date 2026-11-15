@@ -5,10 +5,12 @@ import threading
 from http.client import HTTPConnection
 
 import pytest
+from test_llm import SequenceClient
 from test_recommend import knowledge_base
 
 from knowflow.diagnosis.pipeline import run_diagnosis
 from knowflow.knowledge.pipeline import write_knowledge_base
+from knowflow.llm.chat import answer_question
 from knowflow.llm.settings_store import MANAGED_KEYS
 from knowflow.recommend.pipeline import recommend_run
 from knowflow.web.data import load_dashboard, read_json, record_summary, write_json
@@ -246,6 +248,119 @@ def test_settings_errors_return_json_instead_of_dropping_the_connection(
         status, payload = call("GET", "/api/settings/llm")
         assert status == 500
         assert "读取设置失败" in json.loads(payload)["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+def test_chat_falls_back_to_rules_without_a_client(dashboard_run, monkeypatch):
+    monkeypatch.setattr("knowflow.llm.chat.build_client", lambda settings: None)
+    data = load_dashboard(dashboard_run)
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+    )
+    assert result["source"] == "rules"
+    assert "S002" in result["answer"]
+    assert "synthetic-private-answer" not in json.dumps(result, ensure_ascii=False)
+
+
+def test_chat_rejects_unlocked_numbers_and_falls_back(dashboard_run, monkeypatch):
+    data = load_dashboard(dashboard_run)
+    client = SequenceClient(["S002 的班级共有 999 人需要补课。"])
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=client,
+    )
+    assert result["source"] == "rules"
+    assert "999" not in result["answer"]
+    assert "未通过" in (result.get("note") or "")
+
+
+def test_chat_accepts_grounded_answer_from_client(dashboard_run):
+    data = load_dashboard(dashboard_run)
+
+    def grounded(user: str) -> str:
+        payload = user.split("FACTS（唯一可用信息）：\n", 1)[1].split("\n\n用户问题：", 1)[0]
+        facts = json.loads(payload)
+        student = facts.get("student", {}).get("id") or facts["class"]["id"]
+        knowledge = facts["knowledge"][0]["id"] if facts.get("knowledge") else "课程要求"
+        return f"{student} 目前优先关注 {knowledge}；具体材料与验证标准见学习建议。"
+
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=SequenceClient([grounded]),
+    )
+    assert result["source"] == "llm"
+    assert result["citations"]
+
+
+def test_chat_reports_model_call_failure(dashboard_run):
+    data = load_dashboard(dashboard_run)
+
+    class BrokenClient:
+        provider = "fake"
+        model = "fake-model"
+
+        def complete(self, system: str, user: str) -> str:
+            raise RuntimeError("timeout")
+
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=BrokenClient(),
+    )
+    assert result["source"] == "rules"
+    assert "调用失败" in (result.get("note") or "")
+
+
+def test_chat_endpoint_is_local_and_validates_input(dashboard_run, monkeypatch):
+    monkeypatch.setattr("knowflow.llm.chat.build_client", lambda settings: None)
+    data = load_dashboard(dashboard_run)
+    server = create_server(dashboard_run, data, port=0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+
+        def call(body, headers=None):
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            connection.request(
+                "POST", "/api/chat", body=body, headers=headers or {}
+            )
+            response = connection.getresponse()
+            payload = response.read()
+            status = response.status
+            connection.close()
+            return status, payload
+
+        body = json.dumps(
+            {
+                "message": "S002 现在最需要补什么？",
+                "context": {"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+            }
+        ).encode()
+        assert call(body, {"Content-Type": "application/json"})[0] == 403
+        status, payload = call(
+            body,
+            {"Content-Type": "application/json", "X-KnowFlow-Chat": "1"},
+        )
+        assert status == 200
+        answer = json.loads(payload)
+        assert answer["source"] == "rules"
+        assert b"synthetic-private-answer" not in payload
+
+        empty = json.dumps({"message": ""}).encode()
+        status, _ = call(
+            empty, {"Content-Type": "application/json", "X-KnowFlow-Chat": "1"}
+        )
+        assert status == 400
     finally:
         server.shutdown()
         server.server_close()

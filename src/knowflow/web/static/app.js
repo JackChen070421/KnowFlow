@@ -426,7 +426,9 @@ function render() {
     }).catch(error => {
       settingsError = error.status === 404
         ? '当前后端进程还是旧版本，没有设置接口。请关闭所有启动窗口后重新运行 start-dashboard.cmd（不要同时开多个）。'
-        : error.message;
+        : error instanceof TypeError
+          ? '无法连接本机后端：请确认启动窗口仍在运行（不要关闭它），然后刷新页面重试。'
+          : error.message;
       if (state.view === 'settings') render();
     });
   }
@@ -484,7 +486,7 @@ function exportSummary() {
 }
 
 async function postJSON(url, body) {
-  const response = await fetch(url, {
+  const send = () => fetch(url, {
     method: 'POST',
     cache: 'no-store',
     headers: {
@@ -493,11 +495,28 @@ async function postJSON(url, body) {
     },
     body: JSON.stringify(body)
   });
+  let response;
+  try {
+    response = await send();
+  } catch {
+    // A restarted dashboard can reset one keep-alive socket; retry once, then
+    // tell the user the backend is gone instead of leaking "Failed to fetch".
+    await new Promise(resolve => setTimeout(resolve, 400));
+    try {
+      response = await send();
+    } catch {
+      throw Error('无法连接本机后端：请确认启动窗口仍在运行（不要关闭它），然后刷新页面重试。');
+    }
+  }
   let data = {};
   try {
     data = await response.json();
   } catch {}
-  if (!response.ok) throw Error(data.error || `保存失败（${response.status}）`);
+  if (!response.ok) {
+    const error = Error(data.error || `保存失败（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 

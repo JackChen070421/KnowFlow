@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -104,7 +105,11 @@ def create_server(
             elif path == "/api/snapshot":
                 self.respond(snapshot_bytes, "application/json")
             elif path == "/api/settings/llm":
-                self.json(read_llm_settings())
+                try:
+                    self.json(read_llm_settings())
+                except Exception:  # a broken .env must not kill the connection
+                    traceback.print_exc()
+                    self.json({"error": "读取设置失败：请检查本机 .env 的 LLM 段。"}, 500)
             elif (
                 path.startswith("/api/document/")
                 and path.removeprefix("/api/document/") in documents
@@ -172,6 +177,14 @@ def create_server(
                 settings = save_llm_settings(payload, path=settings_path)
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)
+                return
+            except Exception as exc:  # write/permission/parse errors stay HTTP
+                traceback.print_exc()
+                self.json(
+                    {"error": f"保存失败（{type(exc).__name__}）：请查看启动窗口日志，"
+                     "或手工检查本机 .env 是否可写。"},
+                    500,
+                )
                 return
             self.json(settings)
 

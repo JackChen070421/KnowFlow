@@ -202,3 +202,51 @@ def test_settings_endpoint_is_local_and_csrf_protected(dashboard_run, tmp_path, 
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_settings_errors_return_json_instead_of_dropping_the_connection(
+    dashboard_run, tmp_path, monkeypatch
+):
+    data = load_dashboard(dashboard_run)
+    server = create_server(dashboard_run, data, port=0, settings_path=tmp_path / ".env")
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+
+        def call(method, path, body=None, headers=None):
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            connection.request(method, path, body=body, headers=headers or {})
+            response = connection.getresponse()
+            payload = response.read()
+            status = response.status
+            connection.close()
+            return status, payload
+
+        def write_failure(payload, path=None):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr("knowflow.web.server.save_llm_settings", write_failure)
+        body = json.dumps(
+            {"enabled": True, "provider": "deepseek", "api_key": "sk-x"}
+        ).encode()
+        status, payload = call(
+            "POST",
+            "/api/settings/llm",
+            body,
+            {"Content-Type": "application/json", "X-KnowFlow-Settings": "1"},
+        )
+        assert status == 500
+        assert "保存失败" in json.loads(payload)["error"]
+        assert call("GET", "/teacher")[0] == 200  # the socket is still usable
+
+        def read_failure():
+            raise RuntimeError("bad env")
+
+        monkeypatch.setattr("knowflow.web.server.read_llm_settings", read_failure)
+        status, payload = call("GET", "/api/settings/llm")
+        assert status == 500
+        assert "读取设置失败" in json.loads(payload)["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)

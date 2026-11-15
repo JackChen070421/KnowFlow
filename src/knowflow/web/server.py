@@ -18,6 +18,8 @@ from knowflow.web.data import read_json
 STATIC = Path(__file__).with_name("static")
 ASSETS = {
     "/app.js": "text/javascript",
+    "/knowledge-map.js": "text/javascript",
+    "/knowledge-map.css": "text/css",
     "/charts.js": "text/javascript",
     "/styles.css": "text/css",
     "/favicon.svg": "image/svg+xml",
@@ -55,6 +57,10 @@ def create_server(
         if candidate.is_relative_to(raw) and candidate.is_file():
             documents[mid] = candidate
             material["document_url"] = "/api/document/" + mid
+    for item in snapshot["knowledge_base"]["materials"]:
+        mid = item["material_id"]
+        if mid in documents:
+            item["document_url"] = "/api/document/" + mid
     record_ids = {r["record_id"] for r in snapshot["records"]}
     snapshot_bytes = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
 

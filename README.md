@@ -16,6 +16,32 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 
 ---
 
+## 本机教师页与学生页
+
+已增加独立展示层 `src/knowflow/web/`，复用任务 1/2/3，不修改公共 schema。**Windows 上双击根目录 `start-dashboard.cmd`**，等待启动窗口出现地址后，浏览器会自动打开教师页。运行时保留启动窗口；结束后按 `Ctrl+C`。
+
+```powershell
+Set-Location 'D:\桌面\KnowFlow'
+.\.venv\Scripts\python.exe -m knowflow.web --open
+```
+
+- 教师页：`http://127.0.0.1:8765/teacher`；学生页：`http://127.0.0.1:8765/student`。
+- 教师页包含班级堆叠条形图、作答环形图、节点记录量折线图、学生知识热力表、个人画像与建议、数据质量审计。
+- 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。未核对的先修/跨课程关系不补造。
+- 学生页输入模拟学生 ID（例如 `S001`），查看对应节点的知识状态、练习与学习建议；另有数轴镜像、活动预算两个明确标识的自编互动实验。
+- 新练习提交保存在同一浏览器的 `localStorage`，教师页可查看，标记为“待评阅”。没有新提交时显示“未记录”，不会自动改写历史成绩或画像。这是一台电脑上的双视角演示，不是多用户登录系统。
+- 图表口径：已评分得分率保留部分分；观测覆盖以节点可测题为分母；历史作答完成以有明确布置记录的题为分母。两个节点题目范围不同，折线只比较已评分记录量，不表示成绩增长。
+
+首次启动需要已安装项目依赖、并已按数据说明放入 `data/raw/official-v1`。程序在 **Git 忽略的 `artifacts/web/<时间>/`** 中独立生成 canonical、知识底座、两个节点的画像与建议，经过校验后展示；不会覆盖原有 `data/interim` 和其他成果。后续启动复用缓存；数据或 Python/schema 变化会重建。强制刷新用 `python -m knowflow.web --refresh`，端口占用时用 `--port 8766`。也可用 `--run artifacts/web/<时间>` 复用某次已生成成果；该目录中的知识底座、画像和建议必须是同一版本，启动时会复核。
+
+新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。浏览器只连接本机，不需要 Node/npm、云服务器或模型密钥。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
+
+新增代码入口：`web/data.py` 连接三项任务并整理图表数据，`web/server.py` 提供本机页面与受限资料接口，`web/static/app.js` 实现双视角交互，`web/static/charts.js` 绘制图表，`web/static/styles.css` 管理页面样式。`scripts/start_dashboard.ps1` 是 Windows 启动脚本。回归测试位于 `tests/diagnosis/test_web.py`，只用合成数据。
+
+答辩建议顺序：班级学情 → 点击 K-07 → 选择学生查看原始证据 → 查看学习材料与验证标准 → 切换学生页演示一次提交 → 跨域探索 → 数据与证据页。截图或下载的本机摘要含模拟学情成果，请勿加入公开 Git 仓库。
+
+---
+
 ## 一句话原则
 
 **数字由代码算，语言由模型写；所有结论必须能追到 ID。**
@@ -48,7 +74,7 @@ KnowFlow 把课程材料、题目、学生作答记录，变成三样可核对�
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；LLM 未接） |
 | **6 LLM 边缘层** | `schemas/llm/`、未来 `src/knowflow/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、降级模板 | 🟡 schema，网关待接 |
-| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 七脚本 + 125 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 131 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：

@@ -18,6 +18,27 @@ def test_repository_contracts() -> None:
     assert errors == [], "\n".join(errors)
 
 
+def test_local_env_is_allowed_but_tracked_env_is_not(tmp_path: Path) -> None:
+    """A local .env holds the DeepSeek key; committing it is the actual risk."""
+
+    import subprocess
+
+    from knowflow.contracts import check_repo
+
+    (tmp_path / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (tmp_path / ".env").write_text(
+        "KNOWFLOW_LLM_API_KEY=placeholder\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+    errors = [error for error in check_repo(tmp_path) if error.startswith(".env")]
+    assert errors == [], errors
+
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-f", ".env"], check=True)
+    errors = [error for error in check_repo(tmp_path) if error.startswith(".env")]
+    assert any("tracked by Git" in error for error in errors), errors
+
+
 def test_changelog_is_project_specific() -> None:
     """Guard against pasting another project's changelog in by mistake.
 

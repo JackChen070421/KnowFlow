@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-15 · v0.15
+> 最后更新：2026-11-15 · v0.16
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -232,6 +232,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.16 | 2026-11-15 | 契约检查按 Git 状态判断 `.env`：本地持有合法，被跟踪/未忽略才报错；补回归测试；测试 132 项 |
 | v0.15 | 2026-11-15 | 本机双视角展示层、隔离成果目录、课程与学情可视化、本机练习与自编实验；公共契约不变；131 项测试 |
 | v0.14 | 2026-11-14 | 任务3规则版落地：`recommend/`、`recommend` / `verify-recommend`、契约 v0.6（`node_id`/`activity_type`/数字锁/probe 未作答）；更新分层状态、质量门与命令；测试 125 项 |
 | v0.13 | 2026-11-13 | 同步任务1生成/校验入口、本机标注接入状态与 knowledge 目录；教学关系仍待人工复核 |

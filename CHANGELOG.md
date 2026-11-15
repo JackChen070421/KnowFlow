@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-15 — 契约检查：本地 `.env` 允许存在，只禁止被提交
+
+**待合并** · `fix/env-tracked-check` → `main`
+
+- `contracts.check_repo()` 不再“磁盘上看到 `.env` 就报错”：改为问 Git——`git ls-files` 判断是否被跟踪、`git check-ignore` 判断是否被忽略；本地持有 `.env`（放 DeepSeek key）是文档允许的正常状态，风险只在提交。
+- 新增 `_git_tracked()`；Git 不可用时退化为只报“未被忽略”，不把本地文件当违规。
+- 影响：本地有 `.env` 的开发者跑 `pytest` 与 `check_contracts.py` 不再假红；CI（无 `.env`）行为不变。
+- 验证：`pytest 132 passed`（含新增 `test_local_env_is_allowed_but_tracked_env_is_not`）；`check_contracts.py` 通过；`git add -f .env` 时报 `tracked by Git`。
+- 回退：revert 本提交即恢复“存在即报错”；只影响检查逻辑，不碰 schema 与产物。
+
+---
+
 ## 2026-11-15 — 本机教师与学生展示页
 
 **本机未提交** · `feat/teacher-student-dashboard`

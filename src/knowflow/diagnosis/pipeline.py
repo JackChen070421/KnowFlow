@@ -383,6 +383,7 @@ def run_diagnosis(
     output: Path,
     config: DiagnosisConfig | None = None,
     node_id: str = "all",
+    review: dict | None = None,
 ) -> dict:
     config = config or DiagnosisConfig()
     _checked(bundle)
@@ -397,13 +398,15 @@ def run_diagnosis(
 
     generated, all_students, all_classes = [], [], []
     for node in nodes:
-        profiles = [build_student_profile(bundle, s, node, config) for s in bundle["students"]]
+        profiles = [
+            build_student_profile(bundle, s, node, config, review) for s in bundle["students"]
+        ]
         classes = [
-            build_class_profile(profiles, group, bundle, node["node_id"])
+            build_class_profile(profiles, group, bundle, node["node_id"], review)
             for group in sorted({s["group_id"] for s in bundle["students"]}) + ["ALL"]
         ]
         for profile in profiles:
-            errors = validate_student(profile, bundle, config)
+            errors = validate_student(profile, bundle, config, review)
             if errors:
                 raise ValueError("student checks failed:\n" + "\n".join(errors[:20]))
             generated.append(
@@ -414,7 +417,7 @@ def run_diagnosis(
                 )
             )
         for profile in classes:
-            errors = validate_class(profile, profiles, bundle)
+            errors = validate_class(profile, profiles, bundle, review)
             if errors:
                 raise ValueError("class checks failed:\n" + "\n".join(errors[:20]))
             generated.append(
@@ -520,8 +523,15 @@ def run_diagnosis(
         "可使用 knowflow evidence --run <本目录> --record <记录ID> 导出本机证据详情，"
         "核对实际答案、过程和分点评分。",
         "",
-        "## 案例候选",
     ]
+    if review is not None:
+        text += [
+            f"存疑评分审查：策略 {review['policy']}；剔除 "
+            f"{len(review['disputed_record_ids'])} 条待核记录，官方分数未修改。"
+            "两套口径同时写入画像的 review 块，可逐项复算。",
+            "",
+        ]
+    text += ["## 案例候选"]
     text += [
         f"- {c['case_type']}：{c['student_id']}；{c['reason']}" for c in cases
     ]
@@ -535,6 +545,14 @@ def run_diagnosis(
         "nodes": [n["node_id"] for n in nodes],
         "configuration": asdict(config),
         "source_files": _source_hashes(Path(bundle["canonical_root"])),
+        "review": None
+        if review is None
+        else {
+            "policy": review["policy"],
+            "report_path": review["report_path"],
+            "report_sha256": review["report_sha256"],
+            "counts": review["report"]["counts"],
+        },
         "targets": targets,
         "auxiliary_files": {
             name: hashlib.sha256((output / name).read_bytes()).hexdigest()

@@ -31,7 +31,7 @@ def main() -> int:
     print(f"KnowFlow contract check: OK ({schema_count} schemas)")
     print("  - required directories/files present")
     print("  - schemas parse and $id values are unique")
-    print("  - files under data/raw and data/interim are git-ignored (never committed)")
+    print("  - files under data/raw, data/interim and data/reviews are git-ignored (never committed)")
     print("  - .gitignore keeps data, secrets and model weights out")
     return 0
 

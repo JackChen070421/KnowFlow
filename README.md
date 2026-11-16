@@ -27,6 +27,7 @@ Set-Location 'D:\桌面\KnowFlow'
 
 - 教师页：`http://127.0.0.1:8765/teacher`；学生页：`http://127.0.0.1:8765/student`。
 - 教师页包含班级堆叠条形图、作答环形图、节点记录量折线图、学生知识热力表、个人画像与建议、数据质量审计。
+- 教师页「存疑证据」：列出复核线索、官方分与评分点、审查状态与复核备注，可回查原始作答并下载审核清单（清单不含原始作答）。
 - 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。未核对的先修/跨课程关系不补造。
 - 学生页输入模拟学生 ID（例如 `S001`），查看对应节点的知识状态、练习与学习建议；另有数轴镜像、活动预算两个明确标识的自编互动实验。
 - 侧栏底部齿轮「设置」→「LLM 模式」：可开关文字层、选择厂商（DeepSeek / OpenAI / 通义千问 / 自定义）并填写 API Key。保存即写入本机 `.env`，等同于手工改后端配置；Key 不回显、不进入页面快照。保存后对之后生成的建议生效，已有成果需重建。
@@ -70,10 +71,11 @@ Set-Location 'D:\桌面\KnowFlow'
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 19 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
+| **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；双口径隔离 | ✅ 方向一 |
 | **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、ID 锁、重试 2 次降级模板 | ✅ 可选，默认关闭 |
 | **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 156 tests |
@@ -115,12 +117,13 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
-├─ tests/                   # contract + io + diagnosis + fixtures
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend / review
+├─ tests/                   # contract + io + diagnosis + review + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
+├─ data/reviews/<dataset_id>/ # 本机人工复核账本，gitignore
 └─ .github/                 # CI + PR 模板
 ```
 
@@ -261,6 +264,41 @@ artifacts/recommend/<目录>/
 - 每个学生最多 3 条计划；先处理薄弱/评分点失分，再处理证据不足；表现较好不强行加练。
 - `probe_plan.items` 只用该生在该节点**未作答**的测评题；`needed` 必须等于 `items` 非空。
 - `difficulty`/`est_minutes` 是**规则推算值**：官方材料没有这两个字段，按题型/认知类型估算，运行说明里已声明，不能当作官方难度或精确用时。
+
+### 跑方向一：存疑评分审查
+
+目标：把「有官方分数」和「评分可信」分开。规则只提出**复核线索**，人工结论作为**独立事件**追加，官方分数永远不改。
+
+```powershell
+# 1) 扫描：只读 canonical，产出复核线索（不改官方分数、不含原始作答）
+uv run python -m knowflow.cli review-scan --dataset official-v1
+#    输出目录形如 artifacts/review/official-v1-<时间戳>/
+
+# 2) 人工复核：每个结论追加一行到本机账本 data/reviews/（Git 忽略）
+uv run python -m knowflow.cli review-decide --record R-0685 `
+  --status dismissed --note "核对原始作答与参考答案：评分无误" `
+  --source "原始 CSV 第 686 行 + 评分点记录"
+
+# 3) 诊断与建议带上审查口径
+uv run python -m knowflow.cli run --review artifacts/review/<目录> --review-policy official
+uv run python -m knowflow.cli recommend --run latest --node all
+```
+
+- `--review-policy official`（默认）保留官方账本做顶层数字，同时在画像里给出 `review.usable_*`（剔除存疑后的口径）；`exclude_flagged` 让顶层数字也改用剔除后的口径。两套口径都可复算，`run_manifest.review` 记录策略、报告哈希与计数。
+- 被标记记录不进入 `issues[].rubric_evidence`，改列 `disputed_rubric_evidence`；建议项只列 `basis_records`，并在 `review_required` 中交回人工，不据此安排巩固。
+- 账本绑定三张 canonical 表的 SHA-256：数据重建后旧结论会被拒绝套用，必须重新扫描复核。
+- 规则（`review-rules-1`）：作答与参考答案字面一致却未满分（单值题；解答题仅限 0 分）、官方得分与评分点合计不一致；「得分超满分已截断」只作审计线索；「作答≠参考答案却满分」默认关闭（写法差异会全线误报）。
+
+官方 `official-v1` 的实测：799 条保留记录中 4 条线索（R-0685、R-0133 参与隔离；R-0361、R-0535 仅审计），排除后 2 个「学生 × 知识点」的数值变化、**没有状态翻转**。
+
+产物（都在 `artifacts/`，gitignore）：
+
+```text
+artifacts/review/<目录>/
+├─ review_report.json   # 候选、官方分快照、回查行号、人工结论历史
+├─ run_manifest.json    # 源表哈希、规则版本、账本哈希
+└─ 运行说明.md
+```
 
 ### 可选：接入 LLM 文字层
 

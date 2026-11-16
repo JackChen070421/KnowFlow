@@ -73,7 +73,7 @@ GITIGNORE_MARKERS: tuple[str, ...] = (
     "artifacts/",
 )
 
-RESTRICTED_DIRS: tuple[str, ...] = ("data/raw", "data/interim")
+RESTRICTED_DIRS: tuple[str, ...] = ("data/raw", "data/interim", "data/reviews")
 ALLOWED_RESTRICTED_FILES = {".gitkeep", "README.md"}
 
 

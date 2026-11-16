@@ -82,6 +82,7 @@ def _cmd_config(_: argparse.Namespace) -> int:
 def _cmd_run(args: argparse.Namespace) -> int:
     from .diagnosis.mastery import DiagnosisConfig
     from .diagnosis.pipeline import build_bundle, run_diagnosis
+    from .review.pipeline import build_context, load_report
 
     bundle, _ = build_bundle(args.dataset)
     config = (
@@ -89,6 +90,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         if args.config
         else DiagnosisConfig()
     )
+    review = None
+    if args.review:
+        report = load_report(Path(args.review))
+        review = build_context(report, Path(args.review), args.review_policy)
+    elif args.review_policy != "official":
+        print("KnowFlow: --review-policy requires --review <目录>", file=sys.stderr)
+        return 2
     output = (
         Path(args.output)
         if args.output
@@ -97,7 +105,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         / "run"
         / f"{bundle['dataset_id']}-{datetime.now():%Y%m%d-%H%M%S-%f}"
     )
-    result = run_diagnosis(bundle, output, config, args.node)
+    result = run_diagnosis(bundle, output, config, args.node, review)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -181,6 +189,33 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_review_scan(args: argparse.Namespace) -> int:
+    from .review.pipeline import scan_dataset
+
+    result = scan_dataset(
+        args.dataset,
+        output=Path(args.output) if args.output else None,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_review_decide(args: argparse.Namespace) -> int:
+    from .review.pipeline import decide
+
+    result = decide(
+        args.dataset,
+        args.record,
+        args.status,
+        args.note,
+        reviewer=args.reviewer,
+        source=args.source,
+        flag_codes=args.code or [],
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_verify_recommend(args: argparse.Namespace) -> int:
     from .recommend.pipeline import verify_recommend
 
@@ -229,6 +264,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--node", default="all", help="all, latest, or a node ID such as N02"
     )
     run_parser.add_argument("--config", help="JSON diagnosis parameter overrides; recorded in the run")
+    run_parser.add_argument(
+        "--review",
+        help="review-scan 产出的目录；启用后把存疑证据排除出问题识别与建议",
+    )
+    run_parser.add_argument(
+        "--review-policy",
+        choices=["official", "exclude_flagged"],
+        default="official",
+        help="official=画像顶层数字沿用官方账本；exclude_flagged=按剔除存疑证据后的口径",
+    )
     run_parser.add_argument(
         "--output", help="new run directory; defaults to artifacts/run/<dataset>-<timestamp>"
     )
@@ -315,6 +360,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="recommendation directory or 'latest'; defaults to the newest under artifacts/recommend",
     )
     verify_recommend_parser.set_defaults(func=_cmd_verify_recommend)
+
+    review_scan_parser = subparsers.add_parser(
+        "review-scan",
+        help="scan canonical records for disputed scores and write a local review report",
+    )
+    review_scan_parser.add_argument("--dataset", default="official-v1")
+    review_scan_parser.add_argument(
+        "--output", help="new review directory; defaults to artifacts/review/<dataset>-<timestamp>"
+    )
+    review_scan_parser.set_defaults(func=_cmd_review_scan)
+
+    review_decide_parser = subparsers.add_parser(
+        "review-decide",
+        help="append one human review decision to the local ledger (never changes scores)",
+    )
+    review_decide_parser.add_argument("--dataset", default="official-v1")
+    review_decide_parser.add_argument("--record", required=True, help="record_id such as R-0685")
+    review_decide_parser.add_argument(
+        "--status",
+        required=True,
+        choices=["confirmed_issue", "dismissed", "needs_more_evidence"],
+        help="confirmed_issue=确认评分有问题；dismissed=确认无误；needs_more_evidence=需补材料",
+    )
+    review_decide_parser.add_argument("--note", required=True, help="why this decision was made")
+    review_decide_parser.add_argument(
+        "--reviewer",
+        default="local_demo_user",
+        help="local demo role; not an authenticated teacher identity",
+    )
+    review_decide_parser.add_argument(
+        "--source", default="local manual review", help="what the decision is based on"
+    )
+    review_decide_parser.add_argument(
+        "--code",
+        action="append",
+        help="flag code this decision addresses (repeatable)",
+    )
+    review_decide_parser.set_defaults(func=_cmd_review_decide)
 
     return parser
 

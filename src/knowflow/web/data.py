@@ -21,6 +21,8 @@ from knowflow.knowledge.pipeline import (
     write_knowledge_base,
 )
 from knowflow.recommend.pipeline import recommend_run, verify_recommend
+from knowflow.review.pipeline import build_context, load_report, scan_dataset
+from knowflow.review.validation import validate_report
 
 
 def read_json(path: Path) -> dict:
@@ -88,15 +90,18 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     run = root / "artifacts/web" / stamp
     canonical = run / "canonical/official-v1"
-    print("[1/4] Preparing an isolated canonical dataset...", flush=True)
+    print("[1/5] Preparing an isolated canonical dataset...", flush=True)
     run_adapt(raw, canonical, dataset_id="official-v1")
-    print("[2/4] Building the course knowledge base...", flush=True)
+    print("[2/5] Building the course knowledge base...", flush=True)
     knowledge = build_knowledge_base(canonical, "official-v1")
     write_knowledge_base(knowledge, run / "knowledge_base.json")
-    print("[3/4] Building student and class profiles...", flush=True)
+    print("[3/5] Scanning for disputed scores...", flush=True)
+    scan_dataset("official-v1", root=canonical.parent, output=run / "review")
+    review = build_context(load_report(run / "review"), run / "review", "official")
+    print("[4/5] Building student and class profiles...", flush=True)
     bundle, _ = build_bundle("official-v1", root=canonical.parent)
-    run_diagnosis(bundle, run / "diagnosis", node_id="all")
-    print("[4/4] Building evidence-linked recommendations...", flush=True)
+    run_diagnosis(bundle, run / "diagnosis", node_id="all", review=review)
+    print("[5/5] Building evidence-linked recommendations...", flush=True)
     report = recommend_run(
         run=str(run / "diagnosis"),
         knowledge=str(run / "knowledge_base.json"),
@@ -130,6 +135,13 @@ def load_dashboard(run: Path) -> dict:
     if read_json(run / "recommendations/knowledge_base.json") != knowledge:
         raise ValueError("建议与课程知识底座不属于同一个版本。")
     bundle = read_json(run / "diagnosis/diagnosis_input.json")
+    review_report = None
+    review_path = run / "review" / "review_report.json"
+    if review_path.is_file():
+        review_report = read_json(review_path)
+        review_errors = validate_report(review_report)
+        if review_errors:
+            raise ValueError("存疑评分审查报告未通过校验；请使用 --refresh 重新生成。")
     students, classes, recommendations = {}, {}, {}
     for node in bundle["nodes"]:
         nid = node["node_id"]
@@ -217,4 +229,18 @@ def load_dashboard(run: Path) -> dict:
         "records": records,
         "stats": stats,
         "quality": bundle["quality_report"],
+        "reviews": None
+        if review_report is None
+        else {
+            "policy": review_report["policy"],
+            "counts": review_report["counts"],
+            "candidates": review_report["candidates"],
+        },
+        "review_meta": None
+        if review_report is None
+        else {
+            "rule_version": review_report["rule_version"],
+            "generated_at": review_report["generated_at"],
+            "decisions_applied": review_report.get("decisions_applied", 0),
+        },
     }

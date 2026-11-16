@@ -53,6 +53,9 @@ jobs:
       - name: Contract check (structure, schemas, data hygiene)
         run: uv run --frozen --extra dev python scripts/check_contracts.py
 
+      - name: Lint (ruff)
+        run: uv run --frozen --extra dev python -m ruff check .
+
       - name: Validate synthetic CSV examples
         run: uv run --frozen --extra dev python scripts/check_examples.py
 

@@ -22,9 +22,49 @@ def _state(profile: dict, knowledge_id: str) -> dict | None:
     )
 
 
-def _priority(issue: dict, profile: dict, catalog: dict) -> tuple:
-    state = _state(profile, issue["knowledge_id"]) or {}
-    status = state.get("status")
+def _planning_view(profile: dict, knowledge_id: str, review: dict | None) -> dict:
+    """Evidence view used for planning: disputed records are already excluded.
+
+    The profile keeps the official ledger untouched, so planning reads the
+    ``review.usable_*`` numbers instead of the official ones. Without a review
+    block this is exactly the official view.
+    """
+
+    state = _state(profile, knowledge_id) or {}
+    block = state.get("review")
+    if not block:
+        return {
+            "status": state.get("status"),
+            "evidence_count": int(state.get("evidence_count") or 0),
+            "full_credit": int((state.get("state_counts") or {}).get("observed_correct") or 0),
+            "review": None,
+        }
+    return {
+        "status": block["usable_status"],
+        "evidence_count": int(block["usable_evidence_count"]),
+        "full_credit": int(block["usable_full_credit"]),
+        "review": block,
+    }
+
+
+def _effective_type(issue: dict, view: dict) -> str:
+    """Downgrade to a probe when the usable evidence no longer supports a claim."""
+
+    if issue["type"] == "insufficient_evidence":
+        return "insufficient_evidence"
+    if view["review"] and view["status"] == "insufficient_evidence":
+        return "insufficient_evidence"
+    return issue["type"]
+
+
+def _planning_issue(issue: dict, view: dict) -> dict:
+    kind = _effective_type(issue, view)
+    return issue if kind == issue["type"] else {**issue, "type": kind}
+
+
+def _priority(issue: dict, profile: dict, catalog: dict, review: dict | None = None) -> tuple:
+    view = _planning_view(profile, issue["knowledge_id"], review)
+    status = view.get("status")
     if status in {"confirmed_weak", "likely_weak"}:
         rank = 0
     elif issue["type"] == "score_point_gap":
@@ -37,7 +77,7 @@ def _priority(issue: dict, profile: dict, catalog: dict) -> tuple:
     objective_order = catalog["objective_order"].get(issue["objective_id"], 99)
     return (
         rank,
-        int(state.get("evidence_count") or 0),
+        view["evidence_count"],
         objective_order,
         int(knowledge.get("sort_order") or 0),
         issue["issue_id"],
@@ -154,24 +194,28 @@ def _reason(
     catalog: dict,
     explain_id: str | None,
     assessment_ids: list[str],
+    review: dict | None = None,
 ) -> str:
-    state = _state(profile, issue["knowledge_id"]) or {}
+    view = _planning_view(profile, issue["knowledge_id"], review)
     knowledge = catalog["knowledge"].get(issue["knowledge_id"], {})
     name = knowledge.get("name", issue["knowledge_id"])
-    n = int(state.get("evidence_count") or 0)
-    full = int((state.get("state_counts") or {}).get("observed_correct") or 0)
+    n = view["evidence_count"]
+    full = view["full_credit"]
+    note = ""
+    if view["review"]:
+        note = f"（已排除 {len(view['review']['disputed_record_ids'])} 条存疑评分，待人工复核）"
     if issue["type"] == "insufficient_evidence":
         return (
             f"{issue['issue_id']} 显示 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分，"
             f"低于最低观测数 {MIN_EVIDENCE}；用 {'、'.join(assessment_ids)} 补充观测，"
-            "暂不下“未掌握”结论。"
+            f"暂不下“未掌握”结论。{note}"
         )
     criteria = list(dict.fromkeys(item["criterion"] for item in issue.get("rubric_evidence", [])))
     loss = f"，失分集中在「{'、'.join(criteria)}」" if criteria else "，具体错因证据不足"
     lead = f"先用 {explain_id} 重建" if explain_id else "先看原题解析"
     return (
         f"{issue['issue_id']} 显示 {issue['knowledge_id']}「{name}」{n} 次有效评分中 "
-        f"{full} 次满分{loss}；{lead}，再用 {'、'.join(assessment_ids)} 核对。"
+        f"{full} 次满分{loss}{note}；{lead}，再用 {'、'.join(assessment_ids)} 核对。"
     )
 
 
@@ -204,12 +248,15 @@ def _plan_item(
     node_available: set[str],
     attempted: set[str],
     used: set[str],
+    review: dict | None = None,
 ) -> dict | None:
-    assessments = _select_assessments(issue, catalog, node_available, attempted, used)
+    view = _planning_view(profile, issue["knowledge_id"], review)
+    planning = _planning_issue(issue, view)
+    assessments = _select_assessments(planning, catalog, node_available, attempted, used)
     if not assessments:
         return None
     explain_id = None
-    if issue["type"] != "insufficient_evidence":
+    if planning["type"] != "insufficient_evidence":
         explain_id = _explain(catalog, issue["knowledge_id"], used | set(assessments))
     material_ids = ([explain_id] if explain_id else []) + assessments
     primary = assessments[0]
@@ -219,7 +266,7 @@ def _plan_item(
         if material_id not in catalog["materials"]:
             return None
     used.update(material_ids)
-    activity_type = "probe" if issue["type"] == "insufficient_evidence" else "consolidate"
+    activity_type = "probe" if planning["type"] == "insufficient_evidence" else "consolidate"
     activity = (
         "补充观测：未作答题"
         if activity_type == "probe"
@@ -227,7 +274,7 @@ def _plan_item(
         if explain_id
         else "同评分点练习"
     )
-    return {
+    item = {
         "seq": seq,
         "issue_id": issue["issue_id"],
         "activity": activity,
@@ -236,20 +283,30 @@ def _plan_item(
         "primary_material_id": primary,
         "objective_id": issue["objective_id"],
         "knowledge_ids": [issue["knowledge_id"]],
-        "reason": _reason(issue, profile, catalog, explain_id, assessments),
-        "check": _check(issue, catalog, explain_id, assessments),
+        "reason": _reason(planning, profile, catalog, explain_id, assessments, review),
+        "check": _check(planning, catalog, explain_id, assessments),
         "est_minutes": _minutes(material_ids, catalog),
         "difficulty": _difficulty(issue, assessments, catalog),
         "prerequisite_check": _prerequisite(issue, profile, catalog),
         "teacher_adjustable": True,
     }
+    if review is not None:
+        item["basis_records"] = sorted({point["record_id"] for point in planning["rubric_evidence"]})
+        if view["review"]:
+            item["review_flags"] = [
+                {"record_id": flag["record_id"], "review_status": flag["review_status"]}
+                for flag in view["review"]["flags"]
+            ]
+    return item
 
 
-def _is_gap(issue: dict, profile: dict) -> bool:
+def _is_gap(issue: dict, profile: dict, review: dict | None = None) -> bool:
+    view = _planning_view(profile, issue["knowledge_id"], review)
+    if view["review"] and view["status"] == "insufficient_evidence":
+        return False
     if issue["type"] in GAP_TYPES:
         return True
-    state = _state(profile, issue["knowledge_id"]) or {}
-    return state.get("status") in {"confirmed_weak", "likely_weak"}
+    return view.get("status") in {"confirmed_weak", "likely_weak"}
 
 
 def _probe_purpose(
@@ -270,6 +327,62 @@ def _probe_purpose(
     )
 
 
+def _review_required(
+    issues: list[dict], profile: dict, review: dict | None
+) -> list[dict]:
+    """Issues whose usable evidence cannot support a consolidation plan."""
+
+    if review is None:
+        return []
+    required = []
+    for issue in issues:
+        view = _planning_view(profile, issue["knowledge_id"], review)
+        block = view["review"]
+        if not block:
+            continue
+        only_disputed = not issue["rubric_evidence"] and bool(
+            issue.get("disputed_rubric_evidence")
+        )
+        too_little = view["status"] == "insufficient_evidence"
+        if not (only_disputed or too_little):
+            continue
+        count = len(block["disputed_record_ids"])
+        reason = (
+            f"{count} 条评分存疑，已排除出结论；先人工复核原始评分，"
+            "本轮只安排补充观测，不据此安排巩固。"
+        )
+        required.append(
+            {
+                "issue_id": issue["issue_id"],
+                "record_ids": sorted(block["disputed_record_ids"]),
+                "reason": reason,
+            }
+        )
+    return required
+
+
+def _attach_review(result: dict, review: dict | None, required: list[dict] | None = None) -> dict:
+    states = result.pop("_states", [])
+    if review is None:
+        return result
+    excluded = sorted(
+        {
+            record_id
+            for state in states
+            for record_id in (state.get("review") or {}).get("disputed_record_ids", [])
+        }
+    )
+    result["review_context"] = {
+        "applied": True,
+        "policy": review["policy"],
+        "report_sha256": review["report_sha256"],
+        "excluded_record_ids": excluded,
+        "note": "存疑评分已排除出结论；官方分数未修改。",
+    }
+    result["review_required"] = required or []
+    return result
+
+
 def recommend_profile(
     profile: dict,
     catalog: dict,
@@ -277,6 +390,7 @@ def recommend_profile(
     records: list[dict],
     generated_at: str,
     profile_sha256: str,
+    review: dict | None = None,
 ) -> dict:
     student_id, node_id = profile["student_id"], profile["node_id"]
     attempted = {
@@ -302,21 +416,32 @@ def recommend_profile(
             "prompt_version": POLICY_VERSION,
         },
     }
+    states = profile["knowledge_states"]
     if not profile["coverage"]["scope_known"]:
-        return {
-            **base,
-            "plan": [],
-            "probe_plan": {
-                "needed": False,
-                "items": [],
-                "purpose": _probe_purpose(profile, [], [], bool(profile.get("issues"))),
+        return _attach_review(
+            {
+                **base,
+                "plan": [],
+                "probe_plan": {
+                    "needed": False,
+                    "items": [],
+                    "purpose": _probe_purpose(profile, [], [], bool(profile.get("issues"))),
+                },
+                "_states": states,
             },
-        }
+            review,
+        )
 
     issues = [issue for issue in profile.get("issues", []) if issue["type"] != "not_applicable"]
-    issues.sort(key=lambda issue: _priority(issue, profile, catalog))
-    gaps = [issue for issue in issues if _is_gap(issue, profile)]
-    probes = [issue for issue in issues if issue["type"] == "insufficient_evidence"]
+    issues.sort(key=lambda issue: _priority(issue, profile, catalog, review))
+    gaps = []
+    probes = []
+    for issue in issues:
+        view = _planning_view(profile, issue["knowledge_id"], review)
+        if _effective_type(issue, view) == "insufficient_evidence":
+            probes.append(issue)
+        elif _is_gap(issue, profile, review):
+            gaps.append(issue)
     selected = (gaps[:2] + probes[:1]) if gaps else probes[:MAX_PLAN_ITEMS]
 
     plan = []
@@ -330,6 +455,7 @@ def recommend_profile(
             node_available,
             attempted,
             used,
+            review,
         )
         if item:
             plan.append(item)
@@ -345,12 +471,17 @@ def recommend_profile(
         if item["knowledge_ids"][0] not in probe_knowledge:
             probe_knowledge.append(item["knowledge_ids"][0])
     probe_items = probe_items[:MAX_PROBE_ITEMS]
-    return {
-        **base,
-        "plan": plan,
-        "probe_plan": {
-            "needed": bool(probe_items),
-            "items": probe_items,
-            "purpose": _probe_purpose(profile, probe_items, probe_knowledge, bool(probes)),
+    return _attach_review(
+        {
+            **base,
+            "plan": plan,
+            "probe_plan": {
+                "needed": bool(probe_items),
+                "items": probe_items,
+                "purpose": _probe_purpose(profile, probe_items, probe_knowledge, bool(probes)),
+            },
+            "_states": states,
         },
-    }
+        review,
+        _review_required(issues, profile, review),
+    )

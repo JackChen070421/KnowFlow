@@ -29,6 +29,9 @@ data/external/**
 # 本机数据处理说明：写给协同同学看，但不随公开仓外传（含数据口径与期望数字）。
 data/README-processing.md
 
+# 本机人工复核账本（含记录 ID、审核意见与源数据指纹）：永不入库。
+data/reviews/**
+
 # Defense in depth: any CSV/XLSX/Parquet outside examples is assumed restricted.
 *.csv
 *.tsv

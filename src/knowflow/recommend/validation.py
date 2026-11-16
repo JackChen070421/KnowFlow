@@ -56,6 +56,13 @@ def allowed_numbers(issue: dict, state: dict) -> set[float]:
         value = state.get(key)
         if isinstance(value, (int, float)):
             allowed.add(float(value))
+    block = state.get("review") or {}
+    for key in ("usable_evidence_count", "usable_full_credit"):
+        value = block.get(key)
+        if isinstance(value, (int, float)):
+            allowed.add(float(value))
+    if block:
+        allowed.add(float(len(block.get("disputed_record_ids") or [])))
     allowed |= _numbers(issue.get("statement", ""))
     allowed |= _numbers(str(issue.get("evidence", {}).get("stat", "")))
     for item in issue.get("rubric_evidence", []):
@@ -100,6 +107,7 @@ def validate_recommendation(
     node_available: set[str],
     records: list[dict],
     profile_sha256: str | None = None,
+    review: dict | None = None,
 ) -> list[str]:
     errors = schema_errors(rec)
     if errors:
@@ -112,6 +120,20 @@ def validate_recommendation(
         errors.append("profile_sha256 does not match profile file")
 
     issues = {issue["issue_id"]: issue for issue in profile.get("issues", [])}
+    disputed = set(review["disputed_record_ids"]) if review else set()
+    context = rec.get("review_context")
+    if review is None:
+        if context is not None:
+            errors.append("review_context present without a review source")
+    elif context is None:
+        errors.append("review source present but recommendation lacks review_context")
+    else:
+        if context["report_sha256"] != review["report_sha256"]:
+            errors.append("review_context report hash does not match the review report")
+        if context["policy"] != review["policy"]:
+            errors.append("review_context policy does not match")
+        if not set(context["excluded_record_ids"]) <= disputed:
+            errors.append("review_context cites records that are not disputed")
     attempted = _attempted_materials(records, profile["student_id"], profile["node_id"])
     seen_materials: set[str] = set()
     for index, item in enumerate(rec["plan"], 1):
@@ -121,6 +143,21 @@ def validate_recommendation(
         if issue is None:
             errors.append(f"plan[{index}]: issue_id not in profile")
             continue
+        state = _state(profile, issue["knowledge_id"])
+        block = state.get("review") or {}
+        if "basis_records" in item:
+            basis = set(item["basis_records"])
+            if basis & disputed:
+                errors.append(f"plan[{index}]: basis_records use a disputed record")
+            expected_basis = {point["record_id"] for point in issue.get("rubric_evidence", [])}
+            if basis != expected_basis:
+                errors.append(f"plan[{index}]: basis_records do not match the issue evidence")
+        if (
+            block
+            and block["usable_status"] == "insufficient_evidence"
+            and item.get("activity_type") != "probe"
+        ):
+            errors.append(f"plan[{index}]: usable evidence is insufficient; must be a probe")
         if item["knowledge_ids"] != [issue["knowledge_id"]]:
             errors.append(f"plan[{index}]: knowledge_ids do not match issue")
         if item["objective_id"] != issue["objective_id"]:
@@ -149,6 +186,14 @@ def validate_recommendation(
             errors.append(f"plan[{index}]: reason does not cite issue_id")
         if not item["check"].strip():
             errors.append(f"plan[{index}]: empty check")
+
+    for entry in rec.get("review_required", []):
+        if entry["issue_id"] not in issues:
+            errors.append("review_required: issue_id not in profile")
+        if review is None:
+            errors.append("review_required present without a review source")
+        elif not set(entry["record_ids"]) <= disputed:
+            errors.append("review_required: record_ids are not disputed")
 
     probe = rec["probe_plan"]
     if len(set(probe["items"])) != len(probe["items"]):
@@ -201,6 +246,11 @@ def validate_saved_recommendations(run: Path) -> dict:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     bundle, knowledge_path = _load_local_run(run, manifest)
     catalog = build_catalog(load_knowledge_base(knowledge_path))
+    review = None
+    if manifest.get("review"):
+        from knowflow.review.pipeline import context_from_run_manifest
+
+        review = context_from_run_manifest(manifest)
     nodes = {node["node_id"]: node for node in bundle["nodes"]}
     records = bundle["records"]
 
@@ -234,6 +284,7 @@ def validate_saved_recommendations(run: Path) -> dict:
                 set(nodes[node_id]["material_ids"]),
                 records,
                 profile_sha,
+                review,
             )
         )
         for item in rec["plan"]:

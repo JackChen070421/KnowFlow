@@ -47,6 +47,17 @@ def schema_errors(instance, name):
     ]
 
 
+def _review_entry(review: dict | None, record_id: str) -> dict | None:
+    if not review:
+        return None
+    return review["index"].get(record_id)
+
+
+def _is_disputed(review: dict | None, record_id: str) -> bool:
+    entry = _review_entry(review, record_id)
+    return bool(entry and entry.get("disputed"))
+
+
 def validate_bundle(bundle: dict) -> list[str]:
     """Checks for the canonical-backed diagnosis input (local artifact, no schema file).
 
@@ -205,7 +216,9 @@ def validate_bundle(bundle: dict) -> list[str]:
     return errors
 
 
-def validate_student(profile: dict, bundle: dict, config: DiagnosisConfig) -> list[str]:
+def validate_student(
+    profile: dict, bundle: dict, config: DiagnosisConfig, review: dict | None = None
+) -> list[str]:
     errors = schema_errors(profile, "output/student_profile.schema.json")
     if errors:
         return errors
@@ -271,6 +284,57 @@ def validate_student(profile: dict, bundle: dict, config: DiagnosisConfig) -> li
         expected = estimate_mastery(counts["observed_correct"], len(expected_ids), config)
         if scope_known and not items:
             expected["status"] = "not_applicable"
+        official = dict(expected)
+        disputed_ids = [rid for rid in expected_ids if _is_disputed(review, rid)]
+        block = state.get("review")
+        if block is not None:
+            usable_ids = [rid for rid in expected_ids if rid not in disputed_ids]
+            usable = [graded[rid] for rid in usable_ids]
+            usable_estimate = estimate_mastery(
+                sum(1 for r in usable if r["is_correct"]), len(usable), config
+            )
+            check(
+                block["disputed_record_ids"] == sorted(disputed_ids),
+                f"{kid}: disputed record list mismatch",
+            )
+            check(block["usable_evidence"] == usable_ids, f"{kid}: usable evidence mismatch")
+            check(
+                block["usable_evidence_count"] == len(usable_ids),
+                f"{kid}: usable evidence count mismatch",
+            )
+            check(
+                block["usable_full_credit"] == sum(1 for r in usable if r["is_correct"]),
+                f"{kid}: usable full-credit count mismatch",
+            )
+            check(
+                block["usable_mastery"] == usable_estimate["mastery"],
+                f"{kid}: usable mastery cannot be reproduced",
+            )
+            check(
+                block["usable_status"] == usable_estimate["status"],
+                f"{kid}: usable status cannot be reproduced",
+            )
+            check(
+                block["official_mastery"] == official["mastery"],
+                f"{kid}: official mastery cannot be reproduced",
+            )
+            check(
+                block["official_status"] == official["status"],
+                f"{kid}: official status cannot be reproduced",
+            )
+            check(
+                block["status_changed"] == (usable_estimate["status"] != official["status"]),
+                f"{kid}: status_changed mismatch",
+            )
+            check(
+                block["policy"] == (review["policy"] if review else "official"),
+                f"{kid}: review policy mismatch",
+            )
+            check(bool(disputed_ids), f"{kid}: review block without disputed evidence")
+            if review and review["policy"] == "exclude_flagged":
+                expected = dict(usable_estimate)
+        else:
+            check(not disputed_ids, f"{kid}: disputed evidence without a review block")
         for key in [
             "mastery",
             "confidence",
@@ -363,6 +427,10 @@ def validate_student(profile: dict, bundle: dict, config: DiagnosisConfig) -> li
                 record is not None and point["record_id"] in states[kid]["evidence"],
                 "rubric points to wrong student/node/knowledge",
             )
+            check(
+                not _is_disputed(review, point["record_id"]),
+                "rubric evidence uses a disputed record",
+            )
             if record:
                 check(
                     point["material_id"] == record["material_id"]
@@ -375,10 +443,49 @@ def validate_student(profile: dict, bundle: dict, config: DiagnosisConfig) -> li
                     in record["score_points"],
                     "rubric evidence cannot be reproduced",
                 )
+        for point in issue.get("disputed_rubric_evidence", []):
+            entry = _review_entry(review, point["record_id"])
+            record = graded.get(point["record_id"])
+            check(
+                record is not None and point["record_id"] in states[kid]["evidence"],
+                "disputed point refers to wrong student/node/knowledge",
+            )
+            check(
+                entry is not None and bool(entry.get("disputed")),
+                "disputed point is not flagged as disputed",
+            )
+            if entry:
+                check(
+                    point["review_status"] == entry["review_status"],
+                    "disputed review status mismatch",
+                )
+                check(
+                    point["flag_codes"] == entry["flag_codes"],
+                    "disputed flag codes mismatch",
+                )
+            if record:
+                check(
+                    point["material_id"] == record["material_id"]
+                    and {
+                        "point_id": point["point_id"],
+                        "label": point["criterion"],
+                        "score": point["score"],
+                        "max_score": point["max_score"],
+                    }
+                    in record["score_points"],
+                    "disputed rubric evidence cannot be reproduced",
+                )
+        check(
+            not {p["record_id"] for p in issue["rubric_evidence"]}
+            & {p["record_id"] for p in issue.get("disputed_rubric_evidence", [])},
+            "disputed evidence leaked into rubric_evidence",
+        )
     return errors
 
 
-def validate_class(profile: dict, students: list[dict], bundle: dict) -> list[str]:
+def validate_class(
+    profile: dict, students: list[dict], bundle: dict, review: dict | None = None
+) -> list[str]:
     errors = schema_errors(profile, "output/class_profile.schema.json")
     if errors:
         return errors
@@ -479,7 +586,7 @@ def validate_class(profile: dict, students: list[dict], bundle: dict) -> list[st
         )
     check(
         profile["rubric_patterns"]
-        == rubric_patterns(bundle, profile["node_id"], {p["student_id"] for p in selected}),
+        == rubric_patterns(bundle, profile["node_id"], {p["student_id"] for p in selected}, review),
         "class scoring-point aggregation mismatch",
     )
     members = [sid for t in profile["tiers"] for sid in t["student_ids"]]
@@ -507,6 +614,14 @@ def validate_saved_run(path: Path) -> dict:
     bundle = json.loads(input_path.read_text(encoding="utf-8"))
     config = DiagnosisConfig(**manifest["configuration"])
     errors = validate_bundle(bundle)
+    review = None
+    if manifest.get("review"):
+        from knowflow.review.pipeline import context_from_run_manifest
+
+        try:
+            review = context_from_run_manifest(manifest)
+        except ValueError as exc:
+            errors.append(f"review context: {exc}")
     valid_nodes = {n["node_id"] for n in bundle["nodes"]}
     selected_nodes = manifest["nodes"]
     if (
@@ -564,9 +679,9 @@ def validate_saved_run(path: Path) -> dict:
             errors.append("quality report differs from the input snapshot")
     if not errors:
         for profile in students:
-            errors.extend(validate_student(profile, bundle, config))
+            errors.extend(validate_student(profile, bundle, config, review))
         for profile in classes:
-            errors.extend(validate_class(profile, students, bundle))
+            errors.extend(validate_class(profile, students, bundle, review))
     return {
         "run": str(path),
         "gate": "fail" if errors else "pass",

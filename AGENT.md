@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-15 · v0.20
+> 最后更新：2026-11-16 · v0.21
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -43,6 +43,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | ✅ 生成/校验与本机标注接入；教学内容需人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
+| **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；官方/剔除双口径 | ✅ 方向一 |
 | **5 建议层** | `src/knowflow/recommend/` | 检索/约束/排序/理由/探测小测/validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色文字） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读摘要，写 `reason`/`check`；数字锁/ID 锁/降级 | ✅ 可选，默认关闭 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
@@ -157,9 +158,9 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 |---|---|---|
 | G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples` |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `python scripts/validate_canonical.py`；诊断层 `python -m knowflow.cli verify-run`（默认最近一次） |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态已覆盖；诊断层由 `verify-run` 重算五态、覆盖、Beta、班级汇总并比对产物哈希 |
-| G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py` |
+| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `validate_canonical`；诊断层 `verify-run`（默认最近一次）；审查层 `review-scan` 校验 `record_id`/`material_id`/`node_id`/行号 |
+| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态已覆盖；诊断层由 `verify-run` 重算五态、覆盖、Beta、班级汇总并比对产物哈希；审查层复算 `review.usable_*` 与 `official_*` |
+| G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py`；`data/reviews` 与 `data/raw`、`data/interim` 同为受限目录 |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
 G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任务3 的门禁是 `python -m knowflow.cli verify-recommend`（schema、issue/材料引用、数字锁、probe 未作答、产物哈希）。LLM 文字层已接入并有独立单测（假客户端，不联网）；未运行真实 API 时不得声称模型效果已验证。
@@ -174,10 +175,11 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
 - 网页对话 `/api/chat` 复用 `llm/chat.py` 的事实卡与白名单（仅回环、要求 `X-KnowFlow-Chat` 头）；上下文只来自已校验快照，不读 `data/raw`。
 - prompt 与代码同审；不把真实数据/密钥/姓名放进 prompt 或示例。
+- 存疑审查的 `flag_reasons`、`review_note` 与审查产物默认**不进** `llm_summary`：它们是本机审计信息，不是教学摘要。
 
 ## 10. 数据安全
 
-- 数据集放置见 §4；`data/raw`、`data/interim`、真实 CSV、模型权重、`.env` 永不提交；`examples/` 只放合成数据。
+- 数据集放置见 §4；`data/raw`、`data/interim`、`data/reviews`、真实 CSV、模型权重、`.env` 永不提交；`examples/` 只放合成数据。
 - 官方数据先脱敏再落盘；姓名/学号/联系方式直接丢弃。
 - 第三方 API 只接收 `llm_summary`；关闭供应商训练/留存（若可配置）。
 - 赛后按要求删除数据；保留 manifest（文件名/哈希/行数）和删除记录，不保留数据副本。
@@ -207,6 +209,12 @@ $env:PYTHONPATH='src'; python -m knowflow.cli recommend `
   --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json
 $env:PYTHONPATH='src'; python -m knowflow.cli verify-recommend
 
+# 方向一：存疑评分审查（只读扫描 + 本机追加式复核账本）
+$env:PYTHONPATH='src'; python -m knowflow.cli review-scan --dataset official-v1
+$env:PYTHONPATH='src'; python -m knowflow.cli review-decide --record R-0685 `
+  --status dismissed --note "核对原始作答与参考答案：评分无误"
+$env:PYTHONPATH='src'; python -m knowflow.cli run --review artifacts/review/<目录> --review-policy official
+
 # 可选：LLM 文字层（只改 reason/check，失败回退模板）
 $env:PYTHONPATH='src'; python -m knowflow.cli recommend --llm
 $env:PYTHONPATH='src'; python -m knowflow.cli explain --student S001 --knowledge-id K-07
@@ -231,6 +239,8 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 - ❌ 手写/猜测 `material_id`、`issue_id`、`record_id`。
 - ❌ 把“未记录”当成“未掌握”或“答错”。
 - ❌ 为了跑通放宽 schema/测试；未验证就写“已完成”。
+- ❌ 自动改写官方分数，或把 `flagged` 的存疑评分当成确定失分写进结论/建议。
+- ❌ 把 `data/reviews` 的人工复核账本提交到 Git，或把原始作答写进审查产物。
 - ❌ 直接 push `main`、force-push、合并未经 review 的合约变更。
 
 ## 13. 变更记录
@@ -239,6 +249,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.21 | 2026-11-16 | 方向一：审查层 `review/`、`review-scan`/`review-decide`、`run --review`；画像加 `review` 双口径与 `disputed_rubric_evidence`；建议加 `review_context`/`review_required`/`basis_records`；契约 v0.7（19 schemas）；测试 186 项 |
 | v0.20 | 2026-11-15 | 放宽对话数字校验：允许四舍五入/百分比换算、0–10 小序数与年份；ID 白名单扩到快照全部真实 ID；首次不合格带反馈重试；测试 156 项 |
 | v0.19 | 2026-11-15 | 左下角「AI 学伴」对话：`llm/chat.py` 事实卡 + 数字/ID 锁 + 规则兜底；`POST /api/chat`（回环 + 专用请求头）；前端悬浮按钮/面板/引用跳转；测试 154 项 |
 | v0.18 | 2026-11-15 | 网页「设置」：侧栏齿轮 + LLM 开关/厂商/Key，写入本机 `.env`（回环 + 请求头校验、Key 不回显）；错误脱敏与单实例保护；测试 149 项 |

@@ -1,8 +1,8 @@
-# 数据契约（contract v0.5；输入表 canonical 仍为 v0.4）
+# 数据契约（contract v0.7；输入表 canonical 仍为 v0.4.0）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
-> v0.5 只扩展**输出**契约（个人/群体画像、质量报告）；`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。两者不要互相冒充。
+> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
 
 ---
 
@@ -85,7 +85,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | `data_quality_report.json` | `schema_version, dataset_id, generated_at, input_files, input_records, total_records, duplicates_removed, rejected_records, partial_credit_records, records_by_state, missing, anomalies, field_quality, handling_rules, decisions` |
 | `student_profile.json` | `schema_version, student_id, group_id, node_id, generated_at, source_dataset, coverage, knowledge_states, objective_states, issues, lists` |
 | `class_profile.json` | `schema_version, class_id, node_id, generated_at, source_dataset, student_count, coverage_summary, knowledge_distribution, common_issues, rubric_patterns, tiers, group_differences?` |
-| `recommendation.json` | `schema_version, student_id, node_id?, generated_at, source, generated_by, plan, probe_plan` |
+| `recommendation.json` | `schema_version, student_id, node_id?, generated_at, source, generated_by, plan, probe_plan, review_context?, review_required?` |
 | `validation_report.json` | `schema_version, run_id, generated_at, targets, checks, summary, gate, errors?, policy_version?` |
 
 诊断粒度：`knowledge_states[]` 是唯一计算源；`objective_states[]` 是按 `evidence_count` 加权的派生视图，必须列出 `derived_from` 与 `unobserved_knowledge_ids`。画像按测验节点产出，`node_id` 必填；同一学生不同节点是两份画像，不合并。
@@ -296,10 +296,65 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 
 ---
 
-## 10. 变更记录
+## 10. v0.7：存疑评分审查（方向一）
+
+目标：把「有官方分数」和「评分可信」分开。规则只产出**复核线索**，人工结论作为**独立事件**追加，官方分数永远不改。新增一张产物 `review_report.json`，并给个人画像与建议加可选字段；旧产物（无这些字段）仍然合法。
+
+**核心边界**
+
+- 规则只读 canonical（`records.csv` / `materials.csv` / `record_details.csv`），不写 canonical；审查产物**不含** `answer` / `final_answer` / `solution_process` 原文。
+- 文本比对只用于**单值题**（`blank` / `choice`），只回答“作答与参考答案是否字面一致”，**不是判分器**；解答题仅在得分为 0 时才允许用同一线索。
+- 线索 ≠ 结论：`flagged` 不是“答对了”，`dismissed` 也不是“答错了”；都只说明评分是否需要人工看一眼。
+- 系统不得生成“修正后官方分数”。需要更正时必须由授权来源单独出事件，本轮**不实现**。
+
+**规则（`review-rules-1`）**
+
+| `code` | 触发（确定性） | 默认是否参与隔离 |
+|---|---|---|
+| `answer_matches_key_under_credit` | 已评分未满分；单值题（或解答题且 0 分）；规范化后作答 == `answer_key` | 是 |
+| `rubric_total_mismatch` | 已评分；评分点可解析；`Σ评分点 ≠ 官方分`（理由列出 0 分评分点） | 是 |
+| `score_exceeds_max_clamped` | 数据层 `anomalies` 记录的“得分超满分、已按评分点合计截断” | 否（仅审计；排除会丢证据） |
+| `answer_key_mismatch_full_credit` | 单值题作答 ≠ 参考答案却满分 | 否（默认关闭；“x=9 vs 9”这类写法差异会全线误报） |
+
+**审查状态**
+
+| `review_status` | 含义 | 是否算存疑 |
+|---|---|---|
+| `flagged` | 规则发现线索，尚无人工结论（**缺失状态的默认值**） | 是 |
+| `needs_more_evidence` | 人工判断需补材料后再定 | 是 |
+| `confirmed_issue` | 人工确认该评分确有问题 | 是 |
+| `dismissed` | 人工确认该评分无误 | 否 |
+
+**口径（两套数字，都可复算）**
+
+- `state_counts` / `evidence` / `evidence_count` / `performance` 永远是**官方账本**，不因审查而变。
+- `knowledge_states[].review`（仅有存疑记录时出现）同时给出 `official_*` 与 `usable_*`（去掉存疑记录后）；`disputed_record_ids` 列出被排除的记录。
+- 顶层 `mastery/status` 由 `--review-policy` 决定：`official`（默认）取官方口径，`exclude_flagged` 取 `usable_*`。两种取值都写进 `run_manifest.review`，可审计。
+- `issues[].rubric_evidence` 只放**可用**失分；存疑失分放 `issues[].disputed_rubric_evidence`，不参与措辞与建议。
+- 若可用证据因此低于 `min_evidence`，仍输出 `insufficient_evidence`，**不补造结论**。
+
+**建议层**
+
+- `plan[].basis_records` 列出该计划项真正依据的 `record_id`，不得包含存疑记录。
+- `plan[].review_flags` 说明该知识点下被排除的记录及状态。
+- `review_required[]` 用于“只剩存疑依据”的 issue：不生成巩固计划，只提示人工复核/补充观测。
+- `review_context` 记录本次使用的报告哈希、策略与被排除记录；`verify-recommend` 校验三者一致。
+
+**审查账本（本机）**
+
+- 位置：`data/reviews/<dataset_id>/decisions.jsonl`（不进 Git，追加式，一行一个事件，最新生效、历史保留）。
+- 每行必须带 `review_status / reviewer_role / review_note / reviewed_at / policy_version / source_reference / flag_codes`；`reviewer_role` 默认 `local_demo_user`，**不是认证教师身份**。
+- 账本旁 `ledger_meta.json` 钉住三张 canonical 表的 `sha256`；哈希变化时拒绝套用旧结论，必须重新扫描复核（与 `apply_curation` 同一思路）。
+
+**明确不做**：不做通用数学等价判分；不让 LLM 标记或改分；不把 `pending` 当作可判分（官方数据中 4 条 pending 有 2 条作答与参考答案字面一致，自动判分就会把“未评分”变成“满分”）。
+
+---
+
+## 11. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.7** | 新增 `review_report.json`（存疑评分候选 + 人工结论，`x-primary-key=record_id`）；`student_profile.knowledge_states[].review`、`issues[].disputed_rubric_evidence`；`recommendation.review_context` / `review_required` / `plan[].basis_records` / `plan[].review_flags`；诊断新增 `--review-policy official|exclude_flagged` | **minor（输出）**：只加可选字段与一个新产物；无字段删除、无既有取值语义变更；旧画像/旧建议仍可通过 schema 与 `verify-run`/`verify-recommend` |
 | **v0.6** | 任务3建议层输出契约：`recommendation.json` 加可选 `node_id`、`plan[].activity_type`；明确 `issue_id`/材料/`check`/`probe_plan` 的约束与 `difficulty`/`est_minutes` 的启发式口径；`validation_report.json` 加可选 `errors`/`policy_version` | **minor（输出）**：只加可选字段，无字段删除、无既有取值语义变更；任务2 产物不受影响 |
 | **v0.5** | 诊断层输出契约：个人/群体画像加 `node_id`、`scope_known`、Beta 统计（区间/两侧概率）、`applicable_items`、`status_reason`、`performance`、`rubric_evidence`、`rubric_patterns`；`status` 加 `mixed_performance`/`not_applicable`，`issue_type` 加 `performance_gap`/`score_point_gap`；`issue_id` 第二段改为知识点序号（跨节点稳定）；质量报告加逐行 `decisions` 等可选字段与三条不变式 | **minor（输出）**：无字段删除、无既有取值语义变更；输入表 canonical 仍 `0.4.0`，`records.csv` 不变。消费方需显式处理新增状态/类型与可空 `ratio` |
 | **v0.4** | 新增证据层 `record_details.csv`（原文零加工 + `csv_record_number` 回查 + `kept` 标记被替代的修订）；`records` 字段不变，仍为分析层；写盘改为临时文件 + 原子替换；适配错误信息不再回显单元格原文；五态记账下沉到 `src/knowflow/cleaning/states.py` | **minor**：只新增表，无字段删除、无既有取值语义变更；消费方只读 `records` 的无需改动 |

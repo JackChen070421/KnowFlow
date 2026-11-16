@@ -10,6 +10,22 @@
 
 ---
 
+## 2026-11-16 — 方向一：存疑评分审查
+
+**本机提交** · `feat/review-disputed-scores`
+
+- 问题：R-0685（作答与参考答案字面一致却 0 分）与 R-0133（满分，但评分点合计 2、结果评分点为 0）都能一路进入画像与建议；旧链路只校验算术关系，从不比较作答与参考答案。
+- 审查层：新增 `src/knowflow/review/`（规则 `review-rules-1`、追加式账本、报告校验）；`review-scan` 只读 canonical 产出线索，`review-decide` 把人工结论追加到 `data/reviews/`，账本用三张 canonical 表 SHA-256 绑定。
+- 诊断：`knowledge_states[].review` 同时给 `official_*` 与 `usable_*`；`run --review-policy official|exclude_flagged` 决定顶层口径；存疑失分移入 `issues[].disputed_rubric_evidence`，不进 `rubric_evidence`。
+- 建议：计划项加 `basis_records`/`review_flags`；只剩存疑依据的 issue 进 `review_required`，不生成巩固计划；`verify-recommend` 增加三条隔离检查。
+- 教师端：新增「存疑证据」只读页与审核清单导出（清单不含原始作答）；快照新增 `reviews`。
+- 契约 v0.7：新增 `review_report.json`，两个输出 schema 加可选字段；旧画像/旧建议仍可校验。
+- 官方数据实测：799 条保留记录中 4 条线索（2 条参与隔离、2 条仅审计）；排除后 2 个「学生 × 知识点」数值变化，无状态翻转。
+- 验证：`pytest 186 passed`、`ruff` 通过、`check_contracts` / `check_examples` / `validate_canonical` / `verify-run` / `verify-recommend` 全过；CI 增加 ruff 步骤并清掉既有 F401。
+- 回退：移除 `review/`、`--review*` 参数与页面入口即可；旧 run 不读审查字段，仍能复算。
+
+---
+
 ## 2026-11-15 — 工作台课程知识图谱
 
 - 教师课程页与学生工作台接入 21 项教材细目的动态图谱，支持拖动、同画布聚焦、查页码与回查对应指标的学情。

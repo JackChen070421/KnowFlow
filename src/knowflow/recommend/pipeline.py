@@ -181,6 +181,9 @@ def recommend_run(
 
     run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     bundle = json.loads((run_dir / "diagnosis_input.json").read_text(encoding="utf-8"))
+    from knowflow.review.pipeline import context_from_run_manifest
+
+    review = context_from_run_manifest(run_manifest)
     node_ids = _resolve_nodes(bundle, node)
     timestamp = generated_at or now_iso()
     target = (
@@ -229,6 +232,7 @@ def recommend_run(
                 bundle["records"],
                 timestamp,
                 profile_sha,
+                review,
             )
             if writer is not None:
                 stats = rewrite_plan(rec, profile, catalog, bundle["dataset_id"], writer)
@@ -293,6 +297,15 @@ def recommend_run(
             "time": "heuristic",
             "material_scope": "catalog_prefer_node",
             "max_plan_items": 3,
+        },
+        "review": None
+        if review is None
+        else {
+            "policy": review["policy"],
+            "report_path": review["report_path"],
+            "report_sha256": review["report_sha256"],
+            "excluded_records": len(review["disputed_record_ids"]),
+            "counts": review["report"]["counts"],
         },
         "llm": {
             "requested": llm_requested,

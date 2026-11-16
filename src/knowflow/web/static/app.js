@@ -124,6 +124,7 @@ function navItems() {
     ['overview', '班级学情', 'overview'],
     ['course', '课程知识地图', 'map'],
     ['students', '学生明细', 'students'],
+    ['reviews', '存疑证据', 'shield'],
     ['quality', '数据与证据', 'shield']
   ] : [
     ['overview', '学习总览', 'overview'],
@@ -156,6 +157,7 @@ function content() {
   }
   if (state.view === 'course') return coursePage(false);
   if (state.view === 'students') return studentsPage();
+  if (state.view === 'reviews') return reviewsPage();
   if (state.view === 'quality') return qualityPage();
   return overview();
 }
@@ -297,6 +299,73 @@ function qualityPage() {
     unobserved: '无观测'
   };
   return `${hero('TRUST & TRACEABILITY / 05','每一个结论，都经得起回看。','展示数据整理、质量检查和证据链，把“为什么这样判断”说清楚。')}<section class="panel">${panelHead('从原始记录到可用证据','此页为整个数据集的质量审计，跨两个节点；不受班级筛选影响。','<span class="pill">全数据集</span>')}<div class="audit-flow">${[[q.input_records,'输入逻辑记录','CSV 解析后的记录数'],[q.duplicates_removed,'修订 / 重复淘汰','按数据层规则保留版本'],[q.rejected_records,'不纳入记录','保留拒绝原因'],[q.total_records,'最终保留记录','进入画像与复算']].map(([v,t,d],i)=>`<div class="audit-step"><small>STEP ${String(i+1).padStart(2,'0')}</small><strong>${v}</strong><span>${t}<br>${d}</span></div>`).join('')}</div><div class="notice">核对关系：输入 ${q.input_records} = 保留 ${q.total_records} + 修订 / 重复淘汰 ${q.duplicates_removed} + 不纳入 ${q.rejected_records}。保留中包含 ${q.partial_credit_records} 条部分得分记录，未按“全错”抹掉。</div><div class="audit-status">${['知识底座结构与引用','个人 / 班级画像复算','学习建议约束与复算'].map(t=>`<span>${icon('shield',15)}${t} · 通过</span>`).join('')}</div>${note(`数据生成时间：${esc(D.meta.generated_at)}。成果保存在被 Git 忽略的本机目录；页面没有调用外部模型。`)}</section><div class="grid-half section-gap"><section class="panel">${panelHead('五态记录分布','按数据层整理结果统计。')}${donut(Object.entries(q.records_by_state).map(([k,v],i)=>({label:labels[k]||k,value:v,color:['#398575','#d6a16f','#ab98be','#cad6d0','#e6ece7'][i]})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}</section><section class="panel">${panelHead('清洗与诊断的判断边界','缺失、待评分、未作答和部分得分分别处理。')}<ul class="rule-list">${q.handling_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="notice warm">评分点失分是学习线索，不自动等于具体误概念。教师可以从知识点抽屉继续回查原始作答。</div></section></div><section class="panel">${panelHead('源文件与数据指纹','保留材料出处，支持本机核对版本。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>输入文件</th><th>逻辑记录数</th><th>SHA-256 指纹</th></tr></thead><tbody>${q.input_files.map(f=>`<tr><td>${esc(f.path)}</td><td>${f.rows??'—'}</td><td class="mono" title="${esc(f.sha256)}">${esc(f.sha256.slice(0,16))}…</td></tr>`).join('')}</tbody></table></div></section><section class="panel section-gap">${panelHead('质量检查发现','规则和处理动作来自任务 2 输出。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>字段 / 记录</th><th>问题</th><th>数量 / 处理</th></tr></thead><tbody>${q.field_quality.map(f=>`<tr><td>${esc(f.field)}</td><td>${esc(f.issue)}</td><td>${f.count}</td></tr>`).join('')}${q.anomalies.slice(0,25).map(a=>`<tr><td>${esc(a.record_id||'—')}</td><td>${esc(a.reason)}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>${!q.anomalies.length&&!q.field_quality.length?empty('当前没有记录到质量异常。'):''}${q.anomalies.length>25?note(`异常共有 ${q.anomalies.length} 项，页面展示前 25 项；全部保留在本机质量报告中。`):''}</section>`;
+}
+
+const REVIEW_STATUS_LABEL = {
+  flagged: '待复核',
+  confirmed_issue: '已确认评分问题',
+  dismissed: '已确认无误',
+  needs_more_evidence: '需补证据'
+};
+const REVIEW_FLAG_LABEL = {
+  answer_matches_key_under_credit: '作答=参考答案但未满分',
+  rubric_total_mismatch: '得分≠评分点合计',
+  score_exceeds_max_clamped: '得分超满分已截断',
+  answer_key_mismatch_full_credit: '作答≠参考答案却满分'
+};
+
+function reviewsPage() {
+  const r = D.reviews;
+  if (!r) {
+    return `${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '本机存疑评分审查产物未随快照生成。')}<section class="panel">${empty('本次快照没有存疑审查报告；请用 --refresh 重新生成本机展示数据。')}</section>`;
+  }
+  const list = r.candidates || [];
+  const counts = r.counts || {};
+  const rows = list.map(c => `<tr>
+    <td class="mono">${esc(c.record_id)}</td>
+    <td><button class="text-button mono" data-student="${esc(c.student_id)}">${esc(c.student_id)}</button></td>
+    <td>${esc((c.knowledge_ids || []).join(' / ') || '—')}</td>
+    <td>${esc(c.material_id)}<small class="muted"> · ${esc(c.node_id)}</small></td>
+    <td>${c.official.score ?? '—'} / ${c.official.max_score}<small class="muted"> · 合计 ${c.official.rubric_sum ?? '—'}</small></td>
+    <td>${c.flags.map(f => `<span class="pill ${f.excluded_by_default ? 'warm' : 'purple'}" title="${esc(f.code)}">${esc(REVIEW_FLAG_LABEL[f.code] || f.code)}</span>`).join(' ')}</td>
+    <td><span class="pill ${c.disputed ? 'warm' : ''}">${esc(REVIEW_STATUS_LABEL[c.review_status] || c.review_status)}</span>${c.disputed ? '<small class="muted"><br>不进入结论</small>' : ''}</td>
+    <td>${c.decisions.length ? `<small class="muted">${esc(c.decisions.at(-1).review_note)}</small>` : '<small class="muted">尚未人工复核</small>'}</td>
+    <td><button class="text-button" data-evidence="${esc(c.record_id)}">查看原始证据 ${icon('arrow',13)}</button></td>
+  </tr>`).join('');
+  return `${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '规则只提出复核线索；官方分数原样保留，人工结论作为独立事件追加。')}
+  <section class="panel">${panelHead('存疑评分审查', `规则 ${esc(D.review_meta?.rule_version || '—')} · 仅本机 · 不含原始作答`, `<button class="button light" data-export-reviews>${icon('download',14)}导出审核清单</button>`)}
+    <div class="mini-metrics" style="grid-template-columns:repeat(4,1fr)">
+      <div class="mini-metric">扫描记录<strong>${counts.records_scanned ?? '—'}</strong><small>条保留记录</small></div>
+      <div class="mini-metric">复核线索<strong>${counts.candidates ?? 0}</strong><small>条候选</small></div>
+      <div class="mini-metric">不进入结论<strong>${counts.disputed_records ?? 0}</strong><small>条待核或已确认</small></div>
+      <div class="mini-metric">待人工复核<strong>${counts.flagged ?? 0}</strong><small>条尚无结论</small></div>
+    </div>
+    <div class="notice warm">被标记的记录已从问题识别与建议依据中排除，<strong>官方分数未被修改</strong>；已确认无误的记录会重新进入统计。原文请点“查看原始证据”，仅在本机读取。</div>
+    <div class="table-scroll"><table class="data-table"><thead><tr><th>记录</th><th>学生</th><th>知识点</th><th>题目 / 节点</th><th>官方分</th><th>复核线索</th><th>审查状态</th><th>复核备注</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${list.length ? '' : empty('当前没有发现需要复核的评分记录。')}
+    ${note('结论追加命令：knowflow review-decide --record <ID> --status <...> --note "<理由>"。本机演示角色不是认证教师身份。')}
+  </section>`;
+}
+
+function exportReviews() {
+  const r = D.reviews;
+  if (!r) return;
+  const data = {
+    notice: '本机存疑评分审核清单；不含原始作答，请勿提交公开 Git 仓库。',
+    dataset_id: D.meta.dataset_id,
+    snapshot_id: D.meta.snapshot_id,
+    policy: r.policy,
+    counts: r.counts,
+    candidates: r.candidates
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json;charset=utf-8'
+  }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `KnowFlow-review-${D.meta.snapshot_id}-local.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function explorePage() {
@@ -747,6 +816,10 @@ document.addEventListener('click', event => {
     state.allHeatmap = !state.allHeatmap;
     render();
     window.scrollTo(0, top);
+    return;
+  }
+  if (b.hasAttribute('data-export-reviews')) {
+    exportReviews();
     return;
   }
   if (b.hasAttribute('data-export')) exportSummary();

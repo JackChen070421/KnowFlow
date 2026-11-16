@@ -15,6 +15,7 @@ from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import build_bundle, run_diagnosis
 from knowflow.diagnosis.validation import validate_saved_run
 from knowflow.io.pipeline import run_adapt
+from knowflow.knowledge.graph import load_graph
 from knowflow.knowledge.pipeline import (
     build_knowledge_base,
     validate_knowledge_base,
@@ -58,6 +59,9 @@ def source_fingerprint(root: Path, raw: Path) -> str:
     files = list(raw.rglob("*.csv"))
     files += list((root / "src/knowflow").rglob("*.py"))
     files += list((root / "schemas").rglob("*.json"))
+    graph_root = root / "knowledge"
+    if graph_root.is_dir():
+        files += list(graph_root.rglob("*.json"))
     for path in sorted(files):
         digest.update(str(path.relative_to(root)).encode("utf-8"))
         digest.update(path.read_bytes())
@@ -93,7 +97,9 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
     print("[1/5] Preparing an isolated canonical dataset...", flush=True)
     run_adapt(raw, canonical, dataset_id="official-v1")
     print("[2/5] Building the course knowledge base...", flush=True)
-    knowledge = build_knowledge_base(canonical, "official-v1")
+    graph_path = root / "knowledge" / "curriculum_graph.json"
+    graph = load_graph(graph_path) if graph_path.is_file() else None
+    knowledge = build_knowledge_base(canonical, "official-v1", graph=graph)
     write_knowledge_base(knowledge, run / "knowledge_base.json")
     print("[3/5] Scanning for disputed scores...", flush=True)
     scan_dataset("official-v1", root=canonical.parent, output=run / "review")
@@ -201,6 +207,8 @@ def load_dashboard(run: Path) -> dict:
     view_knowledge = {
         k: knowledge[k] for k in ("objectives", "knowledge", "edges", "qmatrix", "counts")
     }
+    if "curriculum_graph" in knowledge:
+        view_knowledge["curriculum_graph"] = knowledge["curriculum_graph"]
     view_knowledge["materials"] = [
         {k: m.get(k) for k in material_fields} for m in knowledge["materials"]
     ]

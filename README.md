@@ -28,7 +28,7 @@ Set-Location 'D:\桌面\KnowFlow'
 - 教师页：`http://127.0.0.1:8765/teacher`；学生页：`http://127.0.0.1:8765/student`。
 - 教师页包含班级堆叠条形图、作答环形图、节点记录量折线图、学生知识热力表、个人画像与建议、数据质量审计。
 - 教师页「存疑证据」：列出复核线索、官方分与评分点、审查状态与复核备注，可回查原始作答并下载审核清单（清单不含原始作答）。
-- 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。未核对的先修/跨课程关系不补造。
+- 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。课程地图直接读正式图谱 `knowledge/curriculum_graph.json`（经知识底座进入快照），未人工核对的关系标“待核验”，不补造。
 - 学生页输入模拟学生 ID（例如 `S001`），查看对应节点的知识状态、练习与学习建议；另有数轴镜像、活动预算两个明确标识的自编互动实验。
 - 侧栏底部齿轮「设置」→「LLM 模式」：可开关文字层、选择厂商（DeepSeek / OpenAI / 通义千问 / 自定义）并填写 API Key。保存即写入本机 `.env`，等同于手工改后端配置；Key 不回显、不进入页面快照。保存后对之后生成的建议生效，已有成果需重建。
 - 左下角「AI 学伴」：对话窗口按当前节点 / 班级 / 学生回答，只发送聚合摘要。配置了 LLM 时回答要过数字与 ID 锁，未配置或连续校验失败会回退本地规则回答；回答里的 `S001` / `K-07` / `M-021` 可点开对应依据。`?chat=1` 可直接展开。
@@ -71,9 +71,10 @@ Set-Location 'D:\桌面\KnowFlow'
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 19 schemas |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 20 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
+| **3b 图谱层** | `knowledge/`、`src/knowflow/knowledge/graph.py` | 教材细目图谱：稳定边 ID、类型、来源、审核状态；前端与建议共用 | ✅ 方向二；18 条关系待人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；双口径隔离 | ✅ 方向一 |
 | **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
@@ -118,6 +119,7 @@ KnowFlow/
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend / review
+├─ knowledge/               # 正式课程图谱（可入库的教学资产，不含学生数据）
 ├─ tests/                   # contract + io + diagnosis + review + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
@@ -174,7 +176,8 @@ python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 ### 跑任务1（知识底座）
 
 ```powershell
-uv run python -m knowflow.cli knowledge --dataset official-v1
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json
 # 无本机数据时，用合成样例验证：
 uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/synthetic/input
 ```
@@ -183,11 +186,13 @@ uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/syn
 `artifacts/knowledge/<dataset>-<时间戳>/knowledge_base.json`；可用 `--output` 指定新 JSON 文件。
 保留课标原文、出处、知识点父子关系、Q-matrix 与已有先修/易混边，不更改输入表。
 写出前验证 schema、主键、引用、计数、测评覆盖及包含/先修图无环；已有输出文件不会覆盖。
-可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系。
+`--graph` 把正式课程图谱（`knowledge/curriculum_graph.json`）合并进知识底座，前端与建议层读同一份。
+可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系；图谱复核补丁写在
+`curriculum_graph.edges`（只改审核状态/出处/理由/证据等级/版本，不能改端点或类型）。
 标注包含 `dataset_id`、五张 CSV 的 `source_sha256`、`objectives`/`knowledge` 补丁数组和 `edges` 新增数组；
 只允许更新课标原文/出处/备注、知识点 description 和有依据说明的边，禁止改变诊断 ID 或 Q-matrix。
 输入哈希变化时拒绝套用旧标注，需重新复核；真实标注与成果不进 Git。
-先修与易混关系来自 `edges.csv`，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
+先修与易混关系来自 `edges.csv` 或正式图谱，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
 课标出处的真实性与关系的教学合理性仍需人工核对。输出仅在本机，默认目录不进 Git。
 
 ### 跑任务2（学情画像）
@@ -299,6 +304,32 @@ artifacts/review/<目录>/
 ├─ run_manifest.json    # 源表哈希、规则版本、账本哈希
 └─ 运行说明.md
 ```
+
+### 跑方向二：正式课程图谱
+
+目标：前端、诊断、建议读**同一份**受 Schema 约束的图谱；每条关系有稳定 `edge_id`、类型、来源、理由和审核状态；只有 `reviewed` 的先修关系参与排序。
+
+```powershell
+# 1) 带图谱构建知识底座（前端与建议都读这一份）
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json
+
+# 2) 复核关系：用本机标注文件把某条边标为 reviewed，必须给出可核对出处
+#    详见 knowledge/README.md 的 curation 示例
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json --curation <本机标注.json>
+
+# 3) 重新出建议并复核
+uv run python -m knowflow.cli recommend --run latest --node all
+uv run python -m knowflow.cli verify-recommend
+```
+
+- 图谱：21 个教材细目、18 条关系（16 先修 + 1 易混 + 1 相关），**当前全部是 `draft`**，逐条带 `source_reference` 与 `rationale`。
+- 关系语义：`prerequisite` 有向；`confusable_with` / `related_to` 对称，按 `source_node_id < target_node_id` 存储一次；`related_to` 不是先修。
+- 建议层：`prerequisite_check` 输出 `reviewed_edges` / `draft_edges` / `pending_knowledge_ids`；未审核关系只提示“关系待核验”，不排序、不阻断。
+- 易混：只有 reviewed 且有同时映射两个知识点的材料时才加对比练习；否则只给教师补充观察提示，不虚构对比题，也不据此判定学生混淆。
+- 超出 3 项预算的 issue 写入 `deferred[]` 并给理由（先修优先 / 无可用材料）。
+- 官方底座目前没有任何 **K 级** 先修边，所以正式数据的计划顺序不会因图谱改变；排序逻辑由合成数据测试覆盖（`tests/diagnosis/test_graph_planning.py`），人工复核并补 K 级边后即生效。
 
 ### 可选：接入 LLM 文字层
 

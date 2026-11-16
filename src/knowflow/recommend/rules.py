@@ -179,13 +179,114 @@ def _minutes(material_ids: list[str], catalog: dict) -> int:
     return max(1, min(120, total + 2))
 
 
-def _prerequisite(issue: dict, profile: dict, catalog: dict) -> dict:
-    missing = []
-    for prerequisite in catalog["prerequisites"].get(issue["knowledge_id"], []):
-        state = _state(profile, prerequisite) or {}
-        if state.get("status") in WEAK_STATUSES | {"insufficient_evidence"}:
-            missing.append(prerequisite)
-    return {"satisfied": not missing, "missing_knowledge_ids": missing}
+def _prerequisite(issue: dict, profile: dict, catalog: dict, review: dict | None = None) -> dict:
+    """Reviewed prerequisites only; draft relations are reported, never obeyed."""
+
+    target = issue["knowledge_id"]
+    reviewed = catalog.get("reviewed_prerequisites", {}).get(target, [])
+    missing: list[str] = []
+    pending: list[str] = []
+    for entry in reviewed:
+        view = _planning_view(profile, entry["source_knowledge_id"], review)
+        if view["status"] in {"confirmed_weak", "likely_weak"}:
+            missing.append(entry["source_knowledge_id"])
+        elif view["status"] == "insufficient_evidence":
+            pending.append(entry["source_knowledge_id"])
+    draft_edges = [entry["edge_id"] for entry in catalog.get("pending_prerequisites", {}).get(target, [])]
+    draft_edges += catalog.get("pending_node_relations", {}).get(target, [])
+    note = "另有先修/关联关系待核验，未参与排序。" if draft_edges else ""
+    return {
+        "satisfied": not missing,
+        "missing_knowledge_ids": sorted(set(missing)),
+        "pending_knowledge_ids": sorted(set(pending)),
+        "reviewed_edges": [entry["edge_id"] for entry in reviewed],
+        "draft_edges": sorted(set(draft_edges)),
+        "note": note,
+    }
+
+
+def _dependency_issues(
+    issue: dict,
+    issues_by_knowledge: dict[str, dict],
+    profile: dict,
+    catalog: dict,
+    review: dict | None,
+) -> list[dict]:
+    """Issues that must be planned before this one, from reviewed prerequisites."""
+
+    dependencies = []
+    for entry in catalog.get("reviewed_prerequisites", {}).get(issue["knowledge_id"], []):
+        source = entry["source_knowledge_id"]
+        view = _planning_view(profile, source, review)
+        if view["status"] not in {"confirmed_weak", "likely_weak", "insufficient_evidence"}:
+            continue
+        dependency = issues_by_knowledge.get(source)
+        if dependency is not None:
+            dependencies.append(dependency)
+    return dependencies
+
+
+def _relation_notes(
+    issue: dict, catalog: dict, material_ids: list[str], used: set[str]
+) -> tuple[list[dict], list[str]]:
+    """Comparison material for reviewed confusable pairs; never a diagnosis."""
+
+    notes: list[dict] = []
+    extra: list[str] = []
+    knowledge_id = issue["knowledge_id"]
+    for entry in catalog.get("reviewed_confusable", {}).get(knowledge_id, []):
+        partner = entry["partner_knowledge_id"]
+        pair = tuple(sorted((knowledge_id, partner)))
+        shared = catalog.get("shared_materials", {}).get(pair, [])
+        candidate = next(
+            (
+                material_id
+                for material_id in shared
+                if material_id not in used
+                and material_id not in material_ids
+                and material_id in catalog["materials"]
+            ),
+            None,
+        )
+        if candidate:
+            extra.append(candidate)
+            used.add(candidate)
+            note = f"与 {partner} 易混：用 {candidate} 做对比辨析。"
+        elif any(material_id in material_ids or material_id in used for material_id in shared):
+            chosen = next(m for m in shared if m in material_ids or m in used)
+            note = f"与 {partner} 易混：本次已包含 {chosen}，可作对比辨析。"
+        else:
+            note = f"与 {partner} 易混：本机没有明确映射的对比材料，建议教师补充对比观察（非现有资源）。"
+        notes.append(
+            {
+                "relation_type": "confusable_with",
+                "edge_id": entry["edge_id"],
+                "review_status": entry["review_status"],
+                "note": note,
+            }
+        )
+    for entry in catalog.get("pending_confusable", {}).get(knowledge_id, []):
+        notes.append(
+            {
+                "relation_type": "confusable_with",
+                "edge_id": entry["edge_id"],
+                "review_status": entry["review_status"],
+                "note": f"与 {entry['partner_knowledge_id']} 的对照关系待核验，本轮不据此安排材料。",
+            }
+        )
+    for entry in catalog.get("pending_node_confusable", {}).get(knowledge_id, []):
+        notes.append(
+            {
+                "relation_type": "confusable_with",
+                "edge_id": entry["edge_id"],
+                "review_status": entry["review_status"],
+                "note": (
+                    f"教材细目 {entry['other_node_id']} 与本知识点存在待核验的对照关系，"
+                    "本轮不据此安排材料。"
+                ),
+            }
+        )
+    return notes, extra
 
 
 def _reason(
@@ -265,6 +366,8 @@ def _plan_item(
     for material_id in material_ids:
         if material_id not in catalog["materials"]:
             return None
+    notes, extra = _relation_notes(issue, catalog, material_ids, used)
+    material_ids = material_ids + extra
     used.update(material_ids)
     activity_type = "probe" if planning["type"] == "insufficient_evidence" else "consolidate"
     activity = (
@@ -287,9 +390,11 @@ def _plan_item(
         "check": _check(planning, catalog, explain_id, assessments),
         "est_minutes": _minutes(material_ids, catalog),
         "difficulty": _difficulty(issue, assessments, catalog),
-        "prerequisite_check": _prerequisite(issue, profile, catalog),
+        "prerequisite_check": _prerequisite(issue, profile, catalog, review),
         "teacher_adjustable": True,
     }
+    if notes:
+        item["relation_notes"] = notes
     if review is not None:
         item["basis_records"] = sorted({point["record_id"] for point in planning["rubric_evidence"]})
         if view["review"]:
@@ -427,6 +532,7 @@ def recommend_profile(
                     "items": [],
                     "purpose": _probe_purpose(profile, [], [], bool(profile.get("issues"))),
                 },
+                "deferred": [],
                 "_states": states,
             },
             review,
@@ -442,7 +548,28 @@ def recommend_profile(
             probes.append(issue)
         elif _is_gap(issue, profile, review):
             gaps.append(issue)
-    selected = (gaps[:2] + probes[:1]) if gaps else probes[:MAX_PLAN_ITEMS]
+    base_selected = (gaps[:2] + probes[:1]) if gaps else probes[:MAX_PLAN_ITEMS]
+    issues_by_knowledge = {issue["knowledge_id"]: issue for issue in issues}
+    ordered: list[dict] = []
+    seen_ids: set[str] = set()
+    for issue in base_selected:
+        for dependency in _dependency_issues(
+            issue, issues_by_knowledge, profile, catalog, review
+        ):
+            if dependency["issue_id"] not in seen_ids:
+                ordered.append(dependency)
+                seen_ids.add(dependency["issue_id"])
+        if issue["issue_id"] not in seen_ids:
+            ordered.append(issue)
+            seen_ids.add(issue["issue_id"])
+    selected = ordered[:MAX_PLAN_ITEMS]
+    deferred = [
+        {
+            "issue_id": issue["issue_id"],
+            "reason": "计划预算为 3 项；先修巩固/补充观测优先，本轮暂不列入，下一轮重新规划。",
+        }
+        for issue in ordered[MAX_PLAN_ITEMS:]
+    ]
 
     plan = []
     used: set[str] = set()
@@ -459,6 +586,15 @@ def recommend_profile(
         )
         if item:
             plan.append(item)
+    planned_ids = {item["issue_id"] for item in plan}
+    for issue in selected:
+        if issue["issue_id"] not in planned_ids:
+            deferred.append(
+                {
+                    "issue_id": issue["issue_id"],
+                    "reason": "该知识点在本节点没有可用材料，无法生成计划项。",
+                }
+            )
 
     probe_items = []
     probe_knowledge = []
@@ -480,6 +616,7 @@ def recommend_profile(
                 "items": probe_items,
                 "purpose": _probe_purpose(profile, probe_items, probe_knowledge, bool(probes)),
             },
+            "deferred": deferred,
             "_states": states,
         },
         review,

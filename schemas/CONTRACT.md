@@ -1,8 +1,8 @@
-# 数据契约（contract v0.7；输入表 canonical 仍为 v0.4.0）
+# 数据契约（contract v0.8；输入表 canonical 仍为 v0.4.0）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
-> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
+> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
 
 ---
 
@@ -81,7 +81,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 | 文件 | 顶层字段 |
 |---|---|
-| `knowledge_base.json` | `schema_version, dataset_id, generated_at, subject, grade, counts, objectives, knowledge, materials, qmatrix, edges` |
+| `knowledge_base.json` | `schema_version, dataset_id, generated_at, subject, grade, counts, objectives, knowledge, materials, qmatrix, edges, curriculum_graph?` |
 | `data_quality_report.json` | `schema_version, dataset_id, generated_at, input_files, input_records, total_records, duplicates_removed, rejected_records, partial_credit_records, records_by_state, missing, anomalies, field_quality, handling_rules, decisions` |
 | `student_profile.json` | `schema_version, student_id, group_id, node_id, generated_at, source_dataset, coverage, knowledge_states, objective_states, issues, lists` |
 | `class_profile.json` | `schema_version, class_id, node_id, generated_at, source_dataset, student_count, coverage_summary, knowledge_distribution, common_issues, rubric_patterns, tiers, group_differences?` |
@@ -350,10 +350,59 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 
 ---
 
-## 11. 变更记录
+## 11. v0.8：正式课程图谱（方向二）
+
+目标：前端展示、诊断与建议读**同一份**受 Schema 约束的图谱；关系有稳定 ID、类型、来源、理由和审核状态；只有 `reviewed` 的先修关系能影响计划顺序。
+
+**唯一数据源**
+
+- 源文件：`knowledge/curriculum_graph.json`（可入库的教学资产，不含学生数据），构建时整份写入 `knowledge_base.json.curriculum_graph`。
+- 前端从 `/api/snapshot` 的 `knowledge_base.curriculum_graph` 读取；建议层经 `recommend/catalog.py` 读取同一对象。**不再有第二份硬编码关系。**
+- 图谱不改变 canonical 的 `edges.csv`（课标→知识点的包含关系）；两者是不同层：`edges` 是课程级材料/知识点包含，图谱是教材细目层的教学关系。
+
+**节点与边**
+
+| 对象 | 字段 | 约束 |
+|---|---|---|
+| 节点 | `node_id / title / theme_index / summary / source_locator / textbook / pdf_page / knowledge_ids / material_id` | `node_id` 固定 `C-xxx`，不与 `K-xx` 混用；`knowledge_ids` 必须存在；`material_id` 必须存在 |
+| 边 | `edge_id / source_node_id / target_node_id / relation_type / source_reference / rationale / review_status / evidence_level / created_version? / updated_version?` | `edge_id` 固定 `GE-nnnn`、不复用；端点可为 `C-xxx` 或 `K-xx`；来源与理由必填 |
+
+| `relation_type` | 方向 | 含义 | 可否排序 |
+|---|---|---|---|
+| `prerequisite` | 有向 | source 是 target 的先修 | 仅 `reviewed` |
+| `confusable_with` | 对称 | 容易混用，适合对比辨析 | 否 |
+| `related_to` | 对称 | 可对照/相关，**不是先修、不是因果** | 否 |
+
+对称关系按 `source_node_id < target_node_id` 规范化**存储一次**；读取方双向解释。重复反向边、重复边、自环、悬空端点、先修环都会被拒绝（错误信息给出环路径或重复边 ID）。
+
+**审核状态**
+
+`draft`（人工整理未复核，当前 18 条全部为 draft）/ `needs_revision` / `rejected` / `reviewed`。
+
+- 未审核的先修关系**不得**用于排序或阻断；建议里写入 `prerequisite_check.draft_edges` 与 `note`“关系待核验”。
+- `validation`：`plan[].prerequisite_check.reviewed_edges` 必须是 `reviewed`；`draft_edges` 必须非 `reviewed`；`missing_knowledge_ids` / `pending_knowledge_ids` 必须由 reviewed 先修边支撑。
+- 人工复核走既有本机标注机制（`--curation`）：只允许改审核状态、出处、理由、证据等级与版本，**不能改端点或类型**；标记 `reviewed` 必须有可核对出处（`manual_unsourced` 不行）。五张表哈希变化时拒绝套用。
+
+**进入决策**
+
+- 先修：`reviewed` 且目标知识点薄弱 → 先安排先修巩固；`insufficient_evidence` → 先补观测，**不判薄弱**；已掌握 → 不重复安排。
+- 预算仍是每人 3 项；因先修或预算被挤出的 issue 写入 `recommendation.deferred[]` 并给理由。
+- 易混：优先使用同时映射到两个知识点的材料（`shared_materials`）做对比；没有材料时只给“教师补充观察”提示，**不虚构对比题**，也**不据此判定学生混淆**。
+- 图谱缺失（旧底座）：`catalog.graph = null`，建议退回 v0.6 行为（`satisfied=true`、无关系提示）。
+
+**版本与下游**
+
+图谱内容在 `knowledge_base.json` 内，任一关系或版本变化都会改变知识底座哈希；`recommend/run_manifest.json` 记录该哈希，旧画像是旧版本，不会被静默复用。
+
+**明确不做**：不从诊断数据自动生成先修/易混关系；不把 `related_to` 当先修；不把 `confusable_with` 当学生混淆的证据；不手改端点“修复”关系。
+
+---
+
+## 12. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.8** | 新增 `curriculum_graph.json`（21 节点 / 18 关系，含 `edge_id`、类型、来源、理由、审核状态）；`knowledge_base.json` 加可选 `curriculum_graph`；`recommendation.json` 的 `prerequisite_check` 加 `pending_knowledge_ids/reviewed_edges/draft_edges/note`、`plan[].relation_notes`、顶层 `deferred`；新增 `knowledge --graph` 与 curation 的图谱复核补丁 | **minor（输出）**：只加可选字段与一个新资产；无字段删除；旧底座（无图谱）行为不变，旧产物仍可校验 |
 | **v0.7** | 新增 `review_report.json`（存疑评分候选 + 人工结论，`x-primary-key=record_id`）；`student_profile.knowledge_states[].review`、`issues[].disputed_rubric_evidence`；`recommendation.review_context` / `review_required` / `plan[].basis_records` / `plan[].review_flags`；诊断新增 `--review-policy official|exclude_flagged` | **minor（输出）**：只加可选字段与一个新产物；无字段删除、无既有取值语义变更；旧画像/旧建议仍可通过 schema 与 `verify-run`/`verify-recommend` |
 | **v0.6** | 任务3建议层输出契约：`recommendation.json` 加可选 `node_id`、`plan[].activity_type`；明确 `issue_id`/材料/`check`/`probe_plan` 的约束与 `difficulty`/`est_minutes` 的启发式口径；`validation_report.json` 加可选 `errors`/`policy_version` | **minor（输出）**：只加可选字段，无字段删除、无既有取值语义变更；任务2 产物不受影响 |
 | **v0.5** | 诊断层输出契约：个人/群体画像加 `node_id`、`scope_known`、Beta 统计（区间/两侧概率）、`applicable_items`、`status_reason`、`performance`、`rubric_evidence`、`rubric_patterns`；`status` 加 `mixed_performance`/`not_applicable`，`issue_type` 加 `performance_gap`/`score_point_gap`；`issue_id` 第二段改为知识点序号（跨节点稳定）；质量报告加逐行 `decisions` 等可选字段与三条不变式 | **minor（输出）**：无字段删除、无既有取值语义变更；输入表 canonical 仍 `0.4.0`，`records.csv` 不变。消费方需显式处理新增状态/类型与可空 `ratio` |

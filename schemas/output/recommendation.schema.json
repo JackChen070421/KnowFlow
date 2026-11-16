@@ -35,19 +35,10 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "dataset_id",
-        "profile_generated_at"
-      ],
+      "required": ["dataset_id", "profile_generated_at"],
       "properties": {
-        "dataset_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9._-]+$"
-        },
-        "profile_generated_at": {
-          "type": "string",
-          "format": "date-time"
-        },
+        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "profile_generated_at": {"type": "string", "format": "date-time"},
         "profile_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$",
@@ -58,24 +49,11 @@
     "generated_by": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "provider",
-        "model",
-        "prompt_version"
-      ],
+      "required": ["provider", "model", "prompt_version"],
       "properties": {
-        "provider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "model": {
-          "type": "string",
-          "minLength": 1
-        },
-        "prompt_version": {
-          "type": "string",
-          "minLength": 1
-        }
+        "provider": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "prompt_version": {"type": "string", "minLength": 1}
       }
     },
     "plan": {
@@ -99,36 +77,17 @@
           "teacher_adjustable"
         ],
         "properties": {
-          "seq": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "issue_id": {
-            "type": "string",
-            "pattern": "^IS-[0-9]{3}-[0-9]{2}$"
-          },
-          "activity": {
-            "type": "string",
-            "minLength": 1
-          },
+          "seq": {"type": "integer", "minimum": 1},
+          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
+          "activity": {"type": "string", "minLength": 1},
           "activity_type": {
             "type": "string",
-            "enum": [
-              "explain",
-              "practice",
-              "consolidate",
-              "probe",
-              "review",
-              "extend"
-            ],
+            "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"],
             "description": "可选：活动类型，便于教师筛选；不改变排课语义"
           },
           "material_ids": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^M-[0-9]{3}$"
-            },
+            "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
             "minItems": 1,
             "uniqueItems": true
           },
@@ -137,16 +96,10 @@
             "pattern": "^M-[0-9]{3}$",
             "description": "必须是 material_ids 之一；G4 检查"
           },
-          "objective_id": {
-            "type": "string",
-            "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"
-          },
+          "objective_id": {"type": "string", "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"},
           "knowledge_ids": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^K-[0-9]{2,3}$"
-            },
+            "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
             "minItems": 1,
             "uniqueItems": true
           },
@@ -160,47 +113,66 @@
             "minLength": 1,
             "description": "可验证的检查方式，如“3 题对 2 题”"
           },
-          "est_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 120
-          },
-          "difficulty": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 5
-          },
+          "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
+          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
           "prerequisite_check": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "satisfied",
-              "missing_knowledge_ids"
-            ],
+            "required": ["satisfied", "missing_knowledge_ids"],
             "properties": {
-              "satisfied": {
-                "type": "boolean"
-              },
+              "satisfied": {"type": "boolean"},
               "missing_knowledge_ids": {
                 "type": "array",
-                "items": {
-                  "type": "string",
-                  "pattern": "^K-[0-9]{2,3}$"
-                },
+                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
                 "uniqueItems": true
+              },
+              "pending_knowledge_ids": {
+                "type": "array",
+                "description": "可选：已审核先修但证据不足的知识点；先补观测，不判薄弱。",
+                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+                "uniqueItems": true
+              },
+              "reviewed_edges": {
+                "type": "array",
+                "description": "可选：参与本次判断的已审核先修关系 edge_id。",
+                "items": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "uniqueItems": true
+              },
+              "draft_edges": {
+                "type": "array",
+                "description": "可选：涉及该知识点但未审核的关系；只提示待核验，不参与排序。",
+                "items": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "uniqueItems": true
+              },
+              "note": {"type": "string"}
+            }
+          },
+          "relation_notes": {
+            "type": "array",
+            "description": "可选：易混/相关关系的教学提示；不构成学生混淆的证据。",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["relation_type", "edge_id", "review_status", "note"],
+              "properties": {
+                "relation_type": {
+                  "type": "string",
+                  "enum": ["prerequisite", "confusable_with", "related_to"]
+                },
+                "edge_id": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "review_status": {
+                  "type": "string",
+                  "enum": ["draft", "reviewed", "rejected", "needs_revision"]
+                },
+                "note": {"type": "string", "minLength": 1}
               }
             }
           },
-          "teacher_adjustable": {
-            "type": "boolean"
-          },
+          "teacher_adjustable": {"type": "boolean"},
           "basis_records": {
             "type": "array",
             "description": "可选：本计划项实际依据的 record_id（contract v0.7）。不得包含存疑记录；用于“依据可回查”。",
-            "items": {
-              "type": "string",
-              "pattern": "^R-[0-9]{4}$"
-            },
+            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
             "uniqueItems": true
           },
           "review_flags": {
@@ -209,23 +181,12 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "record_id",
-                "review_status"
-              ],
+              "required": ["record_id", "review_status"],
               "properties": {
-                "record_id": {
-                  "type": "string",
-                  "pattern": "^R-[0-9]{4}$"
-                },
+                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
                 "review_status": {
                   "type": "string",
-                  "enum": [
-                    "flagged",
-                    "confirmed_issue",
-                    "dismissed",
-                    "needs_more_evidence"
-                  ]
+                  "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"]
                 }
               }
             }
@@ -236,65 +197,35 @@
     "probe_plan": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "needed",
-        "items",
-        "purpose"
-      ],
+      "required": ["needed", "items", "purpose"],
       "properties": {
-        "needed": {
-          "type": "boolean"
-        },
+        "needed": {"type": "boolean"},
         "items": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^M-[0-9]{3}$"
-          },
+          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
           "uniqueItems": true
         },
-        "purpose": {
-          "type": "string",
-          "minLength": 1
-        }
+        "purpose": {"type": "string", "minLength": 1}
       }
     },
     "review_context": {
       "type": "object",
       "additionalProperties": false,
       "description": "可选：本次建议使用的存疑审查口径（contract v0.7）。缺省表示未启用审查层。",
-      "required": [
-        "applied",
-        "policy",
-        "report_sha256",
-        "excluded_record_ids"
-      ],
+      "required": ["applied", "policy", "report_sha256", "excluded_record_ids"],
       "properties": {
-        "applied": {
-          "type": "boolean"
-        },
+        "applied": {"type": "boolean"},
         "policy": {
           "type": "string",
-          "enum": [
-            "official",
-            "exclude_flagged"
-          ]
+          "enum": ["official", "exclude_flagged"]
         },
-        "report_sha256": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
+        "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "excluded_record_ids": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^R-[0-9]{4}$"
-          },
+          "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
           "uniqueItems": true
         },
-        "note": {
-          "type": "string"
-        }
+        "note": {"type": "string"}
       }
     },
     "review_required": {
@@ -303,29 +234,29 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "issue_id",
-          "record_ids",
-          "reason"
-        ],
+        "required": ["issue_id", "record_ids", "reason"],
         "properties": {
-          "issue_id": {
-            "type": "string",
-            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
-          },
+          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
           "record_ids": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^R-[0-9]{4}$"
-            },
+            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
             "uniqueItems": true,
             "minItems": 1
           },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          }
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "description": "可选：因预算或材料缺失未纳入本轮计划的 issue 及理由（contract v0.8）。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue_id", "reason"],
+        "properties": {
+          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
+          "reason": {"type": "string", "minLength": 1}
         }
       }
     }

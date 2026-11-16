@@ -111,6 +111,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_knowledge(args: argparse.Namespace) -> int:
+    from .knowledge.graph import load_graph
     from .knowledge.pipeline import apply_curation, build_knowledge_base, write_knowledge_base
 
     base = Path(args.input) if args.input else repo_root() / "data/interim" / args.dataset
@@ -118,7 +119,8 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
         raise ValueError(
             f"canonical tables not found: {base}; run scripts/build_canonical.py first"
         )
-    data = build_knowledge_base(base, args.dataset)
+    graph = load_graph(args.graph) if args.graph else None
+    data = build_knowledge_base(base, args.dataset, graph=graph)
     if args.curation:
         data = apply_curation(
             data, json.loads(Path(args.curation).read_text(encoding="utf-8")), base
@@ -310,6 +312,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     knowledge_parser.add_argument(
         "--curation", help="reviewed local annotations pinned to canonical hashes"
+    )
+    knowledge_parser.add_argument(
+        "--graph",
+        help="formal curriculum graph JSON, e.g. knowledge/curriculum_graph.json",
     )
     knowledge_parser.set_defaults(func=_cmd_knowledge)
 

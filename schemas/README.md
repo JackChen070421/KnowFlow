@@ -1,6 +1,6 @@
 # schemas/ · 机器契约（第 1 层）
 
-> 最后更新：2026-11-16（契约 v0.7，存疑评分审查）
+> 最后更新：2026-11-16（契约 v0.8，正式课程图谱）
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 
 ---
@@ -10,11 +10,11 @@
 ```text
 schemas/
 ├─ CONTRACT.md              # 人读速查：ID/枚举/CSV 列/缺失语义
-├─ input/                   # canonical CSV 的一行（19 schemas 之一）
+├─ input/                   # canonical CSV 的一行（20 schemas 之一）
 │  ├─ objectives / knowledge / materials / qmatrix
 │  ├─ edges / students / nodes / records / record_details / tasks
 ├─ output/                  # 整份 JSON
-│  ├─ knowledge_base / data_quality_report
+│  ├─ knowledge_base / curriculum_graph / data_quality_report
 │  ├─ student_profile / class_profile
 │  └─ recommendation / validation_report / review_report
 └─ llm/

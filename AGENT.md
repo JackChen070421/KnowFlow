@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-16 · v0.21
+> 最后更新：2026-11-16 · v0.22
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -42,6 +42,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **1 契约层** | `schemas/` | 输入 CSV、输出 JSON、LLM 边界；多人接口 | ✅ |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式 | ✅ |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 | ✅ 生成/校验与本机标注接入；教学内容需人工复核 |
+| **3b 图谱层** | `knowledge/`、`src/knowflow/knowledge/graph.py` | 教材细目图谱：边 ID/类型/来源/审核状态；前端与建议共用；未审核不排序 | ✅ 方向二 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
 | **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；官方/剔除双口径 | ✅ 方向一 |
 | **5 建议层** | `src/knowflow/recommend/` | 检索/约束/排序/理由/探测小测/validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色文字） |
@@ -66,6 +67,7 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ .gitignore / .gitattributes / .env.example / pyproject.toml
 ├─ schemas/                 # input / output / llm + CONTRACT.md
+├─ knowledge/               # 正式课程图谱：节点、类型、来源、审核状态（可入库）
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
 ├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend / web
 ├─ tests/                   # contract + io + diagnosis（含任务3）+ fixtures
@@ -115,6 +117,8 @@ KnowFlow/
 | 作答记录 | `record_id` | `R-0031` |
 | 学生 | `student_id` | `S012` |
 | 问题 | `issue_id` | `IS-012-01` |
+| 教材细目 | `node_id`（图谱节点） | `C-004` |
+| 图谱关系 | `edge_id` | `GE-0005` |
 
 关键枚举：
 
@@ -156,10 +160,10 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 
 | 门 | 检查 | 现在怎么跑 |
 |---|---|---|
-| G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples` |
+| G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples`；`check_contracts` 另验课程图谱结构（节点/边 ID、端点、计数、对称存储、先修无环） |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `validate_canonical`；诊断层 `verify-run`（默认最近一次）；审查层 `review-scan` 校验 `record_id`/`material_id`/`node_id`/行号 |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态已覆盖；诊断层由 `verify-run` 重算五态、覆盖、Beta、班级汇总并比对产物哈希；审查层复算 `review.usable_*` 与 `official_*` |
+| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `validate_canonical`；诊断层 `verify-run`；审查层 `review-scan`；建议层 `verify-recommend` 校验 `prerequisite_check`/`relation_notes` 的 `edge_id` 与审核状态 |
+| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态；诊断层 `verify-run`；审查层 `review.usable_*`；建议层图关系状态与先修依据一致 |
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py`；`data/reviews` 与 `data/raw`、`data/interim` 同为受限目录 |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
@@ -209,6 +213,10 @@ $env:PYTHONPATH='src'; python -m knowflow.cli recommend `
   --knowledge artifacts/knowledge/official-v1-frozen/knowledge_base.json
 $env:PYTHONPATH='src'; python -m knowflow.cli verify-recommend
 
+# 方向二：带正式课程图谱构建知识底座（可再加 --curation 复核关系）
+$env:PYTHONPATH='src'; python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json
+
 # 方向一：存疑评分审查（只读扫描 + 本机追加式复核账本）
 $env:PYTHONPATH='src'; python -m knowflow.cli review-scan --dataset official-v1
 $env:PYTHONPATH='src'; python -m knowflow.cli review-decide --record R-0685 `
@@ -241,6 +249,8 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 - ❌ 为了跑通放宽 schema/测试；未验证就写“已完成”。
 - ❌ 自动改写官方分数，或把 `flagged` 的存疑评分当成确定失分写进结论/建议。
 - ❌ 把 `data/reviews` 的人工复核账本提交到 Git，或把原始作答写进审查产物。
+- ❌ 把未审核（`draft`/`needs_revision`）的图谱关系用于强制排序或阻断，或把 `related_to` 当先修。
+- ❌ 手改 `edge_id`/端点来“修复”图谱关系，或让 LLM 生成先修/易混关系。
 - ❌ 直接 push `main`、force-push、合并未经 review 的合约变更。
 
 ## 13. 变更记录
@@ -249,6 +259,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.22 | 2026-11-16 | 方向二：`knowledge/curriculum_graph.json`（21 节点/18 关系，全部 draft）、`knowledge --graph`、curation 图谱复核；建议层 `prerequisite_check`/`relation_notes`/`deferred`；前端去硬编码；契约 v0.8（20 schemas）；测试 217 项 |
 | v0.21 | 2026-11-16 | 方向一：审查层 `review/`、`review-scan`/`review-decide`、`run --review`；画像加 `review` 双口径与 `disputed_rubric_evidence`；建议加 `review_context`/`review_required`/`basis_records`；契约 v0.7（19 schemas）；测试 186 项 |
 | v0.20 | 2026-11-15 | 放宽对话数字校验：允许四舍五入/百分比换算、0–10 小序数与年份；ID 白名单扩到快照全部真实 ID；首次不合格带反馈重试；测试 156 项 |
 | v0.19 | 2026-11-15 | 左下角「AI 学伴」对话：`llm/chat.py` 事实卡 + 数字/ID 锁 + 规则兜底；`POST /api/chat`（回环 + 专用请求头）；前端悬浮按钮/面板/引用跳转；测试 154 项 |

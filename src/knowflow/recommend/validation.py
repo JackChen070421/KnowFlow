@@ -195,6 +195,46 @@ def validate_recommendation(
         elif not set(entry["record_ids"]) <= disputed:
             errors.append("review_required: record_ids are not disputed")
 
+    graph_edges = catalog.get("graph_edges") or {}
+    for index, item in enumerate(rec["plan"], 1):
+        check = item["prerequisite_check"]
+        reviewed = set(check.get("reviewed_edges") or [])
+        draft = set(check.get("draft_edges") or [])
+        if reviewed & draft:
+            errors.append(f"plan[{index}]: a graph edge cannot be both reviewed and draft")
+        for edge_id in reviewed | draft:
+            edge = graph_edges.get(edge_id)
+            if edge is None:
+                errors.append(f"plan[{index}]: unknown graph edge {edge_id}")
+                continue
+            expected = "reviewed" if edge_id in reviewed else "draft"
+            if edge["review_status"] != expected:
+                errors.append(f"plan[{index}]: graph edge {edge_id} status mismatch")
+        if check["satisfied"] != (not check["missing_knowledge_ids"]):
+            errors.append(f"plan[{index}]: prerequisite satisfied flag mismatch")
+        knowledge_id = item["knowledge_ids"][0]
+        for source in (check.get("missing_knowledge_ids") or []) + (
+            check.get("pending_knowledge_ids") or []
+        ):
+            backed = any(
+                edge["edge_id"] in reviewed
+                and edge["relation_type"] == "prerequisite"
+                and edge["target_node_id"] == knowledge_id
+                and edge["source_node_id"] == source
+                for edge in graph_edges.values()
+            )
+            if not backed:
+                errors.append(f"plan[{index}]: prerequisite {source} is not backed by a reviewed edge")
+        for note in item.get("relation_notes") or []:
+            edge = graph_edges.get(note["edge_id"])
+            if edge is None:
+                errors.append(f"plan[{index}]: relation note cites an unknown edge")
+            elif edge["review_status"] != note["review_status"]:
+                errors.append(f"plan[{index}]: relation note status mismatch")
+    for entry in rec.get("deferred", []):
+        if entry["issue_id"] not in issues:
+            errors.append("deferred: issue_id not in profile")
+
     probe = rec["probe_plan"]
     if len(set(probe["items"])) != len(probe["items"]):
         errors.append("probe_plan: duplicate material")

@@ -1,0 +1,493 @@
+{
+  "schema_version": "1.0.0",
+  "graph_id": "curriculum-graph-official-v1",
+  "version": "1.0.0",
+  "subject": "math",
+  "grade": 7,
+  "source": "人工整理（由前端硬编码迁移）；教材细目与页码来自 B02/B05/B06，尚未逐条人工复核。",
+  "nodes": [
+    {
+      "node_id": "C-001",
+      "title": "用字母表示数量关系",
+      "theme_index": 0,
+      "summary": "理解字母表示数及代数式的意义；根据数量关系列式，并说明式中各部分含义",
+      "source_locator": "B05 §3.1，上册69—77页／PDF2—10",
+      "textbook": "B05",
+      "pdf_page": 2,
+      "knowledge_ids": [
+        "K-01"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-002",
+      "title": "代入求值",
+      "theme_index": 0,
+      "summary": "将指定数值代入，负数代入注意括号，按运算顺序求值",
+      "source_locator": "B05 §3.2，上册79—82页／PDF12—15",
+      "textbook": "B05",
+      "pdf_page": 12,
+      "knowledge_ids": [
+        "K-01"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-003",
+      "title": "项、系数与次数",
+      "theme_index": 0,
+      "summary": "理解单项式、多项式、整式，识别项、系数和次数，为同类项判断提供基础",
+      "source_locator": "B05 §4.1，上册89—94页／PDF22—27",
+      "textbook": "B05",
+      "pdf_page": 22,
+      "knowledge_ids": [
+        "K-02"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-004",
+      "title": "识别与合并同类项",
+      "theme_index": 0,
+      "summary": "判断同类项；合并时系数相加，字母及其指数不变；能说明依据",
+      "source_locator": "B05 §4.2，上册95—98页／PDF28—31",
+      "textbook": "B05",
+      "pdf_page": 28,
+      "knowledge_ids": [
+        "K-02"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-005",
+      "title": "去括号",
+      "theme_index": 0,
+      "summary": "依据分配律去括号，括号前为负号或负系数时逐项处理符号",
+      "source_locator": "B05 §4.2，上册98—100页／PDF31—33",
+      "textbook": "B05",
+      "pdf_page": 31,
+      "knowledge_ids": [
+        "K-02"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-006",
+      "title": "整式加减",
+      "theme_index": 0,
+      "summary": "综合去括号与合并同类项完成整式加减；必要时先化简再求值",
+      "source_locator": "B05 §4.2，上册97—102页／PDF30—35",
+      "textbook": "B05",
+      "pdf_page": 30,
+      "knowledge_ids": [
+        "K-02"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-007",
+      "title": "用整式解释规律",
+      "theme_index": 0,
+      "summary": "用一般式和化简结果解释数量规律或结论，说明整数等条件的作用",
+      "source_locator": "B05 上册99、103、105—106页／PDF32、36、38—39",
+      "textbook": "B05",
+      "pdf_page": 32,
+      "knowledge_ids": [
+        "K-03"
+      ],
+      "material_id": "M-062"
+    },
+    {
+      "node_id": "C-008",
+      "title": "方程与方程的解",
+      "theme_index": 1,
+      "summary": "理解方程、方程的解和一元一次方程；用代入判断是否为解",
+      "source_locator": "B06 §5.1，上册111—115页／PDF2—6",
+      "textbook": "B06",
+      "pdf_page": 2,
+      "knowledge_ids": [
+        "K-04"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-009",
+      "title": "等式的基本性质",
+      "theme_index": 1,
+      "summary": "运用等式性质保持两边相等；说明移项和系数化为1的依据，除数不为0",
+      "source_locator": "B06 上册115—117页／PDF6—8",
+      "textbook": "B06",
+      "pdf_page": 6,
+      "knowledge_ids": [
+        "K-04"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-010",
+      "title": "解一元一次方程",
+      "theme_index": 1,
+      "summary": "按方程特点选择去分母、去括号、移项、合并同类项、系数化为1等步骤，并检验",
+      "source_locator": "B06 §5.2，上册120—132页／PDF11—23",
+      "textbook": "B06",
+      "pdf_page": 11,
+      "knowledge_ids": [
+        "K-04"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-011",
+      "title": "一元一次方程建模",
+      "theme_index": 1,
+      "summary": "设未知数，找等量关系，列一元一次方程，求解并结合情境检验",
+      "source_locator": "B06 §5.3，上册133—141页／PDF24—32",
+      "textbook": "B06",
+      "pdf_page": 24,
+      "knowledge_ids": [
+        "K-06"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-012",
+      "title": "方程组的解",
+      "theme_index": 1,
+      "summary": "理解二元一次方程及方程组的解；一组数须同时满足各方程",
+      "source_locator": "B06 §10.1，下册88—90页／PDF41—43",
+      "textbook": "B06",
+      "pdf_page": 41,
+      "knowledge_ids": [
+        "K-05"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-013",
+      "title": "代入消元",
+      "theme_index": 1,
+      "summary": "用一个未知数表示另一个未知数，代入另一方程消元，求解、回代并核验",
+      "source_locator": "B06 §10.2.1，下册91—95页／PDF44—48",
+      "textbook": "B06",
+      "pdf_page": 44,
+      "knowledge_ids": [
+        "K-05"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-014",
+      "title": "加减消元",
+      "theme_index": 1,
+      "summary": "根据系数选择相加、相减或先倍乘后加减，实现消元，再求两未知数并核验",
+      "source_locator": "B06 §10.2.2，下册95—100页／PDF48—53",
+      "textbook": "B06",
+      "pdf_page": 48,
+      "knowledge_ids": [
+        "K-05"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-015",
+      "title": "二元一次方程组建模",
+      "theme_index": 1,
+      "summary": "分析两个等量关系，列二元一次方程组，选择消元方法，解释并核验实际结果",
+      "source_locator": "B06 §10.3，下册101—106页／PDF54—59",
+      "textbook": "B06",
+      "pdf_page": 54,
+      "knowledge_ids": [
+        "K-06"
+      ],
+      "material_id": "M-063"
+    },
+    {
+      "node_id": "C-016",
+      "title": "不等式的解与解集",
+      "theme_index": 2,
+      "summary": "理解不等式、不等式的解和解集，区分一个满足条件的数与全部解",
+      "source_locator": "B02 §11.1.1，下册121—123页／PDF2—4",
+      "textbook": "B02",
+      "pdf_page": 2,
+      "knowledge_ids": [
+        "K-07"
+      ],
+      "material_id": "M-059"
+    },
+    {
+      "node_id": "C-017",
+      "title": "不等式的基本性质",
+      "theme_index": 2,
+      "summary": "运用不等式性质，同加减方向不变，同乘除正数方向不变，同乘除负数方向改变",
+      "source_locator": "B02 §11.1.2，下册123—129页／PDF4—10",
+      "textbook": "B02",
+      "pdf_page": 4,
+      "knowledge_ids": [
+        "K-07"
+      ],
+      "material_id": "M-059"
+    },
+    {
+      "node_id": "C-018",
+      "title": "解一元一次不等式",
+      "theme_index": 2,
+      "summary": "解数字系数的一元一次不等式；结合运算步骤说明不等号方向",
+      "source_locator": "B02 §11.2，下册131—132页／PDF12—13",
+      "textbook": "B02",
+      "pdf_page": 12,
+      "knowledge_ids": [
+        "K-07"
+      ],
+      "material_id": "M-059"
+    },
+    {
+      "node_id": "C-019",
+      "title": "用数轴表示解集",
+      "theme_index": 2,
+      "summary": "在数轴上表示解集，区分端点是否包含、延伸方向及区间公共部分",
+      "source_locator": "B02 下册122、126—128、138—140页／PDF3、7—9、19—21",
+      "textbook": "B02",
+      "pdf_page": 3,
+      "knowledge_ids": [
+        "K-07",
+        "K-08"
+      ],
+      "material_id": "M-059"
+    },
+    {
+      "node_id": "C-020",
+      "title": "不等式组的公共解集",
+      "theme_index": 2,
+      "summary": "分别解不等式，再取公共解集，识别无解与端点情况；把复合不等式理解为同时满足两项条件",
+      "source_locator": "B02 §11.3，下册138—141页／PDF19—22",
+      "textbook": "B02",
+      "pdf_page": 19,
+      "knowledge_ids": [
+        "K-08"
+      ],
+      "material_id": "M-059"
+    },
+    {
+      "node_id": "C-021",
+      "title": "用不等式表示实际限制",
+      "theme_index": 2,
+      "summary": "把至少、至多、不超过等语言转成不等关系，求范围并考虑人数等现实限制",
+      "source_locator": "B02 下册133—141页／PDF14—22",
+      "textbook": "B02",
+      "pdf_page": 14,
+      "knowledge_ids": [
+        "K-09"
+      ],
+      "material_id": "M-059"
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "GE-0001",
+      "source_node_id": "C-001",
+      "target_node_id": "C-011",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "列一元一次方程建模需要先用字母表示数量关系。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0002",
+      "source_node_id": "C-001",
+      "target_node_id": "C-015",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "列二元一次方程组同样以字母表示未知量与数量关系为前提。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0003",
+      "source_node_id": "C-001",
+      "target_node_id": "C-021",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "用不等式表示实际限制需要先会用字母表示数量关系。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0004",
+      "source_node_id": "C-003",
+      "target_node_id": "C-004",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "识别项、系数与次数是判断同类项的前提。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0005",
+      "source_node_id": "C-004",
+      "target_node_id": "C-006",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "整式加减以合并同类项为核心步骤。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0006",
+      "source_node_id": "C-005",
+      "target_node_id": "C-006",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "整式加减同时依赖正确去括号。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0007",
+      "source_node_id": "C-004",
+      "target_node_id": "C-010",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "解一元一次方程需要合并同类项。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0008",
+      "source_node_id": "C-005",
+      "target_node_id": "C-010",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "解一元一次方程需要去括号。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0009",
+      "source_node_id": "C-004",
+      "target_node_id": "C-018",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "解一元一次不等式需要合并同类项。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0010",
+      "source_node_id": "C-005",
+      "target_node_id": "C-018",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "解一元一次不等式需要去括号。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0011",
+      "source_node_id": "C-002",
+      "target_node_id": "C-008",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "用代入判断方程的解，需要先会代入求值。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0012",
+      "source_node_id": "C-002",
+      "target_node_id": "C-012",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "检验方程组的解同样依赖代入求值。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0013",
+      "source_node_id": "C-010",
+      "target_node_id": "C-013",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "代入消元最终要解一元一次方程。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0014",
+      "source_node_id": "C-010",
+      "target_node_id": "C-014",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "加减消元后仍需解一元一次方程。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0015",
+      "source_node_id": "C-018",
+      "target_node_id": "C-020",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "不等式组需要先会解单个一元一次不等式。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0016",
+      "source_node_id": "C-019",
+      "target_node_id": "C-020",
+      "relation_type": "prerequisite",
+      "source_reference": "教材细目人工整理（章节顺序）；待核对具体页码与课标条目",
+      "rationale": "取公共解集需要在数轴上表示并比较解集。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0017",
+      "source_node_id": "C-009",
+      "target_node_id": "C-017",
+      "relation_type": "confusable_with",
+      "source_reference": "教材细目人工整理；对照关系，待人工核对",
+      "rationale": "等式性质与不等式性质在“同乘或同除负数”时结论不同，容易混用。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    },
+    {
+      "edge_id": "GE-0018",
+      "source_node_id": "C-013",
+      "target_node_id": "C-014",
+      "relation_type": "related_to",
+      "source_reference": "教材细目人工整理；对照关系，待人工核对",
+      "rationale": "代入消元与加减消元是同一目标下的两种方法，可互相替代与对照。",
+      "review_status": "draft",
+      "evidence_level": "manual_unsourced",
+      "created_version": "1.0.0"
+    }
+  ],
+  "counts": {
+    "node_count": 21,
+    "edge_count": 18,
+    "prerequisite_count": 16,
+    "confusable_count": 1,
+    "related_count": 1,
+    "draft_count": 18,
+    "reviewed_count": 0
+  }
+}

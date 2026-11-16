@@ -10,6 +10,22 @@
 
 ---
 
+## 2026-11-16 — 方向二：正式课程图谱进入契约与决策
+
+**本机提交** · `feat/curriculum-graph`
+
+- 问题：前端硬编码 21 个教材细目、20 条边（去重 18 组），后端诊断/建议读不到，关系没有 ID、来源和审核状态，先修也不进入排序。
+- 数据：新增 `knowledge/curriculum_graph.json`（21 节点 / 18 关系：16 先修 + 1 易混 + 1 相关），逐条带 `edge_id`、`source_reference`、`rationale`、`review_status=draft`、`evidence_level`；对称关系按 ID 升序只存一次。
+- 契约 v0.8：新增 `curriculum_graph` schema；`knowledge_base` 加可选图谱；`recommendation` 加 `prerequisite_check.{pending_knowledge_ids,reviewed_edges,draft_edges,note}`、`plan[].relation_notes`、`deferred`。
+- 校验：端点存在、重复边/反向对称边、自环、先修环（给路径）、计数；`check_contracts` 纳入 G0；知识底座与 curation 哈希绑定，`reviewed` 必须有可核对出处。
+- 决策：只有 reviewed 先修参与排序；insufficient 先修先补观测、不判薄弱；已掌握不重复；易混只用共享材料做对比，缺材料只提示教师；未审核关系在建议中写“关系待核验”。
+- 前端：删除硬编码图谱，改用快照里的 `knowledge_base.curriculum_graph`；节点抽屉标注“待核验/已核对”，课程页按关系类型计数，计划卡显示“关系待核验/先修待巩固/先修证据不足”。
+- 官方数据实测：知识底座含 21/18 图谱；建议 98 条计划项、20 条计划项带“关系待核验”提示；`verify-recommend` pass。官方图谱无 K 级先修边，故正式数据顺序不变，排序逻辑由合成测试覆盖。
+- 验证：`pytest 217 passed`、`ruff` 通过、`check_contracts`/`check_examples`/`validate_canonical`/`verify-run`/`verify-recommend` 全过。
+- 回退：移除 `knowledge/`、`--graph` 与前端图谱读取即可；旧底座（无图谱）行为不变。
+
+---
+
 ## 2026-11-16 — 方向一：存疑评分审查
 
 **本机提交** · `feat/review-disputed-scores`

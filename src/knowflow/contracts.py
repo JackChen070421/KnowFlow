@@ -24,6 +24,7 @@ REQUIRED_DIRS: tuple[str, ...] = (
     "schemas/llm",
     "data/raw",
     "data/interim",
+    "knowledge",
     "src/knowflow",
     "src/knowflow/io",
     "tests/contract",
@@ -61,6 +62,8 @@ REQUIRED_FILES: tuple[str, ...] = (
     "tests/fixtures/README.md",
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/workflows/ci.yml",
+    "knowledge/curriculum_graph.json",
+    "knowledge/README.md",
 )
 
 GITIGNORE_MARKERS: tuple[str, ...] = (

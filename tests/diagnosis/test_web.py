@@ -112,7 +112,7 @@ def test_local_server_routes_and_explicit_evidence(dashboard_run):
             connection.close()
             return status, headers, body
 
-        for path in ("/teacher", "/student", "/styles.css", "/app.js", "/charts.js"):
+        for path in ("/teacher", "/student", "/styles.css", "/app.js", "/charts.js", "/analytics.mjs"):
             status, _, body = request(path)
             assert status == 200 and body
         status, headers, body = request("/api/snapshot")

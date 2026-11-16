@@ -1,53 +1,20 @@
-const nodes = [
-  {"id": "C-001", "name": "用字母表示数量关系", "topic": 0, "summary": "理解字母表示数及代数式的意义；根据数量关系列式，并说明式中各部分含义", "loc": "B05 §3.1，上册69—77页／PDF2—10", "book": "B05", "page": 2, "indicators": ["K-01"], "material": "M-062"},
-  {"id": "C-002", "name": "代入求值", "topic": 0, "summary": "将指定数值代入，负数代入注意括号，按运算顺序求值", "loc": "B05 §3.2，上册79—82页／PDF12—15", "book": "B05", "page": 12, "indicators": ["K-01"], "material": "M-062"},
-  {"id": "C-003", "name": "项、系数与次数", "topic": 0, "summary": "理解单项式、多项式、整式，识别项、系数和次数，为同类项判断提供基础", "loc": "B05 §4.1，上册89—94页／PDF22—27", "book": "B05", "page": 22, "indicators": ["K-02"], "material": "M-062"},
-  {"id": "C-004", "name": "识别与合并同类项", "topic": 0, "summary": "判断同类项；合并时系数相加，字母及其指数不变；能说明依据", "loc": "B05 §4.2，上册95—98页／PDF28—31", "book": "B05", "page": 28, "indicators": ["K-02"], "material": "M-062"},
-  {"id": "C-005", "name": "去括号", "topic": 0, "summary": "依据分配律去括号，括号前为负号或负系数时逐项处理符号", "loc": "B05 §4.2，上册98—100页／PDF31—33", "book": "B05", "page": 31, "indicators": ["K-02"], "material": "M-062"},
-  {"id": "C-006", "name": "整式加减", "topic": 0, "summary": "综合去括号与合并同类项完成整式加减；必要时先化简再求值", "loc": "B05 §4.2，上册97—102页／PDF30—35", "book": "B05", "page": 30, "indicators": ["K-02"], "material": "M-062"},
-  {"id": "C-007", "name": "用整式解释规律", "topic": 0, "summary": "用一般式和化简结果解释数量规律或结论，说明整数等条件的作用", "loc": "B05 上册99、103、105—106页／PDF32、36、38—39", "book": "B05", "page": 32, "indicators": ["K-03"], "material": "M-062"},
-  {"id": "C-008", "name": "方程与方程的解", "topic": 1, "summary": "理解方程、方程的解和一元一次方程；用代入判断是否为解", "loc": "B06 §5.1，上册111—115页／PDF2—6", "book": "B06", "page": 2, "indicators": ["K-04"], "material": "M-063"},
-  {"id": "C-009", "name": "等式的基本性质", "topic": 1, "summary": "运用等式性质保持两边相等；说明移项和系数化为1的依据，除数不为0", "loc": "B06 上册115—117页／PDF6—8", "book": "B06", "page": 6, "indicators": ["K-04"], "material": "M-063"},
-  {"id": "C-010", "name": "解一元一次方程", "topic": 1, "summary": "按方程特点选择去分母、去括号、移项、合并同类项、系数化为1等步骤，并检验", "loc": "B06 §5.2，上册120—132页／PDF11—23", "book": "B06", "page": 11, "indicators": ["K-04"], "material": "M-063"},
-  {"id": "C-011", "name": "一元一次方程建模", "topic": 1, "summary": "设未知数，找等量关系，列一元一次方程，求解并结合情境检验", "loc": "B06 §5.3，上册133—141页／PDF24—32", "book": "B06", "page": 24, "indicators": ["K-06"], "material": "M-063"},
-  {"id": "C-012", "name": "方程组的解", "topic": 1, "summary": "理解二元一次方程及方程组的解；一组数须同时满足各方程", "loc": "B06 §10.1，下册88—90页／PDF41—43", "book": "B06", "page": 41, "indicators": ["K-05"], "material": "M-063"},
-  {"id": "C-013", "name": "代入消元", "topic": 1, "summary": "用一个未知数表示另一个未知数，代入另一方程消元，求解、回代并核验", "loc": "B06 §10.2.1，下册91—95页／PDF44—48", "book": "B06", "page": 44, "indicators": ["K-05"], "material": "M-063"},
-  {"id": "C-014", "name": "加减消元", "topic": 1, "summary": "根据系数选择相加、相减或先倍乘后加减，实现消元，再求两未知数并核验", "loc": "B06 §10.2.2，下册95—100页／PDF48—53", "book": "B06", "page": 48, "indicators": ["K-05"], "material": "M-063"},
-  {"id": "C-015", "name": "二元一次方程组建模", "topic": 1, "summary": "分析两个等量关系，列二元一次方程组，选择消元方法，解释并核验实际结果", "loc": "B06 §10.3，下册101—106页／PDF54—59", "book": "B06", "page": 54, "indicators": ["K-06"], "material": "M-063"},
-  {"id": "C-016", "name": "不等式的解与解集", "topic": 2, "summary": "理解不等式、不等式的解和解集，区分一个满足条件的数与全部解", "loc": "B02 §11.1.1，下册121—123页／PDF2—4", "book": "B02", "page": 2, "indicators": ["K-07"], "material": "M-059"},
-  {"id": "C-017", "name": "不等式的基本性质", "topic": 2, "summary": "运用不等式性质，同加减方向不变，同乘除正数方向不变，同乘除负数方向改变", "loc": "B02 §11.1.2，下册123—129页／PDF4—10", "book": "B02", "page": 4, "indicators": ["K-07"], "material": "M-059"},
-  {"id": "C-018", "name": "解一元一次不等式", "topic": 2, "summary": "解数字系数的一元一次不等式；结合运算步骤说明不等号方向", "loc": "B02 §11.2，下册131—132页／PDF12—13", "book": "B02", "page": 12, "indicators": ["K-07"], "material": "M-059"},
-  {"id": "C-019", "name": "用数轴表示解集", "topic": 2, "summary": "在数轴上表示解集，区分端点是否包含、延伸方向及区间公共部分", "loc": "B02 下册122、126—128、138—140页／PDF3、7—9、19—21", "book": "B02", "page": 3, "indicators": ["K-07", "K-08"], "material": "M-059"},
-  {"id": "C-020", "name": "不等式组的公共解集", "topic": 2, "summary": "分别解不等式，再取公共解集，识别无解与端点情况；把复合不等式理解为同时满足两项条件", "loc": "B02 §11.3，下册138—141页／PDF19—22", "book": "B02", "page": 19, "indicators": ["K-08"], "material": "M-059"},
-  {"id": "C-021", "name": "用不等式表示实际限制", "topic": 2, "summary": "把至少、至多、不超过等语言转成不等关系，求范围并考虑人数等现实限制", "loc": "B02 下册133—141页／PDF14—22", "book": "B02", "page": 14, "indicators": ["K-09"], "material": "M-059"}
-];
-const edges = [
-  {"from": "C-001", "to": "C-011", "kind": "prerequisite"},
-  {"from": "C-001", "to": "C-015", "kind": "prerequisite"},
-  {"from": "C-001", "to": "C-021", "kind": "prerequisite"},
-  {"from": "C-003", "to": "C-004", "kind": "prerequisite"},
-  {"from": "C-004", "to": "C-006", "kind": "prerequisite"},
-  {"from": "C-005", "to": "C-006", "kind": "prerequisite"},
-  {"from": "C-004", "to": "C-010", "kind": "prerequisite"},
-  {"from": "C-005", "to": "C-010", "kind": "prerequisite"},
-  {"from": "C-004", "to": "C-018", "kind": "prerequisite"},
-  {"from": "C-005", "to": "C-018", "kind": "prerequisite"},
-  {"from": "C-002", "to": "C-008", "kind": "prerequisite"},
-  {"from": "C-002", "to": "C-012", "kind": "prerequisite"},
-  {"from": "C-010", "to": "C-013", "kind": "prerequisite"},
-  {"from": "C-010", "to": "C-014", "kind": "prerequisite"},
-  {"from": "C-018", "to": "C-020", "kind": "prerequisite"},
-  {"from": "C-019", "to": "C-020", "kind": "prerequisite"},
-  {"from": "C-009", "to": "C-017", "kind": "confusable"},
-  {"from": "C-017", "to": "C-009", "kind": "confusable"},
-  {"from": "C-013", "to": "C-014", "kind": "related"},
-  {"from": "C-014", "to": "C-013", "kind": "related"}
-];
-
-export function mountMap(host, {materials, knowledge}, openKnowledge) {
+export function mountMap(host, {materials, knowledge, curriculum_graph: graph}, openKnowledge) {
+const nodes = (graph?.nodes || []).map(n => ({
+ id: n.node_id, name: n.title, topic: n.theme_index, summary: n.summary,
+ loc: n.source_locator, book: n.textbook, page: n.pdf_page,
+ indicators: n.knowledge_ids, material: n.material_id
+}));
+const edges = (graph?.edges || []).map(e => ({
+ id: e.edge_id, from: e.source_node_id, to: e.target_node_id,
+ kind: e.relation_type, status: e.review_status
+}));
+if (!nodes.length) {
+ host.innerHTML = '<div class="none">本次快照未包含正式课程图谱。请先构建 knowledge/curriculum_graph.json，或使用 --refresh 重新生成展示数据。</div>';
+ return () => {};
+}
 const root=host.attachShadow({mode:"open"});
 root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools"><input type="search" id="query" aria-label="查找知识点" placeholder="查知识点、教材章节或编号，如「消元」"><select id="topic" aria-label="主题"><option value="">全部主题</option></select><button class="mode" id="overviewMode" aria-pressed="true">知识总览</button><button class="mode" id="listMode" aria-pressed="false">一览表</button></div>
-<section class="canvas" id="overview"><h2>七年级数学知识网络</h2><p class="hint">拖动圆点调整位置，拖动空白处平移。点击圆点聚焦，滚轮缩放。</p><div class="legend" id="legend"></div>
+<section class="canvas" id="overview"><h2>七年级数学知识网络</h2><p class="hint">拖动圆点调整位置，拖动空白处平移。点击圆点聚焦，滚轮缩放。共 ${nodes.length} 个教材细目、${edges.length} 条关系，其中 ${edges.filter(e=>e.status!=='reviewed').length} 条待人工核验。</p><div class="legend" id="legend"></div>
 <div class="explorer"><div class="stage"><svg id="atlas" role="group" aria-label="可拖动的数学知识图谱"><defs><marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#bacebb"/></marker></defs><g id="world"><g id="lines"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" aria-live="polite"></article></div></section>
 <div id="nodata" class="none" hidden>没有匹配的知识点。请更换关键词或选择其他主题。</div>
 <div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>简要内容与学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
@@ -98,7 +65,7 @@ for(const [i,n] of nodes.entries()){
  g.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();selectNode(n.id)}};
  $('dots').append(g);groups.set(n.id,g);
 }
-function neighbors(id){return uniqueEdges.filter(e=>e.from===id||e.to===id).map(e=>({id:e.from===id?e.to:e.from,role:e.kind==='prerequisite'?(e.to===id?'基础知识':'后续应用'):(e.kind==='related'?'另一种解法':'对照理解')}))}
+function neighbors(id){return uniqueEdges.filter(e=>e.from===id||e.to===id).map(e=>({id:e.from===id?e.to:e.from,status:e.status,role:e.kind==='prerequisite'?(e.to===id?'基础知识':'后续应用'):(e.kind==='related_to'?'相关方法':'易混对照')}))}
 function paint(){
  $('world').setAttribute('transform','translate('+width/2+' '+height/2+') scale('+camera.k+') translate('+(-camera.x)+' '+(-camera.y)+')');
  for(const [id,g] of groups){const p=positions.get(id);g.setAttribute('transform','translate('+p.x+' '+p.y+')')}
@@ -132,7 +99,7 @@ function styleMap(){
 }
 function showDetail(){
  const d=$('detail');d.replaceChildren();
- if(!active){d.append(el('div','知识点索引','meta'),el('h2',shown.size+' 个知识点'),el('p','选择圆点，查看学习要求、教材位置和直接联系。'),el('h3','关系线'),el('p','实线箭头从基础指向应用。虚线连接可对照的性质或替代解法。'));return}
+ if(!active){d.append(el('div','知识点索引','meta'),el('h2',shown.size+' 个知识点'),el('p','选择圆点，查看学习要求、教材位置和直接联系。'),el('h3','关系线'),el('p','实线箭头从基础指向应用。虚线连接易混性质或相关方法；标“待核验”的关系尚未人工确认，不参与学习顺序。'));return}
  const n=byId.get(active);
  d.append(el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name),el('h3','学习要求'),el('p',n.summary),el('h3','教材位置'),el('p',n.loc),pdf(n));
  d.append(el('h3','对应观察指标'));
@@ -141,7 +108,7 @@ function showDetail(){
   if(k){const b=el('button',k.name+' · 学情与材料');b.onclick=()=>openKnowledge(id);d.append(b)}
  }
  const ns=neighbors(active);d.append(el('h3','直接联系 · '+ns.length));
- for(const other of ns){const b=el('button',other.role+' · '+byId.get(other.id).name);b.onclick=()=>choose(other.id);d.append(b)}
+ for(const other of ns){const b=el('button',other.role+(other.status==='reviewed'?' · 已核对':' · 待核验')+' · '+byId.get(other.id).name);b.onclick=()=>choose(other.id);d.append(b)}
 }
 function selectNode(id){
  active=id;styleMap();showDetail();

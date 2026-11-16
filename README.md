@@ -26,19 +26,26 @@ Set-Location 'D:\桌面\KnowFlow'
 ```
 
 - 教师页：`http://127.0.0.1:8765/teacher`；学生页：`http://127.0.0.1:8765/student`。
-- 教师页包含班级堆叠条形图、作答环形图、节点记录量折线图、学生知识热力表、个人画像与建议、数据质量审计。
-- 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。未核对的先修/跨课程关系不补造。
+- 教师页包含得分率 / 评分覆盖率直方图（人数）、均值 / 中位数 / 高低值、知识状态堆叠条形图、作答环形图、主题与班级对比条形图、测验记录量折线图和学生知识热力表。
+- 学生明细支持按 ID 搜索、按得分率 / 覆盖率排序；个人画像分为“表现分析、作答记录、学习建议”，可查看主题对照、每个知识点的满分 / 部分分 / 零分记录、原始作答与历史测验记录。模型估计和统计说明默认折叠。
+- 教师页「存疑证据」：列出复核线索、官方分与评分点、审查状态与复核备注，可回查原始作答并下载审核清单（清单不含原始作答）。
+- 计划卡显示学习路径状态：进行中的项标“进行中”，已完成的项保留在历史中，并在建议上方提示“已完成 N 项，本轮只重排未开始项”。
+- 教师端“教学调整与反馈闭环”：锁定/移除/换材料/调用时/调难度/写评语；学生端计划卡可直接反馈“太难/没看懂/需要更多例题”。调整不改分数与掌握度。
+- 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。课程地图直接读正式图谱 `knowledge/curriculum_graph.json`（经知识底座进入快照），未人工核对的关系标“待核验”，不补造。
 - 学生页输入模拟学生 ID（例如 `S001`），查看对应节点的知识状态、练习与学习建议；另有数轴镜像、活动预算两个明确标识的自编互动实验。
 - 侧栏底部齿轮「设置」→「LLM 模式」：可开关文字层、选择厂商（DeepSeek / OpenAI / 通义千问 / 自定义）并填写 API Key。保存即写入本机 `.env`，等同于手工改后端配置；Key 不回显、不进入页面快照。保存后对之后生成的建议生效，已有成果需重建。
 - 左下角「AI 学伴」：对话窗口按当前节点 / 班级 / 学生回答，只发送聚合摘要。配置了 LLM 时回答要过数字与 ID 锁，未配置或连续校验失败会回退本地规则回答；回答里的 `S001` / `K-07` / `M-021` 可点开对应依据。`?chat=1` 可直接展开。
 - 新练习提交保存在同一浏览器的 `localStorage`，教师页可查看，标记为“待评阅”。没有新提交时显示“未记录”，不会自动改写历史成绩或画像。这是一台电脑上的双视角演示，不是多用户登录系统。
 - 图表口径：已评分得分率保留部分分；观测覆盖以节点可测题为分母；历史作答完成以有明确布置记录的题为分母。两个节点题目范围不同，折线只比较已评分记录量，不表示成绩增长。
+- 分布口径：直方图区间左闭右开，最后一组包含 100%；无评分与范围未知的学生单列，不按零处理。首页平均得分率 / 中位数以学生为单位；主题和班级对比按已评分题目总分加权，题目关联多个知识点时不重复计分。个人与班级题目范围可能不同，不能据此作能力排名。折线标签自动避让，图表按卡片宽度绘制，窄屏不缩小文字。
 
 首次启动需要已安装项目依赖、并已按数据说明放入 `data/raw/official-v1`。程序在 **Git 忽略的 `artifacts/web/<时间>/`** 中独立生成 canonical、知识底座、两个节点的画像与建议，经过校验后展示；不会覆盖原有 `data/interim` 和其他成果。后续启动复用缓存；数据或 Python/schema 变化会重建。**启动窗口必须保持打开**：关闭它等于停掉后端，页面保存设置或读取证据都会失败。强制刷新用 `python -m knowflow.web --refresh`，端口占用时用 `--port 8766`；**同一端口只允许一个启动进程**，重复双击会直接报“端口已被占用”，不会让旧进程随机接管请求。想让页面里的建议文字走 LLM，用 `python -m knowflow.web --refresh --llm`（之后普通启动沿用该模式，要关掉用 `--no-llm --refresh`；未配置 Key 或调用失败会自动回退模板，页面照常显示）。也可用 `--run artifacts/web/<时间>` 复用某次已生成成果；该目录中的知识底座、画像和建议必须是同一版本，启动时会复核。
 
 新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。默认只连接本机，不需要 Node/npm、云服务器或模型密钥；只有 `--llm` 才需要 Key。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
 
 新增代码入口：`web/data.py` 连接三项任务并整理图表数据，`web/server.py` 提供本机页面与受限资料接口，`web/static/app.js` 实现双视角交互，`web/static/charts.js` 绘制图表，`web/static/styles.css` 管理页面样式。`scripts/start_dashboard.ps1` 是 Windows 启动脚本。回归测试位于 `tests/diagnosis/test_web.py`，只用合成数据。
+
+展示层统计与标签布局位于 `web/static/analytics.mjs`，不改公共契约和诊断算法。可选前端回归检查：`node --test tests/web/dashboard.test.mjs`（开发测试使用 Node，不影响页面启动，无需 npm 安装）。覆盖区间边界、缺失排除、均值 / 中位数、题目去重与标签避让。
 
 答辩建议顺序：班级学情 → 点击 K-07 → 选择学生查看原始证据 → 查看学习材料与验证标准 → 切换学生页演示一次提交 → 跨域探索 → 数据与证据页。截图或下载的本机摘要含模拟学情成果，请勿加入公开 Git 仓库。
 
@@ -70,13 +77,16 @@ Set-Location 'D:\桌面\KnowFlow'
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 18 schemas |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 22 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
+| **3b 图谱层** | `knowledge/`、`src/knowflow/knowledge/graph.py` | 教材细目图谱：稳定边 ID、类型、来源、审核状态；前端与建议共用 | ✅ 方向二；18 条关系待人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
-| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
+| **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；双口径隔离 | ✅ 方向一 |
+| **4c 反馈层** | `src/knowflow/feedback/` | 教学调整、学生反馈、补充证据、重新诊断差异 | ✅ 方向五（本机事件账本） |
+| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修约束、学习路径、完成条件、可解释 probe 评分、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、ID 锁、重试 2 次降级模板 | ✅ 可选，默认关闭 |
-| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 156 tests |
+| **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 239 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
 
 **数据流**：
@@ -115,12 +125,16 @@ KnowFlow/
 ├─ AGENT.md / README.md / shortcuts.md / CHANGELOG.md
 ├─ schemas/                 # input / output / llm + CONTRACT.md
 ├─ examples/synthetic/      # 10 张合成 CSV，可公开、可回归
-├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis
-├─ tests/                   # contract + io + diagnosis + fixtures
+├─ src/knowflow/            # cli / contracts / config / io / cleaning / knowledge / diagnosis / recommend / review
+├─ knowledge/               # 正式课程图谱（可入库的教学资产，不含学生数据）
+├─ tests/                   # contract + io + diagnosis + review + fixtures
 ├─ scripts/                 # check_contracts / check_examples / validate_outputs / ingest_raw / build_canonical / validate_canonical / export_digest
 ├─ data/raw/<dataset_id>/   # 官方原始数据，原样放，gitignore
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
+├─ data/reviews/<dataset_id>/ # 本机人工复核账本，gitignore
+├─ data/progress/<dataset_id>/ # 本机学习路径进度事件，gitignore
+├─ data/feedback/<dataset_id>/ # 本机教学反馈与补充证据，gitignore
 └─ .github/                 # CI + PR 模板
 ```
 
@@ -171,7 +185,8 @@ python -m knowflow.cli evidence --run artifacts/run/<目录> --record R-0001
 ### 跑任务1（知识底座）
 
 ```powershell
-uv run python -m knowflow.cli knowledge --dataset official-v1
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json
 # 无本机数据时，用合成样例验证：
 uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/synthetic/input
 ```
@@ -180,11 +195,13 @@ uv run python -m knowflow.cli knowledge --dataset synthetic --input examples/syn
 `artifacts/knowledge/<dataset>-<时间戳>/knowledge_base.json`；可用 `--output` 指定新 JSON 文件。
 保留课标原文、出处、知识点父子关系、Q-matrix 与已有先修/易混边，不更改输入表。
 写出前验证 schema、主键、引用、计数、测评覆盖及包含/先修图无环；已有输出文件不会覆盖。
-可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系。
+`--graph` 把正式课程图谱（`knowledge/curriculum_graph.json`）合并进知识底座，前端与建议层读同一份。
+可通过 `--curation <本机标注.json>` 接入经核对的课标原文、知识点说明和补充关系；图谱复核补丁写在
+`curriculum_graph.edges`（只改审核状态/出处/理由/证据等级/版本，不能改端点或类型）。
 标注包含 `dataset_id`、五张 CSV 的 `source_sha256`、`objectives`/`knowledge` 补丁数组和 `edges` 新增数组；
 只允许更新课标原文/出处/备注、知识点 description 和有依据说明的边，禁止改变诊断 ID 或 Q-matrix。
 输入哈希变化时拒绝套用旧标注，需重新复核；真实标注与成果不进 Git。
-先修与易混关系来自 `edges.csv`，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
+先修与易混关系来自 `edges.csv` 或正式图谱，没有证据时不自动生成；原始课标解析由已有 IO 适配层负责，
 课标出处的真实性与关系的教学合理性仍需人工核对。输出仅在本机，默认目录不进 Git。
 
 ### 跑任务2（学情画像）
@@ -259,8 +276,130 @@ artifacts/recommend/<目录>/
 规则版的三条硬约束：
 
 - 每个学生最多 3 条计划；先处理薄弱/评分点失分，再处理证据不足；表现较好不强行加练。
-- `probe_plan.items` 只用该生在该节点**未作答**的测评题；`needed` 必须等于 `items` 非空。
+- `probe_plan.items` 只用该生在该节点**未作答、未评分、非 pending、非存疑**的测评题；`needed` 必须等于 `items` 非空。
+- 每个计划项带 `plan_item_id`、`plan_version`、`status`、`prerequisite_item_ids` 与结构化 `completion_condition`；`probe_plan.scoring` 给出候选题的分量、权重和总分，可逐项复算。
 - `difficulty`/`est_minutes` 是**规则推算值**：官方材料没有这两个字段，按题型/认知类型估算，运行说明里已声明，不能当作官方难度或精确用时。
+
+### 跑方向一：存疑评分审查
+
+目标：把「有官方分数」和「评分可信」分开。规则只提出**复核线索**，人工结论作为**独立事件**追加，官方分数永远不改。
+
+```powershell
+# 1) 扫描：只读 canonical，产出复核线索（不改官方分数、不含原始作答）
+uv run python -m knowflow.cli review-scan --dataset official-v1
+#    输出目录形如 artifacts/review/official-v1-<时间戳>/
+
+# 2) 人工复核：每个结论追加一行到本机账本 data/reviews/（Git 忽略）
+uv run python -m knowflow.cli review-decide --record R-0685 `
+  --status dismissed --note "核对原始作答与参考答案：评分无误" `
+  --source "原始 CSV 第 686 行 + 评分点记录"
+
+# 3) 诊断与建议带上审查口径
+uv run python -m knowflow.cli run --review artifacts/review/<目录> --review-policy official
+uv run python -m knowflow.cli recommend --run latest --node all
+```
+
+- `--review-policy official`（默认）保留官方账本做顶层数字，同时在画像里给出 `review.usable_*`（剔除存疑后的口径）；`exclude_flagged` 让顶层数字也改用剔除后的口径。两套口径都可复算，`run_manifest.review` 记录策略、报告哈希与计数。
+- 被标记记录不进入 `issues[].rubric_evidence`，改列 `disputed_rubric_evidence`；建议项只列 `basis_records`，并在 `review_required` 中交回人工，不据此安排巩固。
+- 账本绑定三张 canonical 表的 SHA-256：数据重建后旧结论会被拒绝套用，必须重新扫描复核。
+- 规则（`review-rules-1`）：作答与参考答案字面一致却未满分（单值题；解答题仅限 0 分）、官方得分与评分点合计不一致；「得分超满分已截断」只作审计线索；「作答≠参考答案却满分」默认关闭（写法差异会全线误报）。
+
+官方 `official-v1` 的实测：799 条保留记录中 4 条线索（R-0685、R-0133 参与隔离；R-0361、R-0535 仅审计），排除后 2 个「学生 × 知识点」的数值变化、**没有状态翻转**。
+
+产物（都在 `artifacts/`，gitignore）：
+
+```text
+artifacts/review/<目录>/
+├─ review_report.json   # 候选、官方分快照、回查行号、人工结论历史
+├─ run_manifest.json    # 源表哈希、规则版本、账本哈希
+└─ 运行说明.md
+```
+
+### 跑方向二：正式课程图谱
+
+目标：前端、诊断、建议读**同一份**受 Schema 约束的图谱；每条关系有稳定 `edge_id`、类型、来源、理由和审核状态；只有 `reviewed` 的先修关系参与排序。
+
+```powershell
+# 1) 带图谱构建知识底座（前端与建议都读这一份）
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json
+
+# 2) 复核关系：用本机标注文件把某条边标为 reviewed，必须给出可核对出处
+#    详见 knowledge/README.md 的 curation 示例
+uv run python -m knowflow.cli knowledge --dataset official-v1 `
+  --graph knowledge/curriculum_graph.json --curation <本机标注.json>
+
+# 3) 重新出建议并复核
+uv run python -m knowflow.cli recommend --run latest --node all
+uv run python -m knowflow.cli verify-recommend
+```
+
+- 图谱：21 个教材细目、18 条关系（16 先修 + 1 易混 + 1 相关），**当前全部是 `draft`**，逐条带 `source_reference` 与 `rationale`。
+- 关系语义：`prerequisite` 有向；`confusable_with` / `related_to` 对称，按 `source_node_id < target_node_id` 存储一次；`related_to` 不是先修。
+- 建议层：`prerequisite_check` 输出 `reviewed_edges` / `draft_edges` / `pending_knowledge_ids`；未审核关系只提示“关系待核验”，不排序、不阻断。
+- 易混：只有 reviewed 且有同时映射两个知识点的材料时才加对比练习；否则只给教师补充观察提示，不虚构对比题，也不据此判定学生混淆。
+- 超出 3 项预算的 issue 写入 `deferred[]` 并给理由（先修优先 / 无可用材料）。
+- 官方底座目前没有任何 **K 级** 先修边，所以正式数据的计划顺序不会因图谱改变；排序逻辑由合成数据测试覆盖（`tests/diagnosis/test_graph_planning.py`），人工复核并补 K 级边后即生效。
+
+### 跑方向三：学习路径与主动补充观测
+
+目标：把平面建议升级为有依赖、有完成条件、可调整版本的学习路径，并把 probe 从“按材料编号取前 3”改为可解释的启发式评分。
+
+```powershell
+# 1) 生成带路径的计划（每个学生一份）
+uv run python -m knowflow.cli recommend --run latest --node all
+#    每条计划项含 plan_item_id / prerequisite_item_ids / completion_condition / status
+
+# 2) 记录一次“开始/完成”（本机事件，不改诊断、不代表答对）
+uv run python -m knowflow.cli path-event --student S001 --node N01 --seq 1 `
+  --event completed --plan artifacts/recommend/<目录>
+#    默认写入 data/progress/official-v1/events.jsonl（Git 忽略）
+
+# 3) 基于进度重新规划：保留已完成项，只重排未开始项
+uv run python -m knowflow.cli recommend --run latest --node N01 `
+  --progress data/progress/official-v1/events.jsonl `
+  --previous artifacts/recommend/<上一版目录>
+uv run python -m knowflow.cli verify-recommend
+```
+
+- 计划项：`plan_item_id`（`PL-<学生>-<节点>-v<版本>-<知识点>`）、`prerequisite_item_ids`（只能指向更早项）、`prerequisite_knowledge_ids`、`completion_condition`（`probe_evidence` / `full_credit`）。
+- 版本：`plan_id` / `plan_version`；`history[]` 永久保留已完成项（不计入本轮 3 项预算）；`plan_diff` 记录上一版、本版的新增/删除/保留/完成与原因。
+- Probe：候选必须是本节点未作答、未评分、非 pending、非存疑的测评题；分量 `issue_relevance / coverage_gain / prerequisite_value / material_quality / redundancy_penalty`，`total = Σ 权重×分量`，权重写入 `probe_plan.scoring.weights` 与 `run_manifest.policy.probe_weights`。
+- 权重可用 `--probe-weights weights.json` 覆盖（五个分量名），实际权重同时写入 `probe_plan.scoring.weights` 与 `run_manifest.policy.probe_weights`。
+- **边界**：官方没有题目难度/区分度/响应模型，这里给的是规则启发式，不是 IRT 信息量；进度事件不携带分数、不改诊断。“新证据→重新诊断”的完整闭环见方向五。
+
+### 跑方向五：教学反馈与补充证据闭环
+
+目标：把教师调整、学生反馈和补充作答串成可追溯闭环；**官方分数与 canonical 不改**。
+
+```powershell
+# 1) 录入一次补充作答（派生证据 EV-...，不写 canonical）
+uv run python -m knowflow.cli feedback-attempt --student S001 --node N01 `
+  --material M-003 --score 1.0 --max-score 1.0
+
+# 2) 重新诊断，并与上一版对比
+uv run python -m knowflow.cli run --dataset official-v1 --node N01 `
+  --supplemental data/feedback/official-v1/events.jsonl `
+  --previous artifacts/run/<上一版> --output artifacts/run/<新版>
+uv run python -m knowflow.cli verify-run --run artifacts/run/<新版>
+#    diagnosis_diff.json：逐学生状态/掌握度/issue 变化
+
+# 3) 教师调整计划（锁定/移除/换材料/调时间/调难度）
+uv run python -m knowflow.cli feedback-adjust --student S001 --node N01 `
+  --plan artifacts/recommend/<目录> --seq 1 --action lock `
+  --reason "课堂统一讲" 
+uv run python -m knowflow.cli recommend --run artifacts/run/<新版> --node N01 `
+  --previous artifacts/recommend/<上一版>
+uv run python -m knowflow.cli verify-recommend
+
+# 4) 界面：教师端“教学调整与反馈闭环”；学生端计划卡反馈按钮
+uv run python -m knowflow.web
+```
+
+- 账本：`data/feedback/<dataset>/events.jsonl`（追加式、Git 忽略）；事件类型 `supplemental_attempt` / `teacher_adjustment` / `teacher_comment` / `student_feedback`。
+- 补充证据：转成 `EV-...` 记录，仅进入派生 run 的 `supplemental_input.json`；`diagnosis_input.json` 仍是 canonical。
+- 教师调整：只改计划；锁定项重排时保留，移除项进入 `deferred`，`restore` 可逆；按 `issue_id` 跨版本回退匹配。
+- **边界**：本机单用户演示，无账号/权限；补充证据未经人工复核，不能当官方成绩；教师调整不改诊断与分数。
 
 ### 可选：接入 LLM 文字层
 

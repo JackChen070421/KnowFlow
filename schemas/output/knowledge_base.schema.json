@@ -78,6 +78,10 @@
     "edges": {
       "type": "array",
       "items": {"$ref": "https://knowflow.local/schemas/input/edges.schema.json"}
+    },
+    "curriculum_graph": {
+      "$ref": "https://knowflow.local/schemas/output/curriculum_graph.schema.json",
+      "description": "可选（contract v0.8）：教材细目层正式图谱。缺省表示本底座未合并图谱，消费方不得假定关系存在。"
     }
   }
 }

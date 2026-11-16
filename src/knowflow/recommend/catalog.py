@@ -59,8 +59,8 @@ def build_catalog(knowledge_base: dict) -> dict:
     }
     if not objective_order:
         objective_order = {
-            row["objective_id"]: index
-            for index, row in enumerate(
+            objective_id: index
+            for index, objective_id in enumerate(
                 sorted({knowledge_row["objective_id"] for knowledge_row in knowledge_rows})
             )
         }
@@ -124,6 +124,8 @@ def build_catalog(knowledge_base: dict) -> dict:
         if source in knowledge and target in knowledge:
             prerequisites[target].append(source)
 
+    graph_sections = _graph_sections(knowledge_base, knowledge, materials)
+
     return {
         "materials": materials,
         "knowledge": knowledge,
@@ -132,4 +134,117 @@ def build_catalog(knowledge_base: dict) -> dict:
         "explain_by_knowledge": dict(explain_by_knowledge),
         "references_by_objective": dict(references_by_objective),
         "prerequisites": dict(prerequisites),
+        **graph_sections,
+    }
+
+
+def _graph_sections(knowledge_base: dict, knowledge: dict, materials: dict) -> dict:
+    """Read-only graph views. Only ``reviewed`` prerequisites may order plans."""
+
+    empty = {
+        "graph": None,
+        "graph_edges": {},
+        "reviewed_prerequisites": {},
+        "pending_prerequisites": {},
+        "reviewed_confusable": {},
+        "pending_confusable": {},
+        "pending_node_relations": {},
+        "pending_node_confusable": {},
+        "shared_materials": {},
+    }
+    graph = knowledge_base.get("curriculum_graph")
+    if not graph:
+        return empty
+
+    from knowflow.knowledge.graph import graph_index
+
+    index = graph_index(graph)
+    reviewed_prerequisites: dict[str, list[dict]] = defaultdict(list)
+    pending_prerequisites: dict[str, list[dict]] = defaultdict(list)
+    for target, edges in index["knowledge_prerequisites"].items():
+        for edge in edges:
+            entry = {
+                "edge_id": edge["edge_id"],
+                "source_knowledge_id": edge["source_node_id"],
+                "review_status": edge["review_status"],
+                "evidence_level": edge["evidence_level"],
+                "source_reference": edge["source_reference"],
+                "rationale": edge["rationale"],
+            }
+            bucket = (
+                reviewed_prerequisites
+                if edge["review_status"] == "reviewed"
+                else pending_prerequisites
+            )
+            bucket[target].append(entry)
+
+    reviewed_confusable: dict[str, list[dict]] = defaultdict(list)
+    pending_confusable: dict[str, list[dict]] = defaultdict(list)
+    for own, edges in index["knowledge_confusable"].items():
+        for edge in edges:
+            partner = (
+                edge["target_node_id"] if edge["source_node_id"] == own else edge["source_node_id"]
+            )
+            entry = {
+                "edge_id": edge["edge_id"],
+                "partner_knowledge_id": partner,
+                "review_status": edge["review_status"],
+                "source_reference": edge["source_reference"],
+                "rationale": edge["rationale"],
+            }
+            bucket = reviewed_confusable if edge["review_status"] == "reviewed" else pending_confusable
+            bucket[own].append(entry)
+
+    knowledge_ids_by_node: dict[str, set[str]] = defaultdict(set)
+    for node_id, node in index["nodes"].items():
+        knowledge_ids_by_node[node_id].update(node["knowledge_ids"])
+    pending_node_relations: dict[str, list[str]] = defaultdict(list)
+    pending_node_confusable: dict[str, list[dict]] = defaultdict(list)
+    for edge in index["edges"]:
+        if edge["review_status"] == "reviewed":
+            continue
+        for endpoint, other in (
+            (edge["source_node_id"], edge["target_node_id"]),
+            (edge["target_node_id"], edge["source_node_id"]),
+        ):
+            for kid in knowledge_ids_by_node.get(endpoint, set()):
+                pending_node_relations[kid].append(edge["edge_id"])
+                if edge["relation_type"] == "confusable_with":
+                    pending_node_confusable[kid].append(
+                        {
+                            "edge_id": edge["edge_id"],
+                            "other_node_id": other,
+                            "review_status": edge["review_status"],
+                        }
+                    )
+
+    shared: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for material_id, material in materials.items():
+        if material["material_type"] not in {"assessment", "explain", "practice"}:
+            continue
+        kids = sorted(material["knowledge_ids"])
+        for first_index, first in enumerate(kids):
+            for second in kids[first_index + 1 :]:
+                shared[(first, second)].append(material_id)
+    for values in shared.values():
+        values.sort()
+
+    return {
+        "graph": {
+            "graph_id": graph["graph_id"],
+            "version": graph["version"],
+            "node_count": len(graph["nodes"]),
+            "edge_count": len(graph["edges"]),
+        },
+        "graph_edges": {edge["edge_id"]: edge for edge in graph["edges"]},
+        "reviewed_prerequisites": dict(reviewed_prerequisites),
+        "pending_prerequisites": dict(pending_prerequisites),
+        "reviewed_confusable": dict(reviewed_confusable),
+        "pending_confusable": dict(pending_confusable),
+        "pending_node_relations": {kid: sorted(set(ids)) for kid, ids in pending_node_relations.items()},
+        "pending_node_confusable": {
+            kid: list({entry["edge_id"]: entry for entry in entries}.values())
+            for kid, entries in pending_node_confusable.items()
+        },
+        "shared_materials": dict(shared),
     }

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/curriculum_graph.schema.json",
+  "title": "curriculum_graph.json",
+  "description": "教材细目层的正式课程图谱（contract v0.8）。节点是教材细目（C-xxx）或知识点（K-xx）；每条边必须有稳定 edge_id、类型、来源、理由与审核状态。未审核（draft/needs_revision）的关系只能用于展示与提示，不得用于强制排序或阻断。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "graph_id",
+    "version",
+    "subject",
+    "grade",
+    "source",
+    "nodes",
+    "edges",
+    "counts"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "graph_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "图谱版本；关系变化必须升版本，旧版本不静默复用"
+    },
+    "subject": {"type": "string", "enum": ["math"]},
+    "grade": {"type": "integer", "minimum": 1, "maximum": 12},
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "整份图谱的来源说明；逐条依据写在 edge.source_reference"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/node"}
+    },
+    "edges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/edge"}
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_count",
+        "edge_count",
+        "prerequisite_count",
+        "confusable_count",
+        "related_count",
+        "draft_count",
+        "reviewed_count"
+      ],
+      "properties": {
+        "node_count": {"type": "integer", "minimum": 0},
+        "edge_count": {"type": "integer", "minimum": 0},
+        "prerequisite_count": {"type": "integer", "minimum": 0},
+        "confusable_count": {"type": "integer", "minimum": 0},
+        "related_count": {"type": "integer", "minimum": 0},
+        "draft_count": {"type": "integer", "minimum": 0},
+        "reviewed_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "教材细目节点；ID 空间固定为 C-xxx，不与知识点 K-xx 混用。",
+      "required": [
+        "node_id",
+        "title",
+        "theme_index",
+        "summary",
+        "source_locator",
+        "textbook",
+        "pdf_page",
+        "knowledge_ids",
+        "material_id"
+      ],
+      "properties": {
+        "node_id": {"type": "string", "pattern": "^C-[0-9]{3}$"},
+        "title": {"type": "string", "minLength": 1},
+        "theme_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "主题序：0 代数式与整式、1 方程与方程组、2 不等式"
+        },
+        "summary": {"type": "string", "minLength": 1},
+        "source_locator": {
+          "type": "string",
+          "minLength": 1,
+          "description": "教材位置原文（册次、页码、PDF 页）"
+        },
+        "textbook": {"type": "string", "pattern": "^B[0-9]{2}$"},
+        "pdf_page": {"type": "integer", "minimum": 1},
+        "knowledge_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "该教材细目对应的观察指标（知识点）"
+        },
+        "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"}
+      }
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "rejected", "needs_revision"],
+      "description": "draft=人工整理但未复核；reviewed=已人工核对；rejected=确认不成立；needs_revision=需修订后重审"
+    },
+    "relation_type": {
+      "type": "string",
+      "enum": ["prerequisite", "confusable_with", "related_to"],
+      "description": "prerequisite：source 是 target 的先修（有向、必须无环）。confusable_with：对称，源目标顺序只用于稳定存储，读取方必须双向解释。related_to：对称，仅表示可对照/相关，不表示先修或因果。"
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edge_id",
+        "source_node_id",
+        "target_node_id",
+        "relation_type",
+        "source_reference",
+        "rationale",
+        "review_status",
+        "evidence_level"
+      ],
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "pattern": "^GE-[0-9]{4}$",
+          "description": "稳定 ID；不复用、不回收"
+        },
+        "source_node_id": {"type": "string", "pattern": "^(C-[0-9]{3}|K-[0-9]{2,3})$"},
+        "target_node_id": {"type": "string", "pattern": "^(C-[0-9]{3}|K-[0-9]{2,3})$"},
+        "relation_type": {"$ref": "#/$defs/relation_type"},
+        "source_reference": {
+          "type": "string",
+          "minLength": 1,
+          "description": "依据出处：教材页码、课标条目或人工整理记录；不得写无法核对的话"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "为什么存在这条关系；一句话可核对"
+        },
+        "review_status": {"$ref": "#/$defs/review_status"},
+        "evidence_level": {
+          "type": "string",
+          "enum": ["manual_unsourced", "textbook_locator", "curriculum_standard", "diagnostic_evidence"],
+          "description": "manual_unsourced=仅人工整理、未标页码依据；textbook_locator=有教材位置；curriculum_standard=有课标条目；diagnostic_evidence=有诊断数据支持"
+        },
+        "created_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "updated_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "note": {"type": "string"}
+      }
+    }
+  },
+  "x-primary-key": ["graph_id"],
+  "x-file": "curriculum_graph.json"
+}

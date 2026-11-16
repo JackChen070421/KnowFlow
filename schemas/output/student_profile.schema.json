@@ -145,7 +145,7 @@
           },
           "evidence": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+            "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
             "uniqueItems": true
           },
           "credible_interval": {
@@ -192,6 +192,93 @@
                 "maximum": 1,
                 "description": "有效评分记录的 score/max_score 均值；n=0 时为 null"
               }
+            }
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "可选：仅当该知识点存在存疑评分时出现（contract v0.7）。evidence/state_counts/performance 永远是官方账本；usable_* 是去掉存疑记录后的可复算口径；policy=exclude_flagged 时顶层 mastery/status 取 usable_*，否则取官方值。",
+            "required": [
+              "policy",
+              "disputed_record_ids",
+              "flags",
+              "usable_evidence",
+              "usable_evidence_count",
+              "usable_full_credit",
+              "usable_mastery",
+              "usable_status",
+              "official_mastery",
+              "official_status",
+              "status_changed"
+            ],
+            "properties": {
+              "policy": {
+                "type": "string",
+                "enum": ["official", "exclude_flagged"],
+                "description": "official=顶层数字按官方账本；exclude_flagged=顶层数字按剔除存疑证据后的口径"
+              },
+              "disputed_record_ids": {
+                "type": "array",
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
+                "uniqueItems": true,
+                "minItems": 1
+              },
+              "flags": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["record_id", "review_status", "flag_codes"],
+                  "properties": {
+                    "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
+                    "review_status": {
+                      "type": "string",
+                      "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"]
+                    },
+                    "flag_codes": {
+                      "type": "array",
+                      "items": {"type": "string", "minLength": 1},
+                      "uniqueItems": true
+                    }
+                  }
+                }
+              },
+              "usable_evidence": {
+                "type": "array",
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
+                "uniqueItems": true
+              },
+              "usable_evidence_count": {"type": "integer", "minimum": 0},
+              "usable_full_credit": {"type": "integer", "minimum": 0},
+              "usable_mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+              "usable_status": {
+                "type": "string",
+                "enum": [
+                  "confirmed_weak",
+                  "likely_weak",
+                  "insufficient_evidence",
+                  "likely_mastered",
+                  "confirmed_mastered",
+                  "mixed_performance",
+                  "not_applicable"
+                ]
+              },
+              "official_mastery": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+              "official_status": {
+                "type": "string",
+                "enum": [
+                  "confirmed_weak",
+                  "likely_weak",
+                  "insufficient_evidence",
+                  "likely_mastered",
+                  "confirmed_mastered",
+                  "mixed_performance",
+                  "not_applicable"
+                ]
+              },
+              "status_changed": {"type": "boolean"},
+              "note": {"type": "string"}
             }
           }
         }
@@ -285,7 +372,7 @@
             "properties": {
               "records": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "uniqueItems": true
               },
               "material_ids": {
@@ -305,7 +392,7 @@
               "additionalProperties": false,
               "required": ["record_id", "material_id", "point_id", "criterion", "score", "max_score"],
               "properties": {
-                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
                 "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
                 "criterion": {
@@ -315,6 +402,40 @@
                 },
                 "score": {"type": "number", "minimum": 0},
                 "max_score": {"type": "number", "exclusiveMinimum": 0}
+              }
+            }
+          },
+          "disputed_rubric_evidence": {
+            "type": "array",
+            "description": "可选：被排除出结论的存疑评分点（contract v0.7）。只作复核线索，不进入 rubric_evidence，也不进入建议依据。",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "record_id",
+                "material_id",
+                "point_id",
+                "criterion",
+                "score",
+                "max_score",
+                "review_status"
+              ],
+              "properties": {
+                "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
+                "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+                "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
+                "criterion": {"type": "string", "minLength": 1},
+                "score": {"type": "number", "minimum": 0},
+                "max_score": {"type": "number", "exclusiveMinimum": 0},
+                "review_status": {
+                  "type": "string",
+                  "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"]
+                },
+                "flag_codes": {
+                  "type": "array",
+                  "items": {"type": "string", "minLength": 1},
+                  "uniqueItems": true
+                }
               }
             }
           }

@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/review_report.schema.json",
+  "title": "review_report.json",
+  "description": "方向一存疑评分审查产物（contract v0.7）。确定性规则只读 canonical 标出复核线索，本机人工复核结论作为独立事件追加；不修改官方分数，不含原始作答/过程文本。review_status 缺失时安全默认是 flagged，不是“已确认正确”。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "generated_at",
+    "rule_version",
+    "source_sha256",
+    "policy",
+    "counts",
+    "candidates"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rule_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "规则版本；规则变化必须升版本，旧报告不静默复用"
+    },
+    "source_sha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "扫描所依据的 canonical 三张表；变化后必须重新扫描并复核",
+      "required": ["records.csv", "materials.csv", "record_details.csv"],
+      "properties": {
+        "records.csv": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "materials.csv": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "record_details.csv": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "excluded_flag_codes", "default_for_unreviewed"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["exclude_flagged_evidence"],
+          "description": "本轮唯一策略：结论不使用未获人工排除的存疑证据"
+        },
+        "excluded_flag_codes": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["answer_matches_key_under_credit", "rubric_total_mismatch"]},
+          "uniqueItems": true,
+          "description": "默认参与隔离的规则代号；分数超满分截断等仅审计线索不在此列"
+        },
+        "default_for_unreviewed": {
+          "type": "string",
+          "enum": ["flagged"],
+          "description": "没有人工结论时的状态；永远不是“已确认正确”"
+        },
+        "note": {"type": "string"}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "records_scanned",
+        "candidates",
+        "disputed_records",
+        "flagged",
+        "confirmed_issue",
+        "dismissed",
+        "needs_more_evidence"
+      ],
+      "properties": {
+        "records_scanned": {"type": "integer", "minimum": 0},
+        "candidates": {"type": "integer", "minimum": 0},
+        "disputed_records": {"type": "integer", "minimum": 0},
+        "flagged": {"type": "integer", "minimum": 0},
+        "confirmed_issue": {"type": "integer", "minimum": 0},
+        "dismissed": {"type": "integer", "minimum": 0},
+        "needs_more_evidence": {"type": "integer", "minimum": 0}
+      }
+    },
+    "decisions_applied": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "本次扫描从本机账本套用的决策条数；账本哈希记录在 run_manifest"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/candidate"}
+    }
+  },
+  "$defs": {
+    "review_status": {
+      "type": "string",
+      "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"],
+      "description": "flagged=发现线索待复核；confirmed_issue=已确认评分有问题；dismissed=已确认评分无误；needs_more_evidence=需要补充材料后再判"
+    },
+    "flag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "reason"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "answer_matches_key_under_credit",
+            "rubric_total_mismatch",
+            "score_exceeds_max_clamped",
+            "answer_key_mismatch_full_credit"
+          ]
+        },
+        "reason": {"type": "string", "minLength": 1},
+        "excluded_by_default": {
+          "type": "boolean",
+          "description": "该线索是否默认参与隔离；仅审计线索为 false"
+        }
+      }
+    },
+    "rubric_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point_id", "label", "score", "max_score"],
+      "properties": {
+        "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
+        "label": {"type": "string", "minLength": 1},
+        "score": {"type": "number", "minimum": 0},
+        "max_score": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "本机人工复核的独立事件；只记录教学/审核决定，不改官方分数",
+      "required": [
+        "record_id",
+        "review_status",
+        "reviewer_role",
+        "review_note",
+        "reviewed_at",
+        "policy_version",
+        "source_reference",
+        "flag_codes"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+        "review_status": {
+          "type": "string",
+          "enum": ["confirmed_issue", "dismissed", "needs_more_evidence"]
+        },
+        "reviewer_role": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,40}$",
+          "description": "本机演示用角色标识，默认 local_demo_user；不是经过认证的教师身份"
+        },
+        "review_note": {"type": "string", "minLength": 1},
+        "reviewed_at": {"type": "string", "format": "date-time"},
+        "policy_version": {"type": "string", "minLength": 1},
+        "source_reference": {
+          "type": "string",
+          "minLength": 1,
+          "description": "复核依据，如原始 CSV 行号、教研记录编号；不写无法核对的空话"
+        },
+        "flag_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "answer_matches_key_under_credit",
+              "rubric_total_mismatch",
+              "score_exceeds_max_clamped",
+              "answer_key_mismatch_full_credit"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_id",
+        "student_id",
+        "material_id",
+        "node_id",
+        "knowledge_ids",
+        "review_status",
+        "disputed",
+        "flags",
+        "official",
+        "evidence_ref",
+        "decisions"
+      ],
+      "properties": {
+        "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+        "student_id": {"type": "string", "pattern": "^S[0-9]{3}$"},
+        "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+        "node_id": {"type": "string", "pattern": "^N[0-9]{2}$"},
+        "knowledge_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+          "uniqueItems": true
+        },
+        "review_status": {"$ref": "#/$defs/review_status"},
+        "disputed": {
+          "type": "boolean",
+          "description": "当前是否被排除出结论；dismissed 的记录为 false"
+        },
+        "flags": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/flag"}
+        },
+        "official": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "官方分数原样快照，只读；任何修正都不得写入这里",
+          "required": ["score", "max_score", "is_correct", "rubric_points"],
+          "properties": {
+            "score": {"type": ["number", "null"]},
+            "max_score": {"type": "number", "exclusiveMinimum": 0},
+            "is_correct": {"type": ["boolean", "null"]},
+            "rubric_points": {
+              "type": "array",
+              "items": {"$ref": "#/$defs/rubric_point"}
+            },
+            "rubric_sum": {
+              "type": ["number", "null"],
+              "description": "评分点合计；无法解析时为 null"
+            }
+          }
+        },
+        "evidence_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "回查原始 CSV 行；原文仍只在 record_details.csv / evidence 导出中出现",
+          "required": ["csv_record_number", "source_record_id", "kept"],
+          "properties": {
+            "csv_record_number": {"type": "integer", "minimum": 2},
+            "source_record_id": {"type": "string", "minLength": 1},
+            "kept": {"type": "boolean"}
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "description": "按时间顺序追加，最新一条生效；历史不覆盖",
+          "items": {"$ref": "#/$defs/decision"}
+        }
+      }
+    }
+  },
+  "x-primary-key": ["record_id"],
+  "x-file": "review_report.json"
+}

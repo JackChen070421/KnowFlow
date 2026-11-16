@@ -15,12 +15,33 @@ from jsonschema import Draft202012Validator
 
 from knowflow.contracts import build_registry, load_json, repo_root
 
+from .graph import validate_graph
+
 TABLES = {
     "objectives": "objective",
     "knowledge": "knowledge",
     "materials": "material",
     "qmatrix": "qmatrix",
     "edges": "edge",
+}
+
+GRAPH_PATCH_FIELDS = {
+    "review_status",
+    "source_reference",
+    "rationale",
+    "evidence_level",
+    "updated_version",
+    "note",
+}
+GRAPH_REQUIRED_EDGE_FIELDS = {
+    "edge_id",
+    "source_node_id",
+    "target_node_id",
+    "relation_type",
+    "source_reference",
+    "rationale",
+    "review_status",
+    "evidence_level",
 }
 
 
@@ -157,9 +178,19 @@ def validate_knowledge_base(data: dict) -> None:
     for kind in ("contains", "prerequisite"):
         pairs = [(r["from_id"], r["to_id"]) for r in data["edges"] if r["edge_type"] == kind]
         _acyclic(pairs + (parents if kind == "contains" else []), kind)
+    graph = data.get("curriculum_graph")
+    if graph is not None:
+        validate_graph(graph, knowledge)
+        for node in graph["nodes"]:
+            if not set(node["knowledge_ids"]) <= knowledge:
+                raise ValueError("curriculum_graph: node maps to unknown knowledge")
+            if node["material_id"] not in materials:
+                raise ValueError("curriculum_graph: node refers to unknown material")
 
 
-def build_knowledge_base(base: Path, dataset_id: str, generated_at: str | None = None) -> dict:
+def build_knowledge_base(
+    base: Path, dataset_id: str, generated_at: str | None = None, graph: dict | None = None
+) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", dataset_id):
         raise ValueError("invalid dataset ID")
     tables = load_tables(Path(base))
@@ -175,6 +206,8 @@ def build_knowledge_base(base: Path, dataset_id: str, generated_at: str | None =
         counts={f"{singular}_count": len(tables[name]) for name, singular in TABLES.items()},
         **tables,
     )
+    if graph is not None:
+        result["curriculum_graph"] = deepcopy(graph)
     validate_knowledge_base(result)
     return result
 
@@ -195,9 +228,12 @@ def apply_curation(data: dict, curation: dict, base: Path) -> dict:
     """Apply reviewed local annotations without changing diagnostic IDs or mappings.
 
     Curation is dataset-specific local data, never a new canonical table.
-    Hashes pin all five input files; only source text, descriptions and edges vary.
+    Hashes pin all five input files; only source text, descriptions, edges and
+    the curriculum graph's review/provenance fields vary.
     """
-    if set(curation) != {"dataset_id", "source_sha256", "objectives", "knowledge", "edges"}:
+    required = {"dataset_id", "source_sha256", "objectives", "knowledge", "edges"}
+    allowed = required | {"curriculum_graph"}
+    if not required <= set(curation) or set(curation) - allowed:
         raise ValueError("curation: unexpected/missing fields")
     if curation["dataset_id"] != data["dataset_id"]:
         raise ValueError("curation: dataset mismatch")
@@ -208,7 +244,7 @@ def apply_curation(data: dict, curation: dict, base: Path) -> dict:
     if curation["source_sha256"] != expected:
         raise ValueError("curation: source hashes changed; review annotations again")
     result = deepcopy(data)
-    for table, key, allowed in (
+    for table, key, allowed_fields in (
         ("objectives", "objective_id", {"objective_text", "source_locator", "notes"}),
         ("knowledge", "knowledge_id", {"description"}),
     ):
@@ -216,7 +252,7 @@ def apply_curation(data: dict, curation: dict, base: Path) -> dict:
         seen = set()
         for patch in curation[table]:
             identity = patch.get(key)
-            if identity not in index or identity in seen or set(patch) - allowed - {key}:
+            if identity not in index or identity in seen or set(patch) - allowed_fields - {key}:
                 raise ValueError(f"curation: invalid {table} patch")
             seen.add(identity)
             if (
@@ -230,5 +266,66 @@ def apply_curation(data: dict, curation: dict, base: Path) -> dict:
             raise ValueError("curation: relationship requires rationale and source note")
     result["edges"].extend(deepcopy(curation["edges"]))
     result["counts"]["edge_count"] = len(result["edges"])
+    if "curriculum_graph" in curation:
+        _apply_graph_curation(result, curation["curriculum_graph"])
     validate_knowledge_base(result)
     return result
+
+
+def _apply_graph_curation(result: dict, patch: dict) -> None:
+    """Patch review/provenance fields of graph edges, or add reviewed new edges.
+
+    Endpoints and relation types of existing edges are immutable here: changing
+    what a relation connects is a new graph version, not an annotation.
+    """
+
+    graph = result.get("curriculum_graph")
+    if graph is None:
+        raise ValueError("curation: build the knowledge base with --graph before patching it")
+    if not isinstance(patch, dict) or set(patch) - {"version", "edges", "new_edges"}:
+        raise ValueError("curation: curriculum_graph accepts version/edges/new_edges")
+    if "version" in patch:
+        graph["version"] = patch["version"]
+    by_id = {edge["edge_id"]: edge for edge in graph["edges"]}
+    for item in patch.get("edges", []):
+        edge_id = item.get("edge_id")
+        if edge_id not in by_id:
+            raise ValueError(f"curation: unknown edge_id {edge_id}")
+        if set(item) - GRAPH_PATCH_FIELDS - {"edge_id"}:
+            raise ValueError(
+                "curation: graph edge patches may only change review status, provenance, "
+                "rationale, evidence level or version"
+            )
+        updated = {**by_id[edge_id], **{key: value for key, value in item.items() if key != "edge_id"}}
+        if updated["review_status"] == "reviewed":
+            if updated["evidence_level"] == "manual_unsourced":
+                raise ValueError(
+                    f"curation: {edge_id} needs a traceable evidence level before it can be reviewed"
+                )
+            if not str(updated["source_reference"]).strip():
+                raise ValueError(f"curation: {edge_id} needs a source reference before review")
+        by_id[edge_id] = updated
+    for edge in patch.get("new_edges", []):
+        if set(edge) != GRAPH_REQUIRED_EDGE_FIELDS:
+            raise ValueError(
+                "curation: a new graph edge must carry exactly the required fields "
+                f"{sorted(GRAPH_REQUIRED_EDGE_FIELDS)}"
+            )
+        if edge["edge_id"] in by_id:
+            raise ValueError(f"curation: duplicate edge_id {edge['edge_id']}")
+        by_id[edge["edge_id"]] = deepcopy(edge)
+    graph["edges"] = [by_id[edge_id] for edge_id in by_id]
+    _recount_graph(graph)
+
+
+def _recount_graph(graph: dict) -> None:
+    edges = graph["edges"]
+    graph["counts"] = {
+        "node_count": len(graph["nodes"]),
+        "edge_count": len(edges),
+        "prerequisite_count": sum(edge["relation_type"] == "prerequisite" for edge in edges),
+        "confusable_count": sum(edge["relation_type"] == "confusable_with" for edge in edges),
+        "related_count": sum(edge["relation_type"] == "related_to" for edge in edges),
+        "draft_count": sum(edge["review_status"] == "draft" for edge in edges),
+        "reviewed_count": sum(edge["review_status"] == "reviewed" for edge in edges),
+    }

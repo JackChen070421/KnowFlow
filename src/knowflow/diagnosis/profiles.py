@@ -18,12 +18,56 @@ def optional_mean(values):
     return round(mean(xs), 6) if xs else None
 
 
-def build_student_profile(bundle: dict, student: dict, node: dict, config: DiagnosisConfig) -> dict:
+def _review_entry(review: dict | None, record_id: str) -> dict | None:
+    if not review:
+        return None
+    return review["index"].get(record_id)
+
+
+def _is_disputed(review: dict | None, record_id: str) -> bool:
+    entry = _review_entry(review, record_id)
+    return bool(entry and entry.get("disputed"))
+
+
+def _loss_items(record: dict) -> list[dict]:
+    return [
+        {
+            "record_id": record["record_id"],
+            "material_id": record["material_id"],
+            "point_id": point["point_id"],
+            "criterion": point["label"],
+            "score": point["score"],
+            "max_score": point["max_score"],
+        }
+        for point in record.get("score_points", [])
+        if point["score"] < point["max_score"]
+    ]
+
+
+def _disputed_loss_items(record: dict, entry: dict) -> list[dict]:
+    return [
+        {
+            **item,
+            "review_status": entry["review_status"],
+            "flag_codes": list(entry["flag_codes"]),
+        }
+        for item in _loss_items(record)
+    ]
+
+
+def build_student_profile(
+    bundle: dict,
+    student: dict,
+    node: dict,
+    config: DiagnosisConfig,
+    review: dict | None = None,
+) -> dict:
     sid, node_id = student["student_id"], node["node_id"]
     known_scope = {"student_id": sid, "node_id": node_id} in bundle["participation"]
     applicable = set(node["material_ids"]) if known_scope else set()
     records = [r for r in bundle["records"] if r["student_id"] == sid and r["node_id"] == node_id]
     by_material = {r["material_id"]: r for r in records}
+    policy = review["policy"] if review else "official"
     states = []
     for knowledge in bundle["knowledge"]:
         kid = knowledge["knowledge_id"]
@@ -40,25 +84,60 @@ def build_student_profile(bundle: dict, student: dict, node: dict, config: Diagn
                 status="not_applicable",
                 status_reason="此节点没有该知识点的可测题目；不据此判断学生未掌握。",
             )
-        states.append(
-            {
-                "knowledge_id": kid,
-                "objective_id": knowledge["objective_id"],
-                **estimate,
-                "evidence_count": len(graded),
-                "state_counts": {s: counts[s] for s in STATES},
-                "evidence": sorted(r["record_id"] for r in graded),
-                "applicable_items": len(items),
-                "performance": {
-                    "full_credit": counts["observed_correct"],
-                    "partial_credit": sum(0 < r["score"] < r["max_score"] for r in graded),
-                    "zero_credit": sum(r["score"] == 0 for r in graded),
-                    "mean_score_ratio": optional_mean(r["score"] / r["max_score"] for r in graded),
-                },
+        disputed = [r for r in graded if _is_disputed(review, r["record_id"])]
+        review_block = None
+        if disputed and estimate["status"] != "not_applicable":
+            usable = [r for r in graded if not _is_disputed(review, r["record_id"])]
+            usable_estimate = estimate_mastery(
+                sum(1 for r in usable if r["is_correct"]), len(usable), config
+            )
+            review_block = {
+                "policy": policy,
+                "disputed_record_ids": sorted(r["record_id"] for r in disputed),
+                "flags": [
+                    {
+                        "record_id": r["record_id"],
+                        "review_status": _review_entry(review, r["record_id"])["review_status"],
+                        "flag_codes": list(_review_entry(review, r["record_id"])["flag_codes"]),
+                    }
+                    for r in disputed
+                ],
+                "usable_evidence": sorted(r["record_id"] for r in usable),
+                "usable_evidence_count": len(usable),
+                "usable_full_credit": sum(1 for r in usable if r["is_correct"]),
+                "usable_mastery": usable_estimate["mastery"],
+                "usable_status": usable_estimate["status"],
+                "official_mastery": estimate["mastery"],
+                "official_status": estimate["status"],
+                "status_changed": usable_estimate["status"] != estimate["status"],
+                "note": "存疑评分已排除出结论；官方分数与五态账本未修改。",
             }
-        )
+            if policy == "exclude_flagged":
+                estimate = dict(usable_estimate)
+                estimate["status_reason"] = (
+                    f"{usable_estimate['status_reason']}"
+                    f"（已剔除 {len(disputed)} 条存疑评分；官方分数未修改）"
+                )
+        entry = {
+            "knowledge_id": kid,
+            "objective_id": knowledge["objective_id"],
+            **estimate,
+            "evidence_count": len(graded),
+            "state_counts": {s: counts[s] for s in STATES},
+            "evidence": sorted(r["record_id"] for r in graded),
+            "applicable_items": len(items),
+            "performance": {
+                "full_credit": counts["observed_correct"],
+                "partial_credit": sum(0 < r["score"] < r["max_score"] for r in graded),
+                "zero_credit": sum(r["score"] == 0 for r in graded),
+                "mean_score_ratio": optional_mean(r["score"] / r["max_score"] for r in graded),
+            },
+        }
+        if review_block:
+            entry["review"] = review_block
+        states.append(entry)
     objectives = _objectives(states)
-    issues = _issues(sid, states, records)
+    issues = _issues(sid, states, records, review)
     lists = {"strengths": [], "needs_consolidation": [], "needs_observation": []}
     for state in states:
         status = state["status"]
@@ -138,25 +217,20 @@ def _objectives(states):
     return result
 
 
-def _issues(sid, states, records):
+def _issues(sid, states, records, review=None):
     by_id = {r["record_id"]: r for r in records}
     issues = []
     for state in states:
         if state["status"] == "not_applicable":
             continue
         graded = [by_id[r] for r in state["evidence"]]
-        loss = [
-            {
-                "record_id": r["record_id"],
-                "material_id": r["material_id"],
-                "point_id": p["point_id"],
-                "criterion": p["label"],
-                "score": p["score"],
-                "max_score": p["max_score"],
-            }
+        usable = [r for r in graded if not _is_disputed(review, r["record_id"])]
+        loss = [item for r in usable for item in _loss_items(r)]
+        disputed_loss = [
+            item
             for r in graded
-            for p in r.get("score_points", [])
-            if p["score"] < p["max_score"]
+            if (entry := _review_entry(review, r["record_id"])) and entry.get("disputed")
+            for item in _disputed_loss_items(r, entry)
         ]
         n = len(graded)
         full = state["state_counts"]["observed_correct"]
@@ -172,34 +246,42 @@ def _issues(sid, states, records):
             )
         elif state["status"] in WEAK or (state["status"] == "mixed_performance" and full < n):
             kind = "performance_gap"
-            statement = f"{n}项有效评分中{full}项满分，具体错因尚无充分依据。"
+            extra = (
+                f"另有{len(disputed_loss)}条评分存疑待核，未计入失分点。"
+                if disputed_loss
+                else ""
+            )
+            statement = f"{n}项有效评分中{full}项满分，具体错因尚无充分依据。{extra}"
         else:
             continue
         kid_number = int(state["knowledge_id"].split("-")[1])
-        issues.append(
-            {
-                "issue_id": f"IS-{sid[1:]}-{kid_number:02d}",
-                "type": kind,
-                "knowledge_id": state["knowledge_id"],
-                "objective_id": state["objective_id"],
-                "statement": statement,
-                "evidence": {
-                    "records": sorted(r["record_id"] for r in graded),
-                    "material_ids": sorted({r["material_id"] for r in graded}),
-                    "stat": f"full_credit={full}/{n}; partial_credit={state['performance']['partial_credit']}",
-                },
-                "severity": "high"
-                if state["status"] == "confirmed_weak"
-                else "medium"
-                if state["status"] in WEAK
-                else "low",
-                "rubric_evidence": loss,
-            }
-        )
+        issue = {
+            "issue_id": f"IS-{sid[1:]}-{kid_number:02d}",
+            "type": kind,
+            "knowledge_id": state["knowledge_id"],
+            "objective_id": state["objective_id"],
+            "statement": statement,
+            "evidence": {
+                "records": sorted(r["record_id"] for r in graded),
+                "material_ids": sorted({r["material_id"] for r in graded}),
+                "stat": f"full_credit={full}/{n}; partial_credit={state['performance']['partial_credit']}",
+            },
+            "severity": "high"
+            if state["status"] == "confirmed_weak"
+            else "medium"
+            if state["status"] in WEAK
+            else "low",
+            "rubric_evidence": loss,
+        }
+        if disputed_loss:
+            issue["disputed_rubric_evidence"] = disputed_loss
+        issues.append(issue)
     return issues
 
 
-def build_class_profile(profiles: list[dict], class_id: str, bundle: dict, node_id: str) -> dict:
+def build_class_profile(
+    profiles: list[dict], class_id: str, bundle: dict, node_id: str, review: dict | None = None
+) -> dict:
     selected = [p for p in profiles if class_id == "ALL" or p["group_id"] == class_id]
     count = len(selected)
     distributions = []
@@ -323,25 +405,32 @@ def build_class_profile(profiles: list[dict], class_id: str, bundle: dict, node_
         },
         "knowledge_distribution": distributions,
         "common_issues": common,
-        "rubric_patterns": rubric_patterns(bundle, node_id, {p["student_id"] for p in selected}),
+        "rubric_patterns": rubric_patterns(
+            bundle, node_id, {p["student_id"] for p in selected}, review
+        ),
         "tiers": tiers,
         "group_differences": differences,
     }
 
 
-def rubric_patterns(bundle, node_id, student_ids):
-    """Count actual rubric losses; denominator is students observed on that criterion."""
+def rubric_patterns(bundle, node_id, student_ids, review=None):
+    """Count actual rubric losses; denominator is students observed on that criterion.
+
+    Disputed records still count as observed (the student did answer) but never
+    as affected: a clue under review must not become a class-level pattern.
+    """
 
     materials = {m["material_id"]: m for m in bundle["materials"]}
     buckets = defaultdict(lambda: {"observed": set(), "affected": set(), "records": set()})
     for record in bundle["records"]:
         if record["node_id"] != node_id or record["student_id"] not in student_ids:
             continue
+        disputed = _is_disputed(review, record["record_id"])
         for point in record["score_points"]:
             for kid in materials[record["material_id"]]["knowledge_ids"]:
                 bucket = buckets[kid, point["label"]]
                 bucket["observed"].add(record["student_id"])
-                if point["score"] < point["max_score"]:
+                if point["score"] < point["max_score"] and not disputed:
                     bucket["affected"].add(record["student_id"])
                     bucket["records"].add(record["record_id"])
     result = []

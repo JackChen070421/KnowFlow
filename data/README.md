@@ -131,6 +131,12 @@ data/
 ├─ interim/                    canonical 中间表（适配层生成，gitignore）
 │  ├─ .gitkeep
 │  └─ official-v1/             10 张 CSV + data_quality_report.json
+├─ reviews/                    本机人工复核账本（gitignore）
+│  └─ official-v1/             decisions.jsonl（追加式）+ ledger_meta.json（源表哈希）
+├─ progress/                   学习路径进度事件（gitignore）
+│  └─ official-v1/             events.jsonl（追加式；不含分数）
+├─ feedback/                   教学反馈与补充证据（gitignore）
+│  └─ official-v1/             events.jsonl（追加式；含补充作答与教师意见）
 ├─ README-processing.md        本机数据处理说明（gitignore，不随公开仓外传）
 └─ README.md
 ```
@@ -144,7 +150,7 @@ data/
 
 ## 2. 硬规则
 
-1. `data/raw/`、`data/interim/` 下任何文件不得 `git add`；`.gitignore` 已拦截，`check_contracts` 另用 `git check-ignore` 复核。**数据可以在本机，但不许进库。**
+1. `data/raw/`、`data/interim/`、`data/reviews/`、`data/progress/`、`data/feedback/` 下任何文件不得 `git add`；`.gitignore` 已拦截，`check_contracts` 另用 `git check-ignore` 复核。**数据可以在本机，但不许进库。**
 2. **唯一例外**是 `data/manifests/*.structure.json`：只有路径、`sha256`、字节数、行数，没有任何数据内容。不要往里塞別的东西（尤其是原始作答、题干全文）。
 3. 不得把数据复制到 `examples/`、`tests/fixtures/`、仓库根、聊天记录、网盘或第三方 API。
 4. 官方文件**原样放** `data/raw/<dataset_id>/`，不改名、不先手工改列名；映射由适配器负责。
@@ -191,7 +197,7 @@ data/
 ## 5. 赛后删除
 
 1. 导出 `deletion_manifest.json`：数据集、文件列表、哈希、行数、删除时间、执行人。
-2. 删除 `data/raw/<dataset_id>/`、`data/interim/<dataset_id>/`、`artifacts/` 相关产物。
+2. 删除 `data/raw/<dataset_id>/`、`data/interim/<dataset_id>/`、`data/reviews/<dataset_id>/`、`data/progress/<dataset_id>/`、`data/feedback/<dataset_id>/`、`artifacts/` 相关产物。
 3. 清理备份/网盘/聊天记录中的副本（如果有）。
 4. 写 `deletion_record.md`：删了什么、怎么删、验证方式（路径不存在、哈希清单为空）。
 5. **不要**把数据本身作为“证据”留在删除记录里；只留清单与哈希。

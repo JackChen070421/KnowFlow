@@ -21,6 +21,7 @@ ASSETS = {
     "/knowledge-map.js": "text/javascript",
     "/knowledge-map.css": "text/css",
     "/charts.js": "text/javascript",
+    "/analytics.mjs": "text/javascript",
     "/styles.css": "text/css",
     "/favicon.svg": "image/svg+xml",
 }
@@ -62,7 +63,128 @@ def create_server(
         if mid in documents:
             item["document_url"] = "/api/document/" + mid
     record_ids = {r["record_id"] for r in snapshot["records"]}
-    snapshot_bytes = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
+    state = {"bytes": json.dumps(snapshot, ensure_ascii=False).encode("utf-8")}
+
+    def reload_snapshot() -> str:
+        from knowflow.web.data import load_dashboard, prepare
+
+        run = prepare(refresh=True)
+        fresh = load_dashboard(run)
+        snapshot.clear()
+        snapshot.update(fresh)
+        state["bytes"] = json.dumps(fresh, ensure_ascii=False).encode("utf-8")
+        return run.name
+
+    def handle_feedback(payload: dict) -> dict:
+        from knowflow.diagnosis.pipeline import build_bundle
+        from knowflow.feedback import (
+            append_event,
+            feedback_path,
+            load_events,
+            make_event,
+            plan_snapshot,
+            validate_event,
+        )
+        from knowflow.recommend.catalog import build_catalog, load_knowledge_base
+        from knowflow.recommend.pipeline import default_knowledge_path
+
+        event_type = payload.get("event_type")
+        sid = payload.get("student_id")
+        nid = payload.get("node_id")
+        if event_type not in {
+            "teacher_adjustment",
+            "teacher_comment",
+            "student_feedback",
+            "supplemental_attempt",
+        }:
+            raise ValueError("unsupported feedback event type")
+        dataset = snapshot["meta"]["dataset_id"]
+        bundle, _ = build_bundle(dataset)
+        catalog = build_catalog(load_knowledge_base(default_knowledge_path()))
+        path = feedback_path(dataset)
+        existing = load_events(path)
+        rec = (snapshot.get("recommendations") or {}).get(nid, {}).get(sid, {})
+        items = rec.get("plan") or []
+        plan_item_id = payload.get("plan_item_id")
+        item = next((entry for entry in items if entry.get("plan_item_id") == plan_item_id), None)
+        if event_type == "teacher_adjustment":
+            if item is None:
+                raise ValueError("plan item is not in the current recommendation")
+            action = payload.get("action")
+            fields = {}
+            if payload.get("materials"):
+                fields["material_ids"] = [
+                    value.strip() for value in str(payload["materials"]).split(",") if value.strip()
+                ]
+            if payload.get("est_minutes"):
+                fields["est_minutes"] = int(payload["est_minutes"])
+            if payload.get("difficulty"):
+                fields["difficulty"] = int(payload["difficulty"])
+            event = make_event(
+                event_type="teacher_adjustment",
+                student_id=sid,
+                node_id=nid,
+                actor="teacher",
+                plan_item_id=item["plan_item_id"],
+                plan_version=item.get("plan_version", rec.get("plan_version", 1)),
+                action=action,
+                issue_id=item["issue_id"],
+                knowledge_id=item["knowledge_ids"][0],
+                activity_type=item.get("activity_type", "consolidate"),
+                payload=fields or None,
+                reason=payload.get("reason"),
+                snapshot=plan_snapshot(item),
+                existing=existing,
+            )
+        elif event_type == "teacher_comment":
+            event = make_event(
+                event_type="teacher_comment",
+                student_id=sid,
+                node_id=nid,
+                actor="teacher",
+                plan_item_id=plan_item_id,
+                issue_id=item["issue_id"] if item else payload.get("issue_id"),
+                text=payload.get("text"),
+                existing=existing,
+            )
+        elif event_type == "student_feedback":
+            event = make_event(
+                event_type="student_feedback",
+                student_id=sid,
+                node_id=nid,
+                actor="student",
+                plan_item_id=plan_item_id,
+                issue_id=item["issue_id"] if item else payload.get("issue_id"),
+                kind=payload.get("kind"),
+                rating=payload.get("rating"),
+                text=payload.get("text"),
+                existing=existing,
+            )
+        else:
+            material_id = payload.get("material_id")
+            material = next(
+                (m for m in bundle["materials"] if m["material_id"] == material_id), None
+            )
+            if material is None:
+                raise ValueError("material is not an assessment item")
+            event = make_event(
+                event_type="supplemental_attempt",
+                student_id=sid,
+                node_id=nid,
+                actor="student",
+                material_id=material_id,
+                score=float(payload.get("score", 0)),
+                max_score=material["max_score"],
+                submitted_at=payload.get("submitted_at"),
+                note=payload.get("note"),
+                existing=existing,
+            )
+        errors = validate_event(event, bundle, catalog)
+        if errors:
+            raise ValueError("; ".join(errors))
+        append_event(path, event)
+        run_name = reload_snapshot()
+        return {"event": event, "snapshot": run_name}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -111,7 +233,7 @@ def create_server(
             elif path in ASSETS:
                 self.respond((STATIC / path[1:]).read_bytes(), ASSETS[path])
             elif path == "/api/snapshot":
-                self.respond(snapshot_bytes, "application/json")
+                self.respond(state["bytes"], "application/json")
             elif path == "/api/settings/llm":
                 try:
                     self.json(read_llm_settings())
@@ -161,12 +283,14 @@ def create_server(
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
-            if path not in ("/api/settings/llm", "/api/chat"):
+            if path not in ("/api/settings/llm", "/api/chat", "/api/feedback"):
                 self.json({"error": "没有找到该接口。"}, 404)
                 return
-            required_header = (
-                "X-KnowFlow-Settings" if path == "/api/settings/llm" else "X-KnowFlow-Chat"
-            )
+            required_header = {
+                "/api/settings/llm": "X-KnowFlow-Settings",
+                "/api/chat": "X-KnowFlow-Chat",
+                "/api/feedback": "X-KnowFlow-Feedback",
+            }[path]
             if self.headers.get(required_header) != "1":
                 self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
                 return
@@ -186,6 +310,16 @@ def create_server(
                 return
             if not isinstance(payload, dict):
                 self.json({"error": "请求体必须是 JSON 对象。"}, 400)
+                return
+
+            if path == "/api/feedback":
+                try:
+                    self.json(handle_feedback(payload))
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                except Exception as exc:  # local write/recompute errors
+                    traceback.print_exc()
+                    self.json({"error": f"反馈保存失败（{type(exc).__name__}）。"}, 500)
                 return
 
             if path == "/api/settings/llm":

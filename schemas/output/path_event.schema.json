@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/path_event.schema.json",
+  "title": "path_event.jsonl line",
+  "description": "学习路径进度事件（contract v0.9）：一行一个事件，追加式保存在 data/progress/<dataset>/（Git 忽略）。只记录学生/本机对计划项的执行状态，不携带分数，不改写诊断或历史成绩。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "student_id",
+    "node_id",
+    "plan_id",
+    "plan_item_id",
+    "plan_version",
+    "event_type",
+    "issue_id",
+    "knowledge_id",
+    "material_ids",
+    "activity_type",
+    "seq",
+    "created_at",
+    "source"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "event_id": {"type": "string", "pattern": "^PE-[A-Za-z0-9._-]{6,40}$"},
+    "student_id": {"type": "string", "pattern": "^S[0-9]{3}$"},
+    "node_id": {"type": "string", "pattern": "^N[0-9]{2}$"},
+    "plan_id": {"type": "string", "pattern": "^PLAN-[0-9]{3}-N[0-9]{2}-v[0-9]+$"},
+    "plan_item_id": {
+      "type": "string",
+      "pattern": "^PL-[0-9]{3}-N[0-9]{2}-v[0-9]+-[0-9]{2}$"
+    },
+    "plan_version": {"type": "integer", "minimum": 1},
+    "event_type": {
+      "type": "string",
+      "enum": ["started", "completed"],
+      "description": "started=开始但未完成；completed=完成。两者都不代表答对或掌握"
+    },
+    "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
+    "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+    "material_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "activity_type": {
+      "type": "string",
+      "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"]
+    },
+    "seq": {"type": "integer", "minimum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "本机演示来源，默认 local_demo_user；不是认证身份"
+    },
+    "note": {"type": "string"}
+  },
+  "x-primary-key": ["event_id"],
+  "x-file": "path_events.jsonl"
+}

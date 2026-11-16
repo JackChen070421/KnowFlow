@@ -1,6 +1,6 @@
 # schemas/ · 机器契约（第 1 层）
 
-> 最后更新：2026-11-14（契约 v0.6，任务3建议层）
+> 最后更新：2026-11-16（契约 v0.10，教学反馈闭环）
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 
 ---
@@ -10,13 +10,13 @@
 ```text
 schemas/
 ├─ CONTRACT.md              # 人读速查：ID/枚举/CSV 列/缺失语义
-├─ input/                   # canonical CSV 的一行（18 schemas 之一）
+├─ input/                   # canonical CSV 的一行（22 schemas 之一）
 │  ├─ objectives / knowledge / materials / qmatrix
 │  ├─ edges / students / nodes / records / record_details / tasks
 ├─ output/                  # 整份 JSON
-│  ├─ knowledge_base / data_quality_report
+│  ├─ knowledge_base / curriculum_graph / data_quality_report
 │  ├─ student_profile / class_profile
-│  └─ recommendation / validation_report
+│  └─ recommendation / validation_report / review_report / path_event / feedback_event
 └─ llm/
    ├─ llm_summary           # 唯一允许进 LLM 的对象
    └─ llm_response          # LLM 输出

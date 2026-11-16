@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/feedback_event.schema.json",
+  "title": "feedback_event.jsonl line",
+  "description": "教学反馈与补充证据事件（contract v0.10）：一行一个事件，追加式保存在 data/feedback/<dataset>/（Git 忽略）。补充作答作为独立证据参与重新诊断，不改写 canonical；教师调整只改计划，不改分数或掌握度。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "event_type", "student_id", "node_id", "created_at", "actor", "source"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "event_id": {"type": "string", "pattern": "^EV-[A-Za-z0-9._-]{6,40}$"},
+    "event_type": {
+      "type": "string",
+      "enum": ["supplemental_attempt", "teacher_adjustment", "teacher_comment", "student_feedback"]
+    },
+    "student_id": {"type": "string", "pattern": "^S[0-9]{3}$"},
+    "node_id": {"type": "string", "pattern": "^N[0-9]{2}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "actor": {"type": "string", "enum": ["teacher", "student", "local"]},
+    "source": {"type": "string", "minLength": 1},
+    "note": {"type": "string"},
+
+    "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+    "score": {"type": "number", "minimum": 0},
+    "max_score": {"type": "number", "exclusiveMinimum": 0},
+    "rubric_points": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rubric_point"}
+    },
+    "attempt_no": {"type": "integer", "minimum": 1},
+    "submitted_at": {"type": "string", "format": "date-time"},
+
+    "plan_item_id": {"type": "string", "pattern": "^PL-[0-9]{3}-N[0-9]{2}-v[0-9]+-[0-9]{2}$"},
+    "plan_version": {"type": "integer", "minimum": 1},
+    "action": {
+      "type": "string",
+      "enum": ["lock", "unlock", "remove", "restore", "replace_materials", "set_time", "set_difficulty"]
+    },
+    "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
+    "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+    "activity_type": {
+      "type": "string",
+      "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"]
+    },
+    "payload": {"$ref": "#/$defs/adjustment_payload"},
+    "reason": {"type": "string", "minLength": 1},
+    "snapshot": {"$ref": "#/$defs/plan_snapshot"},
+
+    "kind": {"type": "string", "enum": ["difficulty", "confusion", "request", "other"]},
+    "rating": {"type": "integer", "minimum": 1, "maximum": 5},
+    "text": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"event_type": {"const": "supplemental_attempt"}}, "required": ["event_type"]},
+      "then": {"required": ["material_id", "score", "max_score"]}
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "teacher_adjustment"}}, "required": ["event_type"]},
+      "then": {"required": ["plan_item_id", "plan_version", "action", "reason"]}
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "teacher_comment"}}, "required": ["event_type"]},
+      "then": {"required": ["text"]}
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "student_feedback"}}, "required": ["event_type"]},
+      "then": {"required": ["kind"]}
+    }
+  ],
+  "$defs": {
+    "rubric_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion", "score", "max_score"],
+      "properties": {
+        "point_id": {"type": "string", "minLength": 1},
+        "criterion": {"type": "string", "minLength": 1},
+        "score": {"type": "number", "minimum": 0},
+        "max_score": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "adjustment_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "material_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
+        "difficulty": {"type": "integer", "minimum": 1, "maximum": 5}
+      }
+    },
+    "plan_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
+        "knowledge_id": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+        "activity_type": {
+          "type": "string",
+          "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"]
+        },
+        "seq": {"type": "integer", "minimum": 1},
+        "material_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
+        "difficulty": {"type": "integer", "minimum": 1, "maximum": 5}
+      }
+    }
+  },
+  "x-primary-key": ["event_id"],
+  "x-file": "feedback_events.jsonl"
+}

@@ -17,10 +17,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from knowflow.contracts import check_repo, iter_schema_paths  # noqa: E402
+from knowflow.knowledge.graph import graph_warnings, load_graph, validate_graph  # noqa: E402
 
 
 def main() -> int:
     errors = check_repo(ROOT)
+    graph = None
+    warnings: list[str] = []
+    if not errors:
+        try:
+            graph = load_graph(ROOT / "knowledge" / "curriculum_graph.json")
+            validate_graph(graph)
+            warnings = graph_warnings(graph)
+        except ValueError as exc:
+            errors.append(f"curriculum graph: {exc}")
     if errors:
         print("KnowFlow contract check: FAILED")
         for error in errors:
@@ -31,7 +41,16 @@ def main() -> int:
     print(f"KnowFlow contract check: OK ({schema_count} schemas)")
     print("  - required directories/files present")
     print("  - schemas parse and $id values are unique")
-    print("  - files under data/raw and data/interim are git-ignored (never committed)")
+    print(
+        "  - files under data/raw, data/interim, data/reviews, data/progress and "
+        "data/feedback are git-ignored (never committed)"
+    )
+    print(
+        "  - curriculum graph structure validated "
+        f"({graph['counts']['node_count']} nodes / {graph['counts']['edge_count']} edges)"
+    )
+    for warning in warnings:
+        print(f"  - note: {warning}")
     print("  - .gitignore keeps data, secrets and model weights out")
     return 0
 

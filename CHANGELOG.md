@@ -10,6 +10,79 @@
 
 ---
 
+## 2026-11-16 — 方向五：教学反馈与补充证据闭环
+
+**本机提交** · `feat/feedback-loop`
+
+- 新增 `data/feedback/<dataset>/events.jsonl`（追加式、Git 忽略）：补充作答、教师调整、教师评语、学生反馈；无认证，仅本机演示。
+- 补充作答转 `EV-...` 派生证据，写入 `supplemental_input.json`；`diagnosis_input.json` 仍是 canonical，官方分数与质量报告不变；`verify-run` 用 canonical + 补充记录复算。
+- `run --supplemental ... --previous <run>` 输出 `diagnosis_diff.json`：逐学生状态、mastery、issue 增删。
+- 建议层重放教师调整：锁定项保留并占预算，移除项进入 `deferred` 且可 `restore`，换材料/调时间/调难度；按 `issue_id` 跨版本回退匹配；只改计划，不改诊断。
+- 学生反馈/教师评语进入计划卡与 `recommendation.feedback`；新增 `/api/feedback`（本机、同源、`X-KnowFlow-Feedback`）与教师“教学调整与反馈闭环”面板、学生反馈按钮。
+- 契约 v0.10（22 schemas），`record_id` 扩展 `EV-...`。
+- 验证：`pytest 239 passed`、`ruff`、`check_contracts`、`verify-run`（含补充 evidence）、`verify-recommend`（含反馈调整）。
+- 回退：移除 `feedback/` 与 `--supplemental`/`--previous`/`/api/feedback`；旧 run/建议仍可校验。
+
+---
+
+## 2026-11-16 — 方向三：学习路径与主动补充观测
+
+**本机提交** · `feat/learning-path`
+
+- 计划项：新增 `plan_item_id` / `plan_version` / `status` / `prerequisite_item_ids` / `prerequisite_knowledge_ids` / 结构化 `completion_condition`；顶层 `plan_id`、`plan_version`、`history`、`plan_diff`、`progress`。
+- Probe：用可解释评分替换“按材料编号取前 3”；候选必须是本节点未作答、未评分、非 pending、非存疑的测评题；5 个分量 + 配置权重，`total = Σ 权重×分量`，权重写入产物与 manifest；明确标注为规则启发式，不是 IRT。
+- 进度：`path-event` 追加 `data/progress/<dataset>/events.jsonl`（不含分数）；`started` 保留为 `in_progress`，`completed` 进入 `history`；预算只计活动项；`plan_diff` 记录版本、原因与差异，旧计划与历史不删除。
+- 前端：计划卡显示“进行中”，建议上方提示已完成历史。
+- 契约 v0.9（21 schemas），新增 `path_event.schema.json`。
+- 官方数据：N01 98 条计划项、probe 评分可复算；完成 1 项后 N01 97 条、S001 版本 v2、历史 1 条、diff 记录完成项。
+- 验证：`pytest 231 passed`、`ruff`、`check_contracts`、`verify-run` / `verify-recommend` 通过。
+- 回退：移除 `path.py` / `probe.py` 与 `--progress`/`--previous`；旧建议仍可校验。
+
+---
+
+## 2026-11-16 — 方向二：正式课程图谱进入契约与决策
+
+**本机提交** · `feat/curriculum-graph`
+
+- 问题：前端硬编码 21 个教材细目、20 条边（去重 18 组），后端诊断/建议读不到，关系没有 ID、来源和审核状态，先修也不进入排序。
+- 数据：新增 `knowledge/curriculum_graph.json`（21 节点 / 18 关系：16 先修 + 1 易混 + 1 相关），逐条带 `edge_id`、`source_reference`、`rationale`、`review_status=draft`、`evidence_level`；对称关系按 ID 升序只存一次。
+- 契约 v0.8：新增 `curriculum_graph` schema；`knowledge_base` 加可选图谱；`recommendation` 加 `prerequisite_check.{pending_knowledge_ids,reviewed_edges,draft_edges,note}`、`plan[].relation_notes`、`deferred`。
+- 校验：端点存在、重复边/反向对称边、自环、先修环（给路径）、计数；`check_contracts` 纳入 G0；知识底座与 curation 哈希绑定，`reviewed` 必须有可核对出处。
+- 决策：只有 reviewed 先修参与排序；insufficient 先修先补观测、不判薄弱；已掌握不重复；易混只用共享材料做对比，缺材料只提示教师；未审核关系在建议中写“关系待核验”。
+- 前端：删除硬编码图谱，改用快照里的 `knowledge_base.curriculum_graph`；节点抽屉标注“待核验/已核对”，课程页按关系类型计数，计划卡显示“关系待核验/先修待巩固/先修证据不足”。
+- 官方数据实测：知识底座含 21/18 图谱；建议 98 条计划项、20 条计划项带“关系待核验”提示；`verify-recommend` pass。官方图谱无 K 级先修边，故正式数据顺序不变，排序逻辑由合成测试覆盖。
+- 验证：`pytest 217 passed`、`ruff` 通过、`check_contracts`/`check_examples`/`validate_canonical`/`verify-run`/`verify-recommend` 全过。
+- 回退：移除 `knowledge/`、`--graph` 与前端图谱读取即可；旧底座（无图谱）行为不变。
+
+---
+
+## 2026-11-16 — 方向一：存疑评分审查
+
+**本机提交** · `feat/review-disputed-scores`
+
+- 问题：R-0685（作答与参考答案字面一致却 0 分）与 R-0133（满分，但评分点合计 2、结果评分点为 0）都能一路进入画像与建议；旧链路只校验算术关系，从不比较作答与参考答案。
+- 审查层：新增 `src/knowflow/review/`（规则 `review-rules-1`、追加式账本、报告校验）；`review-scan` 只读 canonical 产出线索，`review-decide` 把人工结论追加到 `data/reviews/`，账本用三张 canonical 表 SHA-256 绑定。
+- 诊断：`knowledge_states[].review` 同时给 `official_*` 与 `usable_*`；`run --review-policy official|exclude_flagged` 决定顶层口径；存疑失分移入 `issues[].disputed_rubric_evidence`，不进 `rubric_evidence`。
+- 建议：计划项加 `basis_records`/`review_flags`；只剩存疑依据的 issue 进 `review_required`，不生成巩固计划；`verify-recommend` 增加三条隔离检查。
+- 教师端：新增「存疑证据」只读页与审核清单导出（清单不含原始作答）；快照新增 `reviews`。
+- 契约 v0.7：新增 `review_report.json`，两个输出 schema 加可选字段；旧画像/旧建议仍可校验。
+- 官方数据实测：799 条保留记录中 4 条线索（2 条参与隔离、2 条仅审计）；排除后 2 个「学生 × 知识点」数值变化，无状态翻转。
+- 验证：`pytest 186 passed`、`ruff` 通过、`check_contracts` / `check_examples` / `validate_canonical` / `verify-run` / `verify-recommend` 全过；CI 增加 ruff 步骤并清掉既有 F401。
+- 回退：移除 `review/`、`--review*` 参数与页面入口即可；旧 run 不读审查字段，仍能复算。
+## 2026-11-16 — 学情页面精简与统计展示优化
+
+**本机提交** · `feat/dashboard-clarity`
+
+- 精简标题与重复说明，统计口径 / 模型估计 / 推荐依据可展开；保留知识图谱、AI 对话与证据回查。
+- 班级页新增得分率与覆盖率直方图、均值 / 中位数 / 高低值、主题与班级对比；无评分 / 未知范围单列。
+- 个人画像增加主题对照、知识点满分 / 部分分 / 零分明细；分析 / 作答 / 建议分标签，学生列表独立滚动并支持排序。
+- 折线数值自动避让，轴刻度 / 日期留白；按卡片宽度重绘，修复手机设置按钮与环形图溢出。
+- 展示统计独立放入 `analytics.mjs`；公共契约、诊断算法和原始数据不变。
+- 验证：合并后 239 项 Python 测试、5 项前端统计回归、Edge 交互 / 布局检查通过；22 契约、10 表合成样例及 JS 语法检查通过。
+- 回退：撤销本条对应 UI、静态资源路由、前端测试和 README 改动，三项任务的原始成果不受影响。
+
+---
+
 ## 2026-11-15 — 工作台课程知识图谱
 
 - 教师课程页与学生工作台接入 21 项教材细目的动态图谱，支持拖动、同画布聚焦、查页码与回查对应指标的学情。

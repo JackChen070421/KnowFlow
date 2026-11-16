@@ -198,7 +198,7 @@
           "prevalence": {"type": "number", "minimum": 0, "maximum": 1},
           "example_record_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+            "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
             "maxItems": 5,
             "uniqueItems": true
           }

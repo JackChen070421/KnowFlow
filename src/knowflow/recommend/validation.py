@@ -56,6 +56,13 @@ def allowed_numbers(issue: dict, state: dict) -> set[float]:
         value = state.get(key)
         if isinstance(value, (int, float)):
             allowed.add(float(value))
+    block = state.get("review") or {}
+    for key in ("usable_evidence_count", "usable_full_credit"):
+        value = block.get(key)
+        if isinstance(value, (int, float)):
+            allowed.add(float(value))
+    if block:
+        allowed.add(float(len(block.get("disputed_record_ids") or [])))
     allowed |= _numbers(issue.get("statement", ""))
     allowed |= _numbers(str(issue.get("evidence", {}).get("stat", "")))
     for item in issue.get("rubric_evidence", []):
@@ -100,6 +107,7 @@ def validate_recommendation(
     node_available: set[str],
     records: list[dict],
     profile_sha256: str | None = None,
+    review: dict | None = None,
 ) -> list[str]:
     errors = schema_errors(rec)
     if errors:
@@ -112,6 +120,20 @@ def validate_recommendation(
         errors.append("profile_sha256 does not match profile file")
 
     issues = {issue["issue_id"]: issue for issue in profile.get("issues", [])}
+    disputed = set(review["disputed_record_ids"]) if review else set()
+    context = rec.get("review_context")
+    if review is None:
+        if context is not None:
+            errors.append("review_context present without a review source")
+    elif context is None:
+        errors.append("review source present but recommendation lacks review_context")
+    else:
+        if context["report_sha256"] != review["report_sha256"]:
+            errors.append("review_context report hash does not match the review report")
+        if context["policy"] != review["policy"]:
+            errors.append("review_context policy does not match")
+        if not set(context["excluded_record_ids"]) <= disputed:
+            errors.append("review_context cites records that are not disputed")
     attempted = _attempted_materials(records, profile["student_id"], profile["node_id"])
     seen_materials: set[str] = set()
     for index, item in enumerate(rec["plan"], 1):
@@ -121,6 +143,21 @@ def validate_recommendation(
         if issue is None:
             errors.append(f"plan[{index}]: issue_id not in profile")
             continue
+        state = _state(profile, issue["knowledge_id"])
+        block = state.get("review") or {}
+        if "basis_records" in item:
+            basis = set(item["basis_records"])
+            if basis & disputed:
+                errors.append(f"plan[{index}]: basis_records use a disputed record")
+            expected_basis = {point["record_id"] for point in issue.get("rubric_evidence", [])}
+            if basis != expected_basis:
+                errors.append(f"plan[{index}]: basis_records do not match the issue evidence")
+        if (
+            block
+            and block["usable_status"] == "insufficient_evidence"
+            and item.get("activity_type") != "probe"
+        ):
+            errors.append(f"plan[{index}]: usable evidence is insufficient; must be a probe")
         if item["knowledge_ids"] != [issue["knowledge_id"]]:
             errors.append(f"plan[{index}]: knowledge_ids do not match issue")
         if item["objective_id"] != issue["objective_id"]:
@@ -150,6 +187,147 @@ def validate_recommendation(
         if not item["check"].strip():
             errors.append(f"plan[{index}]: empty check")
 
+    for entry in rec.get("review_required", []):
+        if entry["issue_id"] not in issues:
+            errors.append("review_required: issue_id not in profile")
+        if review is None:
+            errors.append("review_required present without a review source")
+        elif not set(entry["record_ids"]) <= disputed:
+            errors.append("review_required: record_ids are not disputed")
+
+    graph_edges = catalog.get("graph_edges") or {}
+    for index, item in enumerate(rec["plan"], 1):
+        check = item["prerequisite_check"]
+        reviewed = set(check.get("reviewed_edges") or [])
+        draft = set(check.get("draft_edges") or [])
+        if reviewed & draft:
+            errors.append(f"plan[{index}]: a graph edge cannot be both reviewed and draft")
+        for edge_id in reviewed | draft:
+            edge = graph_edges.get(edge_id)
+            if edge is None:
+                errors.append(f"plan[{index}]: unknown graph edge {edge_id}")
+                continue
+            expected = "reviewed" if edge_id in reviewed else "draft"
+            if edge["review_status"] != expected:
+                errors.append(f"plan[{index}]: graph edge {edge_id} status mismatch")
+        if check["satisfied"] != (not check["missing_knowledge_ids"]):
+            errors.append(f"plan[{index}]: prerequisite satisfied flag mismatch")
+        knowledge_id = item["knowledge_ids"][0]
+        for source in (check.get("missing_knowledge_ids") or []) + (
+            check.get("pending_knowledge_ids") or []
+        ):
+            backed = any(
+                edge["edge_id"] in reviewed
+                and edge["relation_type"] == "prerequisite"
+                and edge["target_node_id"] == knowledge_id
+                and edge["source_node_id"] == source
+                for edge in graph_edges.values()
+            )
+            if not backed:
+                errors.append(f"plan[{index}]: prerequisite {source} is not backed by a reviewed edge")
+        for note in item.get("relation_notes") or []:
+            edge = graph_edges.get(note["edge_id"])
+            if edge is None:
+                errors.append(f"plan[{index}]: relation note cites an unknown edge")
+            elif edge["review_status"] != note["review_status"]:
+                errors.append(f"plan[{index}]: relation note status mismatch")
+    for entry in rec.get("deferred", []):
+        if entry["issue_id"] not in issues:
+            errors.append("deferred: issue_id not in profile")
+
+    plan_ids: dict[str, int] = {}
+    if "plan_version" in rec or "plan_id" in rec:
+        version = rec.get("plan_version")
+        if not isinstance(version, int) or version < 1:
+            errors.append("plan_version missing or invalid")
+        else:
+            expected_id = f"PLAN-{rec['student_id'][1:]}-{rec['node_id']}-v{version}"
+            if rec.get("plan_id") != expected_id:
+                errors.append("plan_id does not match student/node/version")
+    for index, item in enumerate(rec["plan"], 1):
+        if item["seq"] != index:
+            errors.append(f"plan[{index}]: seq is not contiguous")
+        plan_item_id = item.get("plan_item_id")
+        if plan_item_id:
+            if plan_item_id in plan_ids:
+                errors.append(f"plan[{index}]: duplicate plan_item_id")
+            plan_ids[plan_item_id] = index
+            if item.get("plan_version", rec.get("plan_version")) > (rec.get("plan_version") or 0):
+                errors.append(f"plan[{index}]: item version is newer than the plan")
+            if item.get("status") not in {"planned", "in_progress"}:
+                errors.append(f"plan[{index}]: invalid status")
+        condition = item.get("completion_condition")
+        if condition:
+            if not set(condition["material_ids"]) <= set(item["material_ids"]):
+                errors.append(f"plan[{index}]: completion condition cites unused materials")
+            if condition["type"] == "probe_evidence" and item["activity_type"] != "probe":
+                errors.append(f"plan[{index}]: probe completion condition on a non-probe item")
+            if condition["type"] == "full_credit" and item["activity_type"] == "probe":
+                errors.append(f"plan[{index}]: full-credit condition on a probe item")
+    for index, item in enumerate(rec["plan"], 1):
+        for parent in item.get("prerequisite_item_ids") or []:
+            if parent not in plan_ids:
+                errors.append(f"plan[{index}]: prerequisite item {parent} is not in the plan")
+            elif plan_ids[parent] >= index:
+                errors.append(f"plan[{index}]: prerequisite item {parent} must come earlier")
+    history_ids: set[str] = set()
+    for entry in rec.get("history") or []:
+        plan_item_id = entry["plan_item_id"]
+        if plan_item_id in history_ids:
+            errors.append("history: duplicate completed item")
+        if plan_item_id in plan_ids:
+            errors.append("history: a completed item must not stay in the active plan")
+        history_ids.add(plan_item_id)
+    diff = rec.get("plan_diff")
+    if diff:
+        active_issues = {item["issue_id"] for item in rec["plan"]}
+        diff_completed = {entry["plan_item_id"] for entry in diff["completed"]}
+        if not diff_completed <= history_ids:
+            errors.append("plan_diff: completed entry is not in history")
+        for entry in diff["added"]:
+            if entry["issue_id"] not in active_issues:
+                errors.append("plan_diff: added issue is not in the plan")
+        for entry in diff["retained"]:
+            if entry["issue_id"] not in active_issues:
+                errors.append("plan_diff: retained issue is not in the plan")
+        for entry in diff["removed"]:
+            if entry["issue_id"] in active_issues:
+                errors.append("plan_diff: removed issue is still in the plan")
+
+    feedback = rec.get("feedback")
+    has_feedback_marks = any(
+        item.get("adjustments") or item.get("teacher_comments") or item.get("teacher_locked")
+        for item in rec["plan"]
+    )
+    if has_feedback_marks and feedback is None:
+        errors.append("plan carries feedback marks without a feedback block")
+    if feedback is not None:
+        if feedback["applied"] and not (
+            feedback["teacher_adjustments"] or feedback["comments"] or feedback["events"]
+        ):
+            errors.append("feedback.applied needs at least one feedback event")
+        applied_items = set(feedback["applied_items"])
+        if not applied_items <= set(plan_ids):
+            errors.append("feedback: applied item is not in the plan")
+        if set(feedback["unmatched_items"]) & set(plan_ids):
+            errors.append("feedback: unmatched item is actually in the plan")
+        adjustment_count = sum(
+            1 for item in rec["plan"] for _ in item.get("adjustments") or []
+        )
+        if adjustment_count and not feedback["teacher_adjustments"]:
+            errors.append("feedback: adjustments exist but teacher_adjustments is zero")
+        for item in rec["plan"]:
+            for adjustment in item.get("adjustments") or []:
+                if not adjustment["event_id"].startswith("EV-"):
+                    errors.append("plan adjustment cites a non-feedback event id")
+                if not adjustment["actor"]:
+                    errors.append("plan adjustment is missing the actor")
+            if item.get("teacher_locked") and not any(
+                adjustment["action"] == "lock"
+                for adjustment in item.get("adjustments") or []
+            ):
+                errors.append("teacher_locked item is missing its lock adjustment")
+
     probe = rec["probe_plan"]
     if len(set(probe["items"])) != len(probe["items"]):
         errors.append("probe_plan: duplicate material")
@@ -166,6 +344,27 @@ def validate_recommendation(
             errors.append(f"probe_plan: {material_id} was already attempted")
         if material_id not in node_available:
             errors.append(f"probe_plan: {material_id} is outside node scope")
+    scoring = probe.get("scoring")
+    if scoring:
+        weights = scoring["weights"]
+        for candidate in scoring["candidates"]:
+            total = sum(
+                weights.get(name, 0.0) * value
+                for name, value in candidate["components"].items()
+            )
+            if abs(total - candidate["total"]) > 1e-6:
+                errors.append(
+                    f"probe_plan: candidate {candidate['material_id']} total is not recomputable"
+                )
+        candidate_ids = {candidate["material_id"] for candidate in scoring["candidates"]}
+        teacher_materials = {
+            material_id
+            for item in rec["plan"]
+            if item["activity_type"] == "probe" and item.get("adjustments")
+            for material_id in item["material_ids"]
+        }
+        if not set(probe["items"]) <= candidate_ids | teacher_materials:
+            errors.append("probe_plan: selected probe is missing from the scoring record")
     if not profile["coverage"]["scope_known"]:
         if rec["plan"] or probe["items"] or probe["needed"]:
             errors.append("scope_unknown profile must not receive a plan")
@@ -201,6 +400,11 @@ def validate_saved_recommendations(run: Path) -> dict:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     bundle, knowledge_path = _load_local_run(run, manifest)
     catalog = build_catalog(load_knowledge_base(knowledge_path))
+    review = None
+    if manifest.get("review"):
+        from knowflow.review.pipeline import context_from_run_manifest
+
+        review = context_from_run_manifest(manifest)
     nodes = {node["node_id"]: node for node in bundle["nodes"]}
     records = bundle["records"]
 
@@ -234,6 +438,7 @@ def validate_saved_recommendations(run: Path) -> dict:
                 set(nodes[node_id]["material_ids"]),
                 records,
                 profile_sha,
+                review,
             )
         )
         for item in rec["plan"]:

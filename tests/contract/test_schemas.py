@@ -124,6 +124,78 @@ def test_recommendation_fixture_is_valid() -> None:
     assert errors == [], "\n".join(errors)
 
 
+def test_review_report_fixture_is_valid() -> None:
+    errors = validate_instance(
+        ROOT / "schemas" / "output" / "review_report.schema.json",
+        FIXTURES / "review_report.min.json",
+        root=ROOT,
+    )
+    assert errors == [], "\n".join(errors)
+
+
+def test_feedback_event_fixture_is_valid() -> None:
+    errors = validate_instance(
+        ROOT / "schemas" / "output" / "feedback_event.schema.json",
+        FIXTURES / "feedback_event.min.json",
+        root=ROOT,
+    )
+    assert errors == [], "\n".join(errors)
+
+
+def test_feedback_ledger_is_git_ignored() -> None:
+    """Teacher/student feedback is local data; Git must never carry it."""
+
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "data/feedback/official-v1/events.jsonl"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, "data/feedback must be declared in .gitignore"
+
+
+def test_path_event_fixture_is_valid() -> None:
+    errors = validate_instance(
+        ROOT / "schemas" / "output" / "path_event.schema.json",
+        FIXTURES / "path_event.min.json",
+        root=ROOT,
+    )
+    assert errors == [], "\n".join(errors)
+
+
+def test_progress_ledger_is_git_ignored() -> None:
+    """Path progress is student execution data; Git must never carry it."""
+
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "data/progress/official-v1/events.jsonl"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, "data/progress must be declared in .gitignore"
+
+
+def test_review_ledger_is_git_ignored() -> None:
+    """Human review notes stay on this machine; Git must never carry them."""
+
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "check-ignore", "data/reviews/official-v1/decisions.jsonl"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, "data/reviews must be declared in .gitignore"
+
+
 def test_knowledge_base_fixture_is_valid_with_refs() -> None:
     errors = validate_instance(
         ROOT / "schemas" / "output" / "knowledge_base.schema.json",

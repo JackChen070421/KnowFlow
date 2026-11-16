@@ -42,7 +42,7 @@ const state = {
   allHeatmap: false
 };
 const $ = s => document.querySelector(s);
-const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'settings' ? '设置' : '工作台');
+const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'reviews' ? '存疑证据' : id === 'settings' ? '设置' : '工作台');
 const nameFor = id => kb.knowledge.find(k => k.knowledge_id === id)?.name || id;
 const objectiveFor = id => kb.objectives.find(o => o.objective_id === id);
 const materialFor = id => kb.materials.find(m => m.material_id === id);
@@ -121,7 +121,9 @@ function normalize() {
   if (!D.nodes.some(n => n.node_id === state.node)) state.node = D.nodes.at(-1).node_id;
   if (!D.students.some(s => s.student_id === state.student)) state.student = D.students[0].student_id;
   if (!['ALL', ...groups()].includes(state.group)) state.group = 'ALL';
-  if (![...navItems().map(x => x[0]), 'settings'].includes(state.view)) state.view = 'overview';
+  const allowedViews = [...navItems().map(x => x[0]), 'settings'];
+  if (state.role === 'teacher') allowedViews.push('reviews');
+  if (!allowedViews.includes(state.view)) state.view = 'overview';
 }
 
 function navItems() {
@@ -129,7 +131,6 @@ function navItems() {
     ['overview', '班级学情', 'overview'],
     ['course', '课程知识地图', 'map'],
     ['students', '学生明细', 'students'],
-    ['reviews', '存疑证据', 'shield'],
     ['quality', '数据与证据', 'shield']
   ] : [
     ['overview', '学习总览', 'overview'],
@@ -140,7 +141,7 @@ function navItems() {
 }
 
 function shell() {
-  const active = navItems().find(n => n[0] === state.view) || ['settings', '设置', 'settings'];
+  const active = navItems().find(n => n[0] === state.view) || (state.view === 'reviews' ? ['reviews', '存疑证据', 'shield'] : ['settings', '设置', 'settings']);
   return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
 }
 
@@ -409,6 +410,10 @@ function studentPlans() {
   return `${hero('LEARNING INTO ACTION / 04','练习与建议','查看练习、完成标准与提交情况。')}${filters(true)}<section class="panel">${panelHead(`${esc(state.student)} 的学习建议`,`${esc(state.node)} · 预计用时供参考`,'<span class="pill">学习计划</span>')}${plans(state.student)}</section><section class="panel section-gap">${panelHead('想把学会的知识用起来？','试试自编互动实验，把抽象关系变成可观察的变化。')}<p class="panel-sub">先用数轴理解负数乘法的方向变化，再用预算方案练习建立数量关系。探索结果不计入正式评分。</p><button class="button light section-gap" data-view="explore">进入跨域探索 ${icon('arrow',15)}</button></section>`;
 }
 
+function collapsePanel(title, body, extraClass = '') {
+  return `<details class="panel collapsible-panel ${extraClass}"><summary class="collapse-summary"><div class="panel-title"><h2>${title}</h2></div><span class="collapse-toggle"><span class="when-closed">展开</span><span class="when-open">收起</span>${icon('arrow',14)}</span></summary><div class="collapse-body">${body}</div></details>`;
+}
+
 function qualityPage() {
   const q = D.quality;
   const labels = {
@@ -418,7 +423,20 @@ function qualityPage() {
     assigned_not_attempted: '已布置未作答',
     unobserved: '无观测'
   };
-  return `${hero('TRUST & TRACEABILITY / 05','数据与证据','查看数据质量与校验结果。')}<section class="panel">${panelHead('从原始记录到可用证据','此页为整个数据集的质量审计，跨两个节点；不受班级筛选影响。','<span class="pill">全数据集</span>')}<div class="audit-flow">${[[q.input_records,'输入逻辑记录','CSV 解析后的记录数'],[q.duplicates_removed,'修订 / 重复淘汰','按数据层规则保留版本'],[q.rejected_records,'不纳入记录','保留拒绝原因'],[q.total_records,'最终保留记录','进入画像与复算']].map(([v,t,d],i)=>`<div class="audit-step"><small>STEP ${String(i+1).padStart(2,'0')}</small><strong>${v}</strong><span>${t}<br>${d}</span></div>`).join('')}</div><div class="notice">核对关系：输入 ${q.input_records} = 保留 ${q.total_records} + 修订 / 重复淘汰 ${q.duplicates_removed} + 不纳入 ${q.rejected_records}。保留中包含 ${q.partial_credit_records} 条部分得分记录，未按“全错”抹掉。</div><div class="audit-status">${['知识底座结构与引用','个人 / 班级画像复算','学习建议约束与复算'].map(t=>`<span>${icon('shield',15)}${t} · 通过</span>`).join('')}</div>${note(`数据生成时间：${esc(D.meta.generated_at)}。成果保存在被 Git 忽略的本机目录；页面没有调用外部模型。`)}</section><div class="grid-half section-gap"><section class="panel">${panelHead('五态记录分布','按数据层整理结果统计。')}${donut(Object.entries(q.records_by_state).map(([k,v],i)=>({label:labels[k]||k,value:v,color:['#398575','#d6a16f','#ab98be','#cad6d0','#e6ece7'][i]})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}</section><section class="panel">${panelHead('清洗与诊断的判断边界','缺失、待评分、未作答和部分得分分别处理。')}<ul class="rule-list">${q.handling_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="notice warm">评分点失分是学习线索，不自动等于具体误概念。教师可以从知识点抽屉继续回查原始作答。</div></section></div><section class="panel">${panelHead('源文件与数据指纹','保留材料出处，支持本机核对版本。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>输入文件</th><th>逻辑记录数</th><th>SHA-256 指纹</th></tr></thead><tbody>${q.input_files.map(f=>`<tr><td>${esc(f.path)}</td><td>${f.rows??'—'}</td><td class="mono" title="${esc(f.sha256)}">${esc(f.sha256.slice(0,16))}…</td></tr>`).join('')}</tbody></table></div></section><section class="panel section-gap">${panelHead('质量检查发现','规则和处理动作来自任务 2 输出。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>字段 / 记录</th><th>问题</th><th>数量 / 处理</th></tr></thead><tbody>${q.field_quality.map(f=>`<tr><td>${esc(f.field)}</td><td>${esc(f.issue)}</td><td>${f.count}</td></tr>`).join('')}${q.anomalies.slice(0,25).map(a=>`<tr><td>${esc(a.record_id||'—')}</td><td>${esc(a.reason)}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>${!q.anomalies.length&&!q.field_quality.length?empty('当前没有记录到质量异常。'):''}${q.anomalies.length>25?note(`异常共有 ${q.anomalies.length} 项，页面展示前 25 项；全部保留在本机质量报告中。`):''}</section>`;
+  const audit = `<p class="panel-sub">此页为整个数据集的质量审计，跨两个节点；不受班级筛选影响。</p><div class="audit-flow">${[[q.input_records,'输入逻辑记录','CSV 解析后的记录数'],[q.duplicates_removed,'修订 / 重复淘汰','按数据层规则保留版本'],[q.rejected_records,'不纳入记录','保留拒绝原因'],[q.total_records,'最终保留记录','进入画像与复算']].map(([v,t,d],i)=>`<div class="audit-step"><small>STEP ${String(i+1).padStart(2,'0')}</small><strong>${v}</strong><span>${t}<br>${d}</span></div>`).join('')}</div><div class="notice">核对关系：输入 ${q.input_records} = 保留 ${q.total_records} + 修订 / 重复淘汰 ${q.duplicates_removed} + 不纳入 ${q.rejected_records}。保留中包含 ${q.partial_credit_records} 条部分得分记录，未按“全错”抹掉。</div><div class="audit-status">${['知识底座结构与引用','个人 / 班级画像复算','学习建议约束与复算'].map(t=>`<span>${icon('shield',15)}${t} · 通过</span>`).join('')}</div>${note(`数据生成时间：${esc(D.meta.generated_at)}。成果保存在被 Git 忽略的本机目录；页面没有调用外部模型。`)}`;
+  const states = `<p class="panel-sub">按数据层整理结果统计。</p>${donut(Object.entries(q.records_by_state).map(([k,v],i)=>({label:labels[k]||k,value:v,color:['#398575','#d6a16f','#ab98be','#cad6d0','#e6ece7'][i]})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}`;
+  const boundaries = `<p class="panel-sub">缺失、待评分、未作答和部分得分分别处理。</p><ul class="rule-list">${q.handling_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="notice warm">评分点失分是学习线索，不自动等于具体误概念。教师可以从知识点抽屉继续回查原始作答。</div>`;
+  const sources = `<p class="panel-sub">保留材料出处，支持本机核对版本。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>输入文件</th><th>逻辑记录数</th><th>SHA-256 指纹</th></tr></thead><tbody>${q.input_files.map(f=>`<tr><td>${esc(f.path)}</td><td>${f.rows??'—'}</td><td class="mono" title="${esc(f.sha256)}">${esc(f.sha256.slice(0,16))}…</td></tr>`).join('')}</tbody></table></div>`;
+  const findings = `<p class="panel-sub">规则和处理动作来自任务 2 输出。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>字段 / 记录</th><th>问题</th><th>数量 / 处理</th></tr></thead><tbody>${q.field_quality.map(f=>`<tr><td>${esc(f.field)}</td><td>${esc(f.issue)}</td><td>${f.count}</td></tr>`).join('')}${q.anomalies.slice(0,25).map(a=>`<tr><td>${esc(a.record_id||'—')}</td><td>${esc(a.reason)}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>${!q.anomalies.length&&!q.field_quality.length?empty('当前没有记录到质量异常。'):''}${q.anomalies.length>25?note(`异常共有 ${q.anomalies.length} 项，页面展示前 25 项；全部保留在本机质量报告中。`):''}`;
+  return `${hero('TRUST & TRACEABILITY / 05','数据与证据','查看数据质量与校验结果。')}
+  ${collapsePanel('从原始记录到可用证据', audit)}
+  <div class="grid-half section-gap">${collapsePanel('五态记录分布', states)}${collapsePanel('清洗与诊断的判断边界', boundaries)}</div>
+  ${collapsePanel('源文件与数据指纹', sources, 'section-gap')}
+  ${collapsePanel('质量检查发现', findings, 'section-gap')}
+  <section class="panel section-gap review-entry-card" id="review-entry">
+    <div><div class="eyebrow">存疑数据</div><h2>评分复核与证据隔离</h2><p>检查作答与参考答案、评分点合计之间的可疑记录；人工结论作为独立事件追加，不修改官方分数。</p></div>
+    <button class="button light" data-review-entry>进入存疑证据 ${icon('arrow',14)}</button>
+  </section>`;
 }
 
 const ADJUST_LABEL = {
@@ -446,8 +464,9 @@ const REVIEW_FLAG_LABEL = {
 
 function reviewsPage() {
   const r = D.reviews;
+  const back = `<div class="toolbar"><button class="text-button" data-view="quality">${icon('arrow',13)}返回数据与证据</button></div>`;
   if (!r) {
-    return `${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '本机存疑评分审查产物未随快照生成。')}<section class="panel">${empty('本次快照没有存疑审查报告；请用 --refresh 重新生成本机展示数据。')}</section>`;
+    return `${back}${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '本机存疑评分审查产物未随快照生成。')}<section class="panel">${empty('本次快照没有存疑审查报告；请用 --refresh 重新生成本机展示数据。')}</section>`;
   }
   const list = r.candidates || [];
   const counts = r.counts || {};
@@ -462,7 +481,7 @@ function reviewsPage() {
     <td>${c.decisions.length ? `<small class="muted">${esc(c.decisions.at(-1).review_note)}</small>` : '<small class="muted">尚未人工复核</small>'}</td>
     <td><button class="text-button" data-evidence="${esc(c.record_id)}">查看原始证据 ${icon('arrow',13)}</button></td>
   </tr>`).join('');
-  return `${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '规则只提出复核线索；官方分数原样保留，人工结论作为独立事件追加。')}
+  return `${back}${hero('DISPUTED EVIDENCE / 06', '先核对评分，再谈掌握。', '规则只提出复核线索；官方分数原样保留，人工结论作为独立事件追加。')}
   <section class="panel">${panelHead('存疑评分审查', `规则 ${esc(D.review_meta?.rule_version || '—')} · 仅本机 · 不含原始作答`, `<button class="button light" data-export-reviews>${icon('download',14)}导出审核清单</button>`)}
     <div class="mini-metrics" style="grid-template-columns:repeat(4,1fr)">
       <div class="mini-metric">扫描记录<strong>${counts.records_scanned ?? '—'}</strong><small>条保留记录</small></div>
@@ -903,6 +922,12 @@ document.addEventListener('click', event => {
       toast('反馈已记录，正在重建快照…');
       location.reload();
     }).catch(error => toast(error.message));
+    return;
+  }
+  if (b.hasAttribute('data-review-entry')) {
+    state.view = 'reviews';
+    render();
+    window.scrollTo(0, 0);
     return;
   }
   if (b.dataset.view) {

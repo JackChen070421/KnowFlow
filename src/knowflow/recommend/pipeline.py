@@ -17,6 +17,14 @@ from pathlib import Path
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import latest_run_dir
 from knowflow.recommend.catalog import build_catalog, load_knowledge_base
+from knowflow.recommend.path import (
+    PATH_POLICY_VERSION,
+    load_events,
+    path_state,
+    progress_path,
+    validate_event_refs,
+)
+from knowflow.recommend.probe import PROBE_POLICY_VERSION, ProbeWeights
 from knowflow.recommend.rules import POLICY_VERSION, recommend_profile
 from knowflow.recommend.validation import SCHEMA_ID, validate_saved_recommendations
 
@@ -103,6 +111,8 @@ def _index_entry(rec: dict, path: str, scope_known: bool) -> dict:
         "probe_needed": rec["probe_plan"]["needed"],
         "probe_items": rec["probe_plan"]["items"],
         "issue_ids": [item["issue_id"] for item in rec["plan"]],
+        "plan_version": rec.get("plan_version"),
+        "completed_items": len(rec.get("history") or []),
     }
 
 
@@ -163,6 +173,156 @@ def _summary_text(manifest: dict, index: dict) -> list[str]:
     ]
 
 
+def _plan_signature(rec: dict | None):
+    if rec is None:
+        return None
+    items = tuple(
+        (
+            item["issue_id"],
+            tuple(item["material_ids"]),
+            item.get("activity_type"),
+            item.get("status", "planned"),
+        )
+        for item in rec.get("plan", [])
+    )
+    history = tuple(sorted(item["plan_item_id"] for item in rec.get("history", [])))
+    return items, history
+
+
+def _find_previous(
+    target: Path, node_id: str, student_id: str, explicit: str | None, dataset_id: str
+) -> tuple[Path | None, dict | None]:
+    if explicit:
+        path = Path(explicit)
+        if path.is_dir():
+            path = path / "nodes" / node_id / "students" / f"{student_id}.json"
+        if path.is_file():
+            return path, json.loads(path.read_text(encoding="utf-8"))
+        return None, None
+    root = repo_root() / "artifacts" / "recommend"
+    if not root.is_dir():
+        return None, None
+    target_resolved = target.resolve()
+    candidates = [
+        path
+        for path in root.glob(f"*/nodes/{node_id}/students/{student_id}.json")
+        if target_resolved not in path.resolve().parents
+    ]
+    candidates.sort(key=lambda item: (item.stat().st_mtime, item.as_posix()), reverse=True)
+    for path in candidates:
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (record.get("source") or {}).get("dataset_id") != dataset_id:
+            continue
+        return path, record
+    return None, None
+
+
+def _diff_entry(issue_id: str, item: dict, reason: str | None = None) -> dict:
+    entry = {
+        "issue_id": issue_id,
+        "knowledge_id": (item.get("knowledge_ids") or [None])[0],
+        "plan_item_id": item.get("plan_item_id"),
+        "reason": reason,
+    }
+    return entry
+
+
+def _plan_diff(prev: dict | None, rec: dict, events_applied: int) -> dict:
+    prev_plan = {item["issue_id"]: item for item in (prev or {}).get("plan", [])}
+    prev_history = {item["plan_item_id"] for item in (prev or {}).get("history", [])}
+    current = {item["issue_id"]: item for item in rec.get("plan", [])}
+    history = rec.get("history", [])
+    completed_knowledge = {item["knowledge_ids"][0] for item in history}
+
+    added = [
+        _diff_entry(issue_id, item)
+        for issue_id, item in current.items()
+        if item.get("status") != "in_progress" and issue_id not in prev_plan
+    ]
+    retained = [
+        _diff_entry(issue_id, item, "沿用已开始计划项，不重新规划")
+        for issue_id, item in current.items()
+        if item.get("status") == "in_progress"
+    ]
+    removed = [
+        _diff_entry(issue_id, item, "本轮未选中（预算或证据变化）")
+        for issue_id, item in prev_plan.items()
+        if issue_id not in current and item.get("knowledge_ids", [None])[0] not in completed_knowledge
+    ]
+    completed = [
+        _diff_entry(item["issue_id"], item, "进度事件 marked completed")
+        for item in history
+        if item["plan_item_id"] not in prev_history
+    ]
+
+    if prev is None:
+        reason = "首次生成学习路径"
+    elif events_applied > int((prev.get("progress") or {}).get("events_applied") or 0):
+        reason = f"应用进度事件（累计 {events_applied} 条），重排未开始项"
+    else:
+        reason = "画像或材料变化触发重新规划"
+    reason += f"；保留 {len(history)} 条已完成项"
+    return {
+        "reason": reason,
+        "previous_plan_id": (prev or {}).get("plan_id"),
+        "previous_version": (prev or {}).get("plan_version"),
+        "added": added,
+        "removed": removed,
+        "retained": retained,
+        "completed": completed,
+    }
+
+
+def _validate_progress_events(events: list[dict], bundle: dict, catalog: dict) -> None:
+    tables = {
+        "students": bundle["students"],
+        "nodes": bundle["nodes"],
+        "knowledge": bundle["knowledge"],
+        "materials": [{"material_id": material_id} for material_id in catalog["materials"]],
+    }
+    for event in events:
+        errors = validate_event_refs(event, tables)
+        if errors:
+            raise ValueError(f"{event['event_id']}: {errors[0]}")
+
+
+def _build_recommendation(
+    profile: dict,
+    catalog: dict,
+    node_available: set[str],
+    records: list[dict],
+    timestamp: str,
+    profile_sha: str,
+    review: dict | None,
+    state: dict,
+    history: list[dict],
+    version: int,
+    weights,
+) -> dict:
+    source = "local_progress" if state["events"] else "none"
+    return recommend_profile(
+        profile,
+        catalog,
+        node_available,
+        records,
+        timestamp,
+        profile_sha,
+        review,
+        {
+            "version": version,
+            "completed": state["completed"],
+            "started": state["started"],
+            "history": history,
+            "events": state["events"],
+            "probe_weights": weights,
+            "source": source,
+        },
+    )
+
+
 def recommend_run(
     run: str | None = None,
     knowledge: str | None = None,
@@ -171,6 +331,9 @@ def recommend_run(
     generated_at: str | None = None,
     llm: bool = False,
     client=None,
+    progress: str | None = None,
+    previous: str | None = None,
+    probe_weights: dict | None = None,
 ) -> dict:
     run_dir = _resolve_run(run)
     knowledge_path = Path(knowledge) if knowledge else default_knowledge_path()
@@ -218,6 +381,11 @@ def recommend_run(
 
     recs: list[tuple[Path, dict]] = []
     index_students = []
+    progress_file = Path(progress) if progress else progress_path(bundle["dataset_id"])
+    events = load_events(progress_file) if progress_file.is_file() else []
+    _validate_progress_events(events, bundle, catalog)
+    weights = ProbeWeights(**(probe_weights or {}))
+    previous_dir = None
     for node_id in node_ids:
         node_available = set(_nodes(bundle)[node_id]["material_ids"])
         local_profiles = target / "inputs" / "nodes" / node_id / "students"
@@ -225,7 +393,16 @@ def recommend_run(
         for profile_path, profile in _profiles(run_dir, node_id):
             shutil.copy2(profile_path, local_profiles / profile_path.name)
             profile_sha = hashlib.sha256(profile_path.read_bytes()).hexdigest()
-            rec = recommend_profile(
+            state = path_state(events, profile["student_id"], node_id)
+            previous_path, previous_rec = _find_previous(
+                target, node_id, profile["student_id"], previous, bundle["dataset_id"]
+            )
+            if previous_path is not None:
+                previous_dir = str(previous_path.parent.parent.parent)
+            history = list(state["completed"])
+            previous_version = int((previous_rec or {}).get("plan_version") or 0)
+            base_version = previous_version if previous_rec else 1
+            rec = _build_recommendation(
                 profile,
                 catalog,
                 node_available,
@@ -233,7 +410,30 @@ def recommend_run(
                 timestamp,
                 profile_sha,
                 review,
+                state,
+                history,
+                base_version,
+                weights,
             )
+            previous_events = int(((previous_rec or {}).get("progress") or {}).get("events_applied") or 0)
+            if previous_rec is not None and (
+                len(state["events"]) != previous_events
+                or _plan_signature(rec) != _plan_signature(previous_rec)
+            ):
+                rec = _build_recommendation(
+                    profile,
+                    catalog,
+                    node_available,
+                    bundle["records"],
+                    timestamp,
+                    profile_sha,
+                    review,
+                    state,
+                    history,
+                    previous_version + 1,
+                    weights,
+                )
+            rec["plan_diff"] = _plan_diff(previous_rec, rec, len(state["events"]))
             if writer is not None:
                 stats = rewrite_plan(rec, profile, catalog, bundle["dataset_id"], writer)
                 for key in ("items_used", "items_fallback", "attempts"):
@@ -297,6 +497,20 @@ def recommend_run(
             "time": "heuristic",
             "material_scope": "catalog_prefer_node",
             "max_plan_items": 3,
+            "path_policy": PATH_POLICY_VERSION,
+            "probe_policy": PROBE_POLICY_VERSION,
+            "probe_weights": weights.as_dict(),
+        },
+        "path": {
+            "progress_file": str(progress_file.resolve()) if progress_file.is_file() else None,
+            "events": len(events),
+            "students_with_events": len(
+                {(event["student_id"], event["node_id"]) for event in events}
+            ),
+            "previous_source": (
+                "explicit" if previous else "auto" if previous_dir else "none"
+            ),
+            "previous_dir": previous_dir,
         },
         "review": None
         if review is None

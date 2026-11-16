@@ -28,6 +28,7 @@ Set-Location 'D:\桌面\KnowFlow'
 - 教师页：`http://127.0.0.1:8765/teacher`；学生页：`http://127.0.0.1:8765/student`。
 - 教师页包含班级堆叠条形图、作答环形图、节点记录量折线图、学生知识热力表、个人画像与建议、数据质量审计。
 - 教师页「存疑证据」：列出复核线索、官方分与评分点、审查状态与复核备注，可回查原始作答并下载审核清单（清单不含原始作答）。
+- 计划卡显示学习路径状态：进行中的项标“进行中”，已完成的项保留在历史中，并在建议上方提示“已完成 N 项，本轮只重排未开始项”。
 - 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。课程地图直接读正式图谱 `knowledge/curriculum_graph.json`（经知识底座进入快照），未人工核对的关系标“待核验”，不补造。
 - 学生页输入模拟学生 ID（例如 `S001`），查看对应节点的知识状态、练习与学习建议；另有数轴镜像、活动预算两个明确标识的自编互动实验。
 - 侧栏底部齿轮「设置」→「LLM 模式」：可开关文字层、选择厂商（DeepSeek / OpenAI / 通义千问 / 自定义）并填写 API Key。保存即写入本机 `.env`，等同于手工改后端配置；Key 不回显、不进入页面快照。保存后对之后生成的建议生效，已有成果需重建。
@@ -71,13 +72,13 @@ Set-Location 'D:\桌面\KnowFlow'
 
 | 层 | 目录/模块 | 作用 | 现状 |
 |---|---|---|---|
-| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 20 schemas |
+| **1 契约层** | `schemas/` | 定义输入 CSV、输出 JSON、LLM 边界；多人协作的接口 | ✅ 21 schemas |
 | **2 数据层** | `data/`、`src/knowflow/io/` | `raw → canonical → interim`；隔离官方格式，原始数据不出本机 | ✅ 适配层 + 10 张 canonical 表 |
 | **3 知识层** | `src/knowflow/knowledge/` | 课标/知识点/材料/Q-matrix/先修与易混图 → `knowledge_base.json` | ✅ 生成与校验、本机课标/关系标注接入；教学内容需人工复核 |
 | **3b 图谱层** | `knowledge/`、`src/knowflow/knowledge/graph.py` | 教材细目图谱：稳定边 ID、类型、来源、审核状态；前端与建议共用 | ✅ 方向二；18 条关系待人工复核 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态、覆盖度、Beta-Binomial、问题识别、个体/班级画像 | ✅ 任务2基础版；只读 canonical，不写数据 |
 | **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；双口径隔离 | ✅ 方向一 |
-| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修/难度/时长约束、排序、理由、探测小测、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
+| **5 建议层** | `src/knowflow/recommend/` | 材料检索、先修约束、学习路径、完成条件、可解释 probe 评分、validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色 `reason`/`check`） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读 `llm_summary`，写 `reason`/`check`/摘要；数字锁、ID 锁、重试 2 次降级模板 | ✅ 可选，默认关闭 |
 | **7 验证层** | `scripts/`、`tests/`、`src/knowflow/diagnosis/validation.py`、`src/knowflow/recommend/validation.py`、`src/knowflow/llm/guard.py` | 格式检查 + 数据复检 + 契约测试 + 诊断/建议复算 → `validation_report` | ✅ 核心检查脚本 + 156 tests |
 | **8 协作层** | `AGENT.md`、`README.md`、`shortcuts.md`、`.github/` | 准则、分工、分支/PR、CI、事故处理 | ✅ |
@@ -126,6 +127,7 @@ KnowFlow/
 ├─ data/manifests/          # 纯指纹（路径/哈希/行数），可入库
 ├─ data/interim/<dataset_id>/ # 适配后 canonical，gitignore
 ├─ data/reviews/<dataset_id>/ # 本机人工复核账本，gitignore
+├─ data/progress/<dataset_id>/ # 本机学习路径进度事件，gitignore
 └─ .github/                 # CI + PR 模板
 ```
 
@@ -267,7 +269,8 @@ artifacts/recommend/<目录>/
 规则版的三条硬约束：
 
 - 每个学生最多 3 条计划；先处理薄弱/评分点失分，再处理证据不足；表现较好不强行加练。
-- `probe_plan.items` 只用该生在该节点**未作答**的测评题；`needed` 必须等于 `items` 非空。
+- `probe_plan.items` 只用该生在该节点**未作答、未评分、非 pending、非存疑**的测评题；`needed` 必须等于 `items` 非空。
+- 每个计划项带 `plan_item_id`、`plan_version`、`status`、`prerequisite_item_ids` 与结构化 `completion_condition`；`probe_plan.scoring` 给出候选题的分量、权重和总分，可逐项复算。
 - `difficulty`/`est_minutes` 是**规则推算值**：官方材料没有这两个字段，按题型/认知类型估算，运行说明里已声明，不能当作官方难度或精确用时。
 
 ### 跑方向一：存疑评分审查
@@ -330,6 +333,33 @@ uv run python -m knowflow.cli verify-recommend
 - 易混：只有 reviewed 且有同时映射两个知识点的材料时才加对比练习；否则只给教师补充观察提示，不虚构对比题，也不据此判定学生混淆。
 - 超出 3 项预算的 issue 写入 `deferred[]` 并给理由（先修优先 / 无可用材料）。
 - 官方底座目前没有任何 **K 级** 先修边，所以正式数据的计划顺序不会因图谱改变；排序逻辑由合成数据测试覆盖（`tests/diagnosis/test_graph_planning.py`），人工复核并补 K 级边后即生效。
+
+### 跑方向三：学习路径与主动补充观测
+
+目标：把平面建议升级为有依赖、有完成条件、可调整版本的学习路径，并把 probe 从“按材料编号取前 3”改为可解释的启发式评分。
+
+```powershell
+# 1) 生成带路径的计划（每个学生一份）
+uv run python -m knowflow.cli recommend --run latest --node all
+#    每条计划项含 plan_item_id / prerequisite_item_ids / completion_condition / status
+
+# 2) 记录一次“开始/完成”（本机事件，不改诊断、不代表答对）
+uv run python -m knowflow.cli path-event --student S001 --node N01 --seq 1 `
+  --event completed --plan artifacts/recommend/<目录>
+#    默认写入 data/progress/official-v1/events.jsonl（Git 忽略）
+
+# 3) 基于进度重新规划：保留已完成项，只重排未开始项
+uv run python -m knowflow.cli recommend --run latest --node N01 `
+  --progress data/progress/official-v1/events.jsonl `
+  --previous artifacts/recommend/<上一版目录>
+uv run python -m knowflow.cli verify-recommend
+```
+
+- 计划项：`plan_item_id`（`PL-<学生>-<节点>-v<版本>-<知识点>`）、`prerequisite_item_ids`（只能指向更早项）、`prerequisite_knowledge_ids`、`completion_condition`（`probe_evidence` / `full_credit`）。
+- 版本：`plan_id` / `plan_version`；`history[]` 永久保留已完成项（不计入本轮 3 项预算）；`plan_diff` 记录上一版、本版的新增/删除/保留/完成与原因。
+- Probe：候选必须是本节点未作答、未评分、非 pending、非存疑的测评题；分量 `issue_relevance / coverage_gain / prerequisite_value / material_quality / redundancy_penalty`，`total = Σ 权重×分量`，权重写入 `probe_plan.scoring.weights` 与 `run_manifest.policy.probe_weights`。
+- 权重可用 `--probe-weights weights.json` 覆盖（五个分量名），实际权重同时写入 `probe_plan.scoring.weights` 与 `run_manifest.policy.probe_weights`。
+- **边界**：官方没有题目难度/区分度/响应模型，这里给的是规则启发式，不是 IRT 信息量；进度事件不携带分数、不改诊断。“新证据→重新诊断”的完整闭环留到方向五。
 
 ### 可选：接入 LLM 文字层
 

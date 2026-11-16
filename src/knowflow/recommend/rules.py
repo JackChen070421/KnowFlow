@@ -7,8 +7,12 @@ item records a rule-derived value and the run README says so.
 
 from __future__ import annotations
 
-POLICY_VERSION = "r3-rules-1"
+from . import path as path_module
+from . import probe as probe_module
+
+POLICY_VERSION = "r3-rules-2"
 MAX_PLAN_ITEMS = 3
+MAX_PROBE_PER_ISSUE = 3
 MAX_PROBE_ITEMS = 12
 MIN_EVIDENCE = 3
 WEAK_STATUSES = {"confirmed_weak", "likely_weak", "mixed_performance"}
@@ -350,10 +354,12 @@ def _plan_item(
     attempted: set[str],
     used: set[str],
     review: dict | None = None,
+    assessments: list[str] | None = None,
 ) -> dict | None:
     view = _planning_view(profile, issue["knowledge_id"], review)
     planning = _planning_issue(issue, view)
-    assessments = _select_assessments(planning, catalog, node_available, attempted, used)
+    if assessments is None:
+        assessments = _select_assessments(planning, catalog, node_available, attempted, used)
     if not assessments:
         return None
     explain_id = None
@@ -403,6 +409,54 @@ def _plan_item(
                 for flag in view["review"]["flags"]
             ]
     return item
+
+
+def _finalize_plan(
+    plan: list[dict],
+    issues_by_id: dict[str, dict],
+    student_id: str,
+    node_id: str,
+    version: int,
+    catalog: dict,
+    carried_ids: set[str],
+) -> None:
+    """Assign stable path IDs, statuses, completion conditions and dependency links."""
+
+    for index, item in enumerate(plan, 1):
+        item["seq"] = index
+        if item["issue_id"] in carried_ids:
+            item["status"] = "in_progress"
+        else:
+            item["status"] = "planned"
+            item["plan_item_id"] = path_module.plan_item_id(
+                student_id, node_id, version, item["knowledge_ids"][0]
+            )
+            item["plan_version"] = version
+    for index, item in enumerate(plan):
+        issue = issues_by_id.get(item["issue_id"], {})
+        criteria = [
+            point["criterion"] for point in issue.get("rubric_evidence", []) if point.get("criterion")
+        ]
+        item["completion_condition"] = path_module.completion_condition(
+            item["activity_type"], item["material_ids"], criteria
+        )
+        knowledge_id = item["knowledge_ids"][0]
+        earlier = {
+            other["knowledge_ids"][0]: other["plan_item_id"] for other in plan[:index]
+        }
+        reviewed = {
+            entry["source_knowledge_id"]
+            for entry in catalog.get("reviewed_prerequisites", {}).get(knowledge_id, [])
+        }
+        item["prerequisite_item_ids"] = [
+            earlier[source] for source in sorted(reviewed) if source in earlier
+        ]
+        check = item["prerequisite_check"]
+        linked = set(check.get("missing_knowledge_ids") or []) | set(
+            check.get("pending_knowledge_ids") or []
+        )
+        linked |= reviewed & set(earlier)
+        item["prerequisite_knowledge_ids"] = sorted(linked)
 
 
 def _is_gap(issue: dict, profile: dict, review: dict | None = None) -> bool:
@@ -496,6 +550,7 @@ def recommend_profile(
     generated_at: str,
     profile_sha256: str,
     review: dict | None = None,
+    path: dict | None = None,
 ) -> dict:
     student_id, node_id = profile["student_id"], profile["node_id"]
     attempted = {
@@ -505,6 +560,37 @@ def recommend_profile(
         and record["node_id"] == node_id
         and record.get("attempted")
     }
+    pending = {
+        record["material_id"]
+        for record in records
+        if record["student_id"] == student_id
+        and record["node_id"] == node_id
+        and record.get("attempted")
+        and record.get("score") is None
+    }
+    scored = {
+        record["material_id"]
+        for record in records
+        if record["student_id"] == student_id
+        and record["node_id"] == node_id
+        and record.get("score") is not None
+    }
+    disputed = {
+        record["material_id"]
+        for record in records
+        if record["student_id"] == student_id
+        and record["node_id"] == node_id
+        and review
+        and review["index"].get(record["record_id"], {}).get("disputed")
+    }
+    version = int((path or {}).get("version") or 1)
+    completed = list((path or {}).get("completed") or [])
+    started = list((path or {}).get("started") or [])
+    history = list((path or {}).get("history") or [])
+    weights = (path or {}).get("probe_weights") or probe_module.ProbeWeights()
+    reserved = {item["knowledge_ids"][0] for item in completed}
+    carried_ids = {event["issue_id"] for event in started}
+    reserved |= {event["knowledge_id"] for event in started}
     base = {
         "schema_version": "1.1.0",
         "student_id": student_id,
@@ -523,7 +609,7 @@ def recommend_profile(
     }
     states = profile["knowledge_states"]
     if not profile["coverage"]["scope_known"]:
-        return _attach_review(
+        result = _attach_review(
             {
                 **base,
                 "plan": [],
@@ -537,43 +623,90 @@ def recommend_profile(
             },
             review,
         )
+        return _attach_path(result, path, student_id, node_id, version, history, len(completed), 0, 0)
 
     issues = [issue for issue in profile.get("issues", []) if issue["type"] != "not_applicable"]
     issues.sort(key=lambda issue: _priority(issue, profile, catalog, review))
+    issues_by_id = {issue["issue_id"]: issue for issue in issues}
+    issues_by_knowledge = {issue["knowledge_id"]: issue for issue in issues}
+
+    plan: list[dict] = []
+    used: set[str] = set()
+    unmatched = 0
+    for event in sorted(started, key=lambda item: (item["plan_version"], item["seq"])):
+        issue = issues_by_id.get(event["issue_id"])
+        if issue is None:
+            unmatched += 1
+            continue
+        item = _plan_item(
+            0, issue, profile, catalog, node_available, attempted, used, review
+        )
+        if item is None:
+            unmatched += 1
+            continue
+        item["plan_item_id"] = event["plan_item_id"]
+        item["plan_version"] = event["plan_version"]
+        plan.append(item)
+
+    fresh_issues = [issue for issue in issues if issue["knowledge_id"] not in reserved]
     gaps = []
     probes = []
-    for issue in issues:
+    for issue in fresh_issues:
         view = _planning_view(profile, issue["knowledge_id"], review)
         if _effective_type(issue, view) == "insufficient_evidence":
             probes.append(issue)
         elif _is_gap(issue, profile, review):
             gaps.append(issue)
     base_selected = (gaps[:2] + probes[:1]) if gaps else probes[:MAX_PLAN_ITEMS]
-    issues_by_knowledge = {issue["knowledge_id"]: issue for issue in issues}
     ordered: list[dict] = []
     seen_ids: set[str] = set()
     for issue in base_selected:
         for dependency in _dependency_issues(
             issue, issues_by_knowledge, profile, catalog, review
         ):
+            if dependency["knowledge_id"] in reserved:
+                continue
             if dependency["issue_id"] not in seen_ids:
                 ordered.append(dependency)
                 seen_ids.add(dependency["issue_id"])
         if issue["issue_id"] not in seen_ids:
             ordered.append(issue)
             seen_ids.add(issue["issue_id"])
-    selected = ordered[:MAX_PLAN_ITEMS]
+    budget_left = max(0, MAX_PLAN_ITEMS - len(plan))
+    selected = ordered[:budget_left]
     deferred = [
         {
             "issue_id": issue["issue_id"],
-            "reason": "计划预算为 3 项；先修巩固/补充观测优先，本轮暂不列入，下一轮重新规划。",
+            "reason": "计划预算为 3 项；已开始/已完成的计划项占用预算，本轮暂不列入。"
+            if plan
+            else "计划预算为 3 项；先修巩固/补充观测优先，本轮暂不列入，下一轮重新规划。",
         }
-        for issue in ordered[MAX_PLAN_ITEMS:]
+        for issue in ordered[budget_left:]
     ]
 
-    plan = []
-    used: set[str] = set()
+    unresolved = {issue["knowledge_id"] for issue in issues}
+    probe_candidates: dict[str, list[dict]] = {}
+    selected_probe_materials: list[str] = []
     for issue in selected:
+        view = _planning_view(profile, issue["knowledge_id"], review)
+        assessments = None
+        if _effective_type(issue, view) == "insufficient_evidence":
+            assessments, candidates = probe_module.select_probes(
+                issue,
+                profile=profile,
+                catalog=catalog,
+                node_available=node_available,
+                attempted=attempted,
+                pending=pending,
+                scored=scored,
+                disputed=disputed,
+                unresolved_knowledge=unresolved,
+                selected=selected_probe_materials,
+                weights=weights,
+                limit=MAX_PROBE_PER_ISSUE,
+            )
+            probe_candidates[issue["issue_id"]] = candidates
+            selected_probe_materials.extend(assessments)
         item = _plan_item(
             len(plan) + 1,
             issue,
@@ -583,9 +716,11 @@ def recommend_profile(
             attempted,
             used,
             review,
+            assessments,
         )
         if item:
             plan.append(item)
+    _finalize_plan(plan, issues_by_id, student_id, node_id, version, catalog, carried_ids)
     planned_ids = {item["issue_id"] for item in plan}
     for issue in selected:
         if issue["issue_id"] not in planned_ids:
@@ -607,18 +742,69 @@ def recommend_profile(
         if item["knowledge_ids"][0] not in probe_knowledge:
             probe_knowledge.append(item["knowledge_ids"][0])
     probe_items = probe_items[:MAX_PROBE_ITEMS]
-    return _attach_review(
+    probe_plan = {
+        "needed": bool(probe_items),
+        "items": probe_items,
+        "purpose": _probe_purpose(profile, probe_items, probe_knowledge, bool(probes)),
+    }
+    merged = {}
+    for issue_id, candidates in probe_candidates.items():
+        if issue_id not in planned_ids:
+            continue
+        for candidate in candidates:
+            current = merged.get(candidate["material_id"])
+            if current is None or candidate["total"] > current["total"]:
+                merged[candidate["material_id"]] = candidate
+    if merged:
+        probe_plan["scoring"] = probe_module.scoring_block(
+            weights,
+            sorted(merged.values(), key=lambda item: (-item["total"], item["material_id"])),
+            must_include=set(probe_items),
+        )
+    result = _attach_review(
         {
             **base,
             "plan": plan,
-            "probe_plan": {
-                "needed": bool(probe_items),
-                "items": probe_items,
-                "purpose": _probe_purpose(profile, probe_items, probe_knowledge, bool(probes)),
-            },
+            "probe_plan": probe_plan,
             "deferred": deferred,
             "_states": states,
         },
         review,
         _review_required(issues, profile, review),
     )
+    return _attach_path(
+        result,
+        path,
+        student_id,
+        node_id,
+        version,
+        history,
+        len(completed),
+        len(plan) - len(selected),
+        unmatched,
+    )
+
+
+def _attach_path(
+    result: dict,
+    path: dict | None,
+    student_id: str,
+    node_id: str,
+    version: int,
+    history: list[dict],
+    completed_items: int,
+    in_progress_items: int,
+    unmatched_events: int,
+) -> dict:
+    path = path or {}
+    result["plan_id"] = path_module.plan_id(student_id, node_id, version)
+    result["plan_version"] = version
+    result["history"] = history
+    result["progress"] = {
+        "events_applied": len(path.get("events") or []),
+        "completed_items": completed_items,
+        "in_progress_items": max(0, in_progress_items),
+        "unmatched_events": unmatched_events,
+        "source": str(path.get("source") or "none"),
+    }
+    return result

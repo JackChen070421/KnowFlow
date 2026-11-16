@@ -235,6 +235,65 @@ def validate_recommendation(
         if entry["issue_id"] not in issues:
             errors.append("deferred: issue_id not in profile")
 
+    plan_ids: dict[str, int] = {}
+    if "plan_version" in rec or "plan_id" in rec:
+        version = rec.get("plan_version")
+        if not isinstance(version, int) or version < 1:
+            errors.append("plan_version missing or invalid")
+        else:
+            expected_id = f"PLAN-{rec['student_id'][1:]}-{rec['node_id']}-v{version}"
+            if rec.get("plan_id") != expected_id:
+                errors.append("plan_id does not match student/node/version")
+    for index, item in enumerate(rec["plan"], 1):
+        if item["seq"] != index:
+            errors.append(f"plan[{index}]: seq is not contiguous")
+        plan_item_id = item.get("plan_item_id")
+        if plan_item_id:
+            if plan_item_id in plan_ids:
+                errors.append(f"plan[{index}]: duplicate plan_item_id")
+            plan_ids[plan_item_id] = index
+            if item.get("plan_version", rec.get("plan_version")) > (rec.get("plan_version") or 0):
+                errors.append(f"plan[{index}]: item version is newer than the plan")
+            if item.get("status") not in {"planned", "in_progress"}:
+                errors.append(f"plan[{index}]: invalid status")
+        condition = item.get("completion_condition")
+        if condition:
+            if not set(condition["material_ids"]) <= set(item["material_ids"]):
+                errors.append(f"plan[{index}]: completion condition cites unused materials")
+            if condition["type"] == "probe_evidence" and item["activity_type"] != "probe":
+                errors.append(f"plan[{index}]: probe completion condition on a non-probe item")
+            if condition["type"] == "full_credit" and item["activity_type"] == "probe":
+                errors.append(f"plan[{index}]: full-credit condition on a probe item")
+    for index, item in enumerate(rec["plan"], 1):
+        for parent in item.get("prerequisite_item_ids") or []:
+            if parent not in plan_ids:
+                errors.append(f"plan[{index}]: prerequisite item {parent} is not in the plan")
+            elif plan_ids[parent] >= index:
+                errors.append(f"plan[{index}]: prerequisite item {parent} must come earlier")
+    history_ids: set[str] = set()
+    for entry in rec.get("history") or []:
+        plan_item_id = entry["plan_item_id"]
+        if plan_item_id in history_ids:
+            errors.append("history: duplicate completed item")
+        if plan_item_id in plan_ids:
+            errors.append("history: a completed item must not stay in the active plan")
+        history_ids.add(plan_item_id)
+    diff = rec.get("plan_diff")
+    if diff:
+        active_issues = {item["issue_id"] for item in rec["plan"]}
+        diff_completed = {entry["plan_item_id"] for entry in diff["completed"]}
+        if not diff_completed <= history_ids:
+            errors.append("plan_diff: completed entry is not in history")
+        for entry in diff["added"]:
+            if entry["issue_id"] not in active_issues:
+                errors.append("plan_diff: added issue is not in the plan")
+        for entry in diff["retained"]:
+            if entry["issue_id"] not in active_issues:
+                errors.append("plan_diff: retained issue is not in the plan")
+        for entry in diff["removed"]:
+            if entry["issue_id"] in active_issues:
+                errors.append("plan_diff: removed issue is still in the plan")
+
     probe = rec["probe_plan"]
     if len(set(probe["items"])) != len(probe["items"]):
         errors.append("probe_plan: duplicate material")
@@ -251,6 +310,21 @@ def validate_recommendation(
             errors.append(f"probe_plan: {material_id} was already attempted")
         if material_id not in node_available:
             errors.append(f"probe_plan: {material_id} is outside node scope")
+    scoring = probe.get("scoring")
+    if scoring:
+        weights = scoring["weights"]
+        for candidate in scoring["candidates"]:
+            total = sum(
+                weights.get(name, 0.0) * value
+                for name, value in candidate["components"].items()
+            )
+            if abs(total - candidate["total"]) > 1e-6:
+                errors.append(
+                    f"probe_plan: candidate {candidate['material_id']} total is not recomputable"
+                )
+        candidate_ids = {candidate["material_id"] for candidate in scoring["candidates"]}
+        if not set(probe["items"]) <= candidate_ids:
+            errors.append("probe_plan: selected probe is missing from the scoring record")
     if not profile["coverage"]["scope_known"]:
         if rec["plan"] or probe["items"] or probe["needed"]:
             errors.append("scope_unknown profile must not receive a plan")

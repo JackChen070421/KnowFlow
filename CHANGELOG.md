@@ -10,6 +10,21 @@
 
 ---
 
+## 2026-11-16 — 方向三：学习路径与主动补充观测
+
+**本机提交** · `feat/learning-path`
+
+- 计划项：新增 `plan_item_id` / `plan_version` / `status` / `prerequisite_item_ids` / `prerequisite_knowledge_ids` / 结构化 `completion_condition`；顶层 `plan_id`、`plan_version`、`history`、`plan_diff`、`progress`。
+- Probe：用可解释评分替换“按材料编号取前 3”；候选必须是本节点未作答、未评分、非 pending、非存疑的测评题；5 个分量 + 配置权重，`total = Σ 权重×分量`，权重写入产物与 manifest；明确标注为规则启发式，不是 IRT。
+- 进度：`path-event` 追加 `data/progress/<dataset>/events.jsonl`（不含分数）；`started` 保留为 `in_progress`，`completed` 进入 `history`；预算只计活动项；`plan_diff` 记录版本、原因与差异，旧计划与历史不删除。
+- 前端：计划卡显示“进行中”，建议上方提示已完成历史。
+- 契约 v0.9（21 schemas），新增 `path_event.schema.json`。
+- 官方数据：N01 98 条计划项、probe 评分可复算；完成 1 项后 N01 97 条、S001 版本 v2、历史 1 条、diff 记录完成项。
+- 验证：`pytest 231 passed`、`ruff`、`check_contracts`、`verify-run` / `verify-recommend` 通过。
+- 回退：移除 `path.py` / `probe.py` 与 `--progress`/`--previous`；旧建议仍可校验。
+
+---
+
 ## 2026-11-16 — 方向二：正式课程图谱进入契约与决策
 
 **本机提交** · `feat/curriculum-graph`

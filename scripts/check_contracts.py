@@ -41,7 +41,10 @@ def main() -> int:
     print(f"KnowFlow contract check: OK ({schema_count} schemas)")
     print("  - required directories/files present")
     print("  - schemas parse and $id values are unique")
-    print("  - files under data/raw, data/interim and data/reviews are git-ignored (never committed)")
+    print(
+        "  - files under data/raw, data/interim, data/reviews and data/progress "
+        "are git-ignored (never committed)"
+    )
     print(
         "  - curriculum graph structure validated "
         f"({graph['counts']['node_count']} nodes / {graph['counts']['edge_count']} edges)"

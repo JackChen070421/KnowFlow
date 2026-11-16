@@ -114,6 +114,7 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
         node="all",
         output=str(run / "recommendations"),
         llm=effective_llm,
+        previous="none",
     )
     if report["gate"] != "pass":
         raise ValueError("建议校验未通过，请查看本机运行目录中的 validation_report.json。")

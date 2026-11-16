@@ -32,6 +32,9 @@ data/README-processing.md
 # 本机人工复核账本（含记录 ID、审核意见与源数据指纹）：永不入库。
 data/reviews/**
 
+# 本机学习路径进度事件（学生执行状态）：永不入库。
+data/progress/**
+
 # Defense in depth: any CSV/XLSX/Parquet outside examples is assumed restricted.
 *.csv
 *.tsv

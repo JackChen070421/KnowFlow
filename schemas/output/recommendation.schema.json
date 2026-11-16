@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/recommendation.schema.json",
   "title": "recommendation.json",
-  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。契约 v0.6；canonical v0.5。",
+  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。契约 v0.9；canonical v0.5。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -35,10 +35,19 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dataset_id", "profile_generated_at"],
+      "required": [
+        "dataset_id",
+        "profile_generated_at"
+      ],
       "properties": {
-        "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-        "profile_generated_at": {"type": "string", "format": "date-time"},
+        "dataset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "profile_generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "profile_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$",
@@ -49,11 +58,24 @@
     "generated_by": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "model", "prompt_version"],
+      "required": [
+        "provider",
+        "model",
+        "prompt_version"
+      ],
       "properties": {
-        "provider": {"type": "string", "minLength": 1},
-        "model": {"type": "string", "minLength": 1},
-        "prompt_version": {"type": "string", "minLength": 1}
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "plan": {
@@ -77,17 +99,36 @@
           "teacher_adjustable"
         ],
         "properties": {
-          "seq": {"type": "integer", "minimum": 1},
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2}$"},
-          "activity": {"type": "string", "minLength": 1},
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2}$"
+          },
+          "activity": {
+            "type": "string",
+            "minLength": 1
+          },
           "activity_type": {
             "type": "string",
-            "enum": ["explain", "practice", "consolidate", "probe", "review", "extend"],
+            "enum": [
+              "explain",
+              "practice",
+              "consolidate",
+              "probe",
+              "review",
+              "extend"
+            ],
             "description": "可选：活动类型，便于教师筛选；不改变排课语义"
           },
           "material_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^M-[0-9]{3}$"
+            },
             "minItems": 1,
             "uniqueItems": true
           },
@@ -96,10 +137,16 @@
             "pattern": "^M-[0-9]{3}$",
             "description": "必须是 material_ids 之一；G4 检查"
           },
-          "objective_id": {"type": "string", "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"},
+          "objective_id": {
+            "type": "string",
+            "pattern": "^OBJ-[0-9][A-Z]{1,2}-[0-9]{2,3}$"
+          },
           "knowledge_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^K-[0-9]{2,3}$"
+            },
             "minItems": 1,
             "uniqueItems": true
           },
@@ -113,38 +160,65 @@
             "minLength": 1,
             "description": "可验证的检查方式，如“3 题对 2 题”"
           },
-          "est_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
-          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+          "est_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "difficulty": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
           "prerequisite_check": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["satisfied", "missing_knowledge_ids"],
+            "required": [
+              "satisfied",
+              "missing_knowledge_ids"
+            ],
             "properties": {
-              "satisfied": {"type": "boolean"},
+              "satisfied": {
+                "type": "boolean"
+              },
               "missing_knowledge_ids": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^K-[0-9]{2,3}$"
+                },
                 "uniqueItems": true
               },
               "pending_knowledge_ids": {
                 "type": "array",
                 "description": "可选：已审核先修但证据不足的知识点；先补观测，不判薄弱。",
-                "items": {"type": "string", "pattern": "^K-[0-9]{2,3}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^K-[0-9]{2,3}$"
+                },
                 "uniqueItems": true
               },
               "reviewed_edges": {
                 "type": "array",
                 "description": "可选：参与本次判断的已审核先修关系 edge_id。",
-                "items": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^GE-[0-9]{4}$"
+                },
                 "uniqueItems": true
               },
               "draft_edges": {
                 "type": "array",
                 "description": "可选：涉及该知识点但未审核的关系；只提示待核验，不参与排序。",
-                "items": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "items": {
+                  "type": "string",
+                  "pattern": "^GE-[0-9]{4}$"
+                },
                 "uniqueItems": true
               },
-              "note": {"type": "string"}
+              "note": {
+                "type": "string"
+              }
             }
           },
           "relation_notes": {
@@ -153,26 +227,51 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["relation_type", "edge_id", "review_status", "note"],
+              "required": [
+                "relation_type",
+                "edge_id",
+                "review_status",
+                "note"
+              ],
               "properties": {
                 "relation_type": {
                   "type": "string",
-                  "enum": ["prerequisite", "confusable_with", "related_to"]
+                  "enum": [
+                    "prerequisite",
+                    "confusable_with",
+                    "related_to"
+                  ]
                 },
-                "edge_id": {"type": "string", "pattern": "^GE-[0-9]{4}$"},
+                "edge_id": {
+                  "type": "string",
+                  "pattern": "^GE-[0-9]{4}$"
+                },
                 "review_status": {
                   "type": "string",
-                  "enum": ["draft", "reviewed", "rejected", "needs_revision"]
+                  "enum": [
+                    "draft",
+                    "reviewed",
+                    "rejected",
+                    "needs_revision"
+                  ]
                 },
-                "note": {"type": "string", "minLength": 1}
+                "note": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           },
-          "teacher_adjustable": {"type": "boolean"},
+          "teacher_adjustable": {
+            "type": "boolean"
+          },
           "basis_records": {
             "type": "array",
             "description": "可选：本计划项实际依据的 record_id（contract v0.7）。不得包含存疑记录；用于“依据可回查”。",
-            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^R-[0-9]{4}$"
+            },
             "uniqueItems": true
           },
           "review_flags": {
@@ -181,13 +280,93 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["record_id", "review_status"],
+              "required": [
+                "record_id",
+                "review_status"
+              ],
               "properties": {
-                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "record_id": {
+                  "type": "string",
+                  "pattern": "^R-[0-9]{4}$"
+                },
                 "review_status": {
                   "type": "string",
-                  "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"]
+                  "enum": [
+                    "flagged",
+                    "confirmed_issue",
+                    "dismissed",
+                    "needs_more_evidence"
+                  ]
                 }
+              }
+            }
+          },
+          "plan_item_id": {
+            "type": "string",
+            "pattern": "^PL-[0-9]{3}-N[0-9]{2}-v[0-9]+-[0-9]{2}$"
+          },
+          "plan_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "in_progress"
+            ]
+          },
+          "prerequisite_item_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^PL-[0-9]{3}-N[0-9]{2}-v[0-9]+-[0-9]{2}$"
+            },
+            "uniqueItems": true
+          },
+          "prerequisite_knowledge_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^K-[0-9]{2,3}$"
+            },
+            "uniqueItems": true
+          },
+          "completion_condition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "material_ids"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "probe_evidence",
+                  "full_credit"
+                ]
+              },
+              "material_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^M-[0-9]{3}$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "min_graded": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "min_full_credit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "criterion": {
+                "type": "string",
+                "minLength": 1
               }
             }
           }
@@ -197,35 +376,119 @@
     "probe_plan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["needed", "items", "purpose"],
+      "required": [
+        "needed",
+        "items",
+        "purpose"
+      ],
       "properties": {
-        "needed": {"type": "boolean"},
+        "needed": {
+          "type": "boolean"
+        },
         "items": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^M-[0-9]{3}$"},
+          "items": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$"
+          },
           "uniqueItems": true
         },
-        "purpose": {"type": "string", "minLength": 1}
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scoring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "policy_version",
+            "weights",
+            "candidates"
+          ],
+          "properties": {
+            "policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weights": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "material_id",
+                  "total",
+                  "components"
+                ],
+                "properties": {
+                  "material_id": {
+                    "type": "string",
+                    "pattern": "^M-[0-9]{3}$"
+                  },
+                  "total": {
+                    "type": "number"
+                  },
+                  "components": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "review_context": {
       "type": "object",
       "additionalProperties": false,
       "description": "可选：本次建议使用的存疑审查口径（contract v0.7）。缺省表示未启用审查层。",
-      "required": ["applied", "policy", "report_sha256", "excluded_record_ids"],
+      "required": [
+        "applied",
+        "policy",
+        "report_sha256",
+        "excluded_record_ids"
+      ],
       "properties": {
-        "applied": {"type": "boolean"},
+        "applied": {
+          "type": "boolean"
+        },
         "policy": {
           "type": "string",
-          "enum": ["official", "exclude_flagged"]
+          "enum": [
+            "official",
+            "exclude_flagged"
+          ]
         },
-        "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "report_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
         "excluded_record_ids": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+          "items": {
+            "type": "string",
+            "pattern": "^R-[0-9]{4}$"
+          },
           "uniqueItems": true
         },
-        "note": {"type": "string"}
+        "note": {
+          "type": "string"
+        }
       }
     },
     "review_required": {
@@ -234,16 +497,29 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issue_id", "record_ids", "reason"],
+        "required": [
+          "issue_id",
+          "record_ids",
+          "reason"
+        ],
         "properties": {
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+          },
           "record_ids": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+            "items": {
+              "type": "string",
+              "pattern": "^R-[0-9]{4}$"
+            },
             "uniqueItems": true,
             "minItems": 1
           },
-          "reason": {"type": "string", "minLength": 1}
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -253,10 +529,225 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issue_id", "reason"],
+        "required": [
+          "issue_id",
+          "reason"
+        ],
         "properties": {
-          "issue_id": {"type": "string", "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"},
-          "reason": {"type": "string", "minLength": 1}
+          "issue_id": {
+            "type": "string",
+            "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^PLAN-[0-9]{3}-N[0-9]{2}-v[0-9]+$"
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "history": {
+      "type": "array",
+      "description": "已完成计划项的历史快照；不计入本轮预算，不因重新规划而删除。",
+      "items": {
+        "$ref": "#/$defs/history_item"
+      }
+    },
+    "plan_diff": {
+      "$ref": "#/$defs/plan_diff"
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "events_applied",
+        "unmatched_events"
+      ],
+      "properties": {
+        "events_applied": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "in_progress_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmatched_events": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "history_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_item_id",
+        "plan_version",
+        "seq",
+        "issue_id",
+        "knowledge_ids",
+        "material_ids",
+        "activity_type",
+        "status",
+        "completed_at"
+      ],
+      "properties": {
+        "plan_item_id": {
+          "type": "string",
+          "pattern": "^PL-[0-9]{3}-N[0-9]{2}-v[0-9]+-[0-9]{2}$"
+        },
+        "plan_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issue_id": {
+          "type": "string",
+          "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+        },
+        "knowledge_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^K-[0-9]{2,3}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "material_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^M-[0-9]{3}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "activity_type": {
+          "type": "string",
+          "enum": [
+            "explain",
+            "practice",
+            "consolidate",
+            "probe",
+            "review",
+            "extend"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "diff_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_id"
+      ],
+      "properties": {
+        "issue_id": {
+          "type": "string",
+          "pattern": "^IS-[0-9]{3}-[0-9]{2,3}$"
+        },
+        "knowledge_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_item_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "plan_diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "added",
+        "removed",
+        "retained",
+        "completed"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previous_plan_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previous_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diff_entry"
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diff_entry"
+          }
+        },
+        "retained": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diff_entry"
+          }
+        },
+        "completed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diff_entry"
+          }
         }
       }
     }

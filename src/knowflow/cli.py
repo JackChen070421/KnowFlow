@@ -171,9 +171,77 @@ def _cmd_recommend(args: argparse.Namespace) -> int:
         node=args.node,
         output=args.output,
         llm=args.llm,
+        progress=args.progress,
+        previous=args.previous,
+        probe_weights=(
+            json.loads(Path(args.probe_weights).read_text(encoding="utf-8"))
+            if args.probe_weights
+            else None
+        ),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["gate"] == "pass" else 1
+
+
+def _cmd_path_event(args: argparse.Namespace) -> int:
+    from .diagnosis.pipeline import load_canonical
+    from .recommend.path import (
+        append_event,
+        load_events,
+        make_event,
+        progress_path,
+        validate_event_refs,
+    )
+    from .recommend.pipeline import latest_recommend_dir
+
+    _, tables, _ = load_canonical(args.dataset)
+    plan_path = Path(args.plan) if args.plan else latest_recommend_dir()
+    if plan_path.is_dir():
+        plan_path = plan_path / "nodes" / args.node / "students" / f"{args.student}.json"
+    if not plan_path.is_file():
+        raise ValueError(f"recommendation not found: {plan_path}")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    items = plan.get("plan") or []
+    if args.seq is not None:
+        item = next((entry for entry in items if entry.get("seq") == args.seq), None)
+    else:
+        item = next(
+            (entry for entry in items if entry.get("plan_item_id") == args.plan_item), None
+        )
+    if item is None:
+        raise ValueError("plan item not found; pass --seq or --plan-item from the current plan")
+    path = Path(args.progress) if args.progress else progress_path(args.dataset)
+    existing = load_events(path)
+    event = make_event(
+        student_id=args.student,
+        node_id=args.node,
+        plan_version=int(item.get("plan_version") or plan.get("plan_version") or 1),
+        event_type=args.event,
+        issue_id=item["issue_id"],
+        knowledge_id=item["knowledge_ids"][0],
+        material_ids=list(item["material_ids"]),
+        activity_type=item.get("activity_type") or "consolidate",
+        seq=int(item["seq"]),
+        source=args.source,
+        note=args.note,
+        existing=existing,
+    )
+    errors = validate_event_refs(event, tables)
+    if errors:
+        raise ValueError("invalid progress event: " + "; ".join(errors))
+    append_event(path, event)
+    print(
+        json.dumps(
+            {
+                "event": event,
+                "progress_file": str(path.resolve()),
+                "warning": "进度事件只记录执行状态，不代表答对或掌握；诊断不会被改写。",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
 
 
 def _cmd_explain(args: argparse.Namespace) -> int:
@@ -341,7 +409,41 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="let the optional language layer rewrite reason/check (falls back to templates)",
     )
+    recommend_parser.add_argument(
+        "--progress",
+        help="local progress events JSONL; defaults to data/progress/<dataset>/events.jsonl",
+    )
+    recommend_parser.add_argument(
+        "--previous",
+        help="previous recommendation file/dir for the plan diff; defaults to the newest matching run",
+    )
+    recommend_parser.add_argument(
+        "--probe-weights",
+        help="JSON file overriding probe weights (issue_relevance/coverage_gain/"
+        "prerequisite_value/material_quality/redundancy_penalty)",
+    )
     recommend_parser.set_defaults(func=_cmd_recommend)
+
+    path_event_parser = subparsers.add_parser(
+        "path-event", help="append one local progress event for a plan item"
+    )
+    path_event_parser.add_argument("--dataset", default="official-v1")
+    path_event_parser.add_argument("--student", required=True)
+    path_event_parser.add_argument("--node", required=True)
+    path_event_parser.add_argument(
+        "--plan", help="recommendation file/dir; defaults to the newest recommend run"
+    )
+    path_event_parser.add_argument("--seq", type=int, help="plan item seq")
+    path_event_parser.add_argument("--plan-item", help="plan_item_id (alternative to --seq)")
+    path_event_parser.add_argument(
+        "--event", required=True, choices=["started", "completed"]
+    )
+    path_event_parser.add_argument(
+        "--progress", help="event ledger path; defaults to data/progress/<dataset>/events.jsonl"
+    )
+    path_event_parser.add_argument("--note")
+    path_event_parser.add_argument("--source", default="local_demo_user")
+    path_event_parser.set_defaults(func=_cmd_path_event)
 
     explain_parser = subparsers.add_parser(
         "explain", help="explain one saved issue with the optional language layer"

@@ -1,8 +1,8 @@
-# 数据契约（contract v0.8；输入表 canonical 仍为 v0.4.0）
+# 数据契约（contract v0.9；输入表 canonical 仍为 v0.4.0）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
-> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
+> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱；v0.9 加学习路径与补充观测。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
 
 ---
 
@@ -85,7 +85,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | `data_quality_report.json` | `schema_version, dataset_id, generated_at, input_files, input_records, total_records, duplicates_removed, rejected_records, partial_credit_records, records_by_state, missing, anomalies, field_quality, handling_rules, decisions` |
 | `student_profile.json` | `schema_version, student_id, group_id, node_id, generated_at, source_dataset, coverage, knowledge_states, objective_states, issues, lists` |
 | `class_profile.json` | `schema_version, class_id, node_id, generated_at, source_dataset, student_count, coverage_summary, knowledge_distribution, common_issues, rubric_patterns, tiers, group_differences?` |
-| `recommendation.json` | `schema_version, student_id, node_id?, generated_at, source, generated_by, plan, probe_plan, review_context?, review_required?` |
+| `recommendation.json` | `schema_version, student_id, node_id?, generated_at, source, generated_by, plan, probe_plan, review_context?, review_required?, plan_id?, plan_version?, history?, plan_diff?, progress?, deferred?` |
 | `validation_report.json` | `schema_version, run_id, generated_at, targets, checks, summary, gate, errors?, policy_version?` |
 
 诊断粒度：`knowledge_states[]` 是唯一计算源；`objective_states[]` 是按 `evidence_count` 加权的派生视图，必须列出 `derived_from` 与 `unobserved_knowledge_ids`。画像按测验节点产出，`node_id` 必填；同一学生不同节点是两份画像，不合并。
@@ -398,10 +398,52 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 
 ---
 
-## 12. 变更记录
+## 12. v0.9：学习路径与主动补充观测（方向三）
+
+目标：把“若干材料”升级为**有依赖、有完成条件、可调整、可追溯版本**的学习路径；补充观测（probe）的选择从“材料编号前 3 个”升级为可解释的启发式评分。
+
+**计划项（`recommendation.plan[]`）**
+
+| 字段 | 说明 |
+|---|---|
+| `plan_item_id` | `PL-<学生三位>-<节点>-v<版本>-<知识点两位>`；同一版本内稳定、不重复 |
+| `plan_version` | 该计划项所属版本（与顶层一致；历史项保留旧版本） |
+| `status` | `planned` / `in_progress`（`completed` 只出现在 `history`） |
+| `prerequisite_item_ids` | 必须先于本项完成的计划项 ID；只能指向**更早**的项 |
+| `prerequisite_knowledge_ids` | 先修知识（reviewed 边缺失/待补观测 + 已排在更早位置的先修） |
+| `completion_condition` | 结构化完成条件：`probe_evidence`（`min_graded`）或 `full_credit`（`min_full_credit` + 可选 `criterion`） |
+
+顶层：`plan_id`（`PLAN-<学生三位>-<节点>-v<版本>`）、`plan_version`、`history[]`（已完成快照，不计入本轮预算）、`plan_diff`（上一版与本版的增/删/保留/完成及原因）、`progress`（应用事件数、完成/进行中、未匹配数）。
+
+**规划规则（确定性）**
+
+问题选择与排序沿用 v0.8：先排除无材料/不适用；证据不足→补观测；薄弱→巩固；reviewed 先修薄弱/证据不足→先补先修或观测；已掌握先修不重复；易混只用 reviewed + 共享材料做对比；预算 3 项，超出写 `deferred`。`plan_item_id` 与 `prerequisite_item_ids` 由最终顺序生成。
+
+**补充观测评分（`probe_plan.scoring`，`probe-heuristic-1`）**
+
+候选必须：本节点可用、`assessment`、映射到该知识点、**未作答、非 pending、未评分、非存疑**。分量：`issue_relevance`、`coverage_gain`、`prerequisite_value`、`material_quality`、`redundancy_penalty`（负值）。`total = Σ weight × component`，权重写入 `probe_plan.scoring.weights` 与 `run_manifest.policy.probe_weights`；报告里列出候选分量，可逐项复算。
+
+**这是规则启发式，不是测量学信息量**：官方没有难度、区分度或响应模型，禁止声称 IRT/信息函数；没有数据的分量按 0 处理，不伪造。
+
+**进度事件（`path_event.jsonl`，本机、追加式、Git 忽略）**
+
+- 位置：`data/progress/<dataset>/events.jsonl`；一行一个事件，字段见 `schemas/output/path_event.schema.json`。
+- `started`：该项保留为 `in_progress`，不重新规划；`completed`：进入 `history`，其知识点不再参与本轮新计划。
+- 事件**不携带分数**，不改变诊断、掌握度或历史成绩；`completed` 只表示“执行完成”，不代表答对或掌握。
+- 预算只计当前活动项（`planned`+`in_progress`）；已完成项进 `history`，不计入 3 项上限。
+- 版本：无变化保持不变；有新增/完成/内容变化时 `plan_version + 1`，`plan_diff` 记录旧版本、原因与差异。旧计划与历史不被静默删除。
+
+**边界**：方向三只处理“执行进度”，不把新作答写入诊断；带评分的新证据、教师评阅与重新诊断留在方向五。`recommend --progress <file>` 可指定事件文件；默认读 `data/progress/<dataset>/events.jsonl`（不存在则忽略）。
+
+**明确不做**：不按题号先后当作信息量；不让 LLM 决定题目或顺序；不虚构完成条件；不因“完成活动”推断掌握。
+
+---
+
+## 13. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.9** | `recommendation` 加 `plan_id/plan_version/history/plan_diff/progress`、`plan[].plan_item_id/plan_version/status/prerequisite_item_ids/prerequisite_knowledge_ids/completion_condition`、`probe_plan.scoring`；新增 `path_event.jsonl` 契约；`recommend --progress/--previous`、`path-event` 命令 | **minor（输出）**：只加可选字段与一个新事件表；无字段删除；旧建议仍可校验 |
 | **v0.8** | 新增 `curriculum_graph.json`（21 节点 / 18 关系，含 `edge_id`、类型、来源、理由、审核状态）；`knowledge_base.json` 加可选 `curriculum_graph`；`recommendation.json` 的 `prerequisite_check` 加 `pending_knowledge_ids/reviewed_edges/draft_edges/note`、`plan[].relation_notes`、顶层 `deferred`；新增 `knowledge --graph` 与 curation 的图谱复核补丁 | **minor（输出）**：只加可选字段与一个新资产；无字段删除；旧底座（无图谱）行为不变，旧产物仍可校验 |
 | **v0.7** | 新增 `review_report.json`（存疑评分候选 + 人工结论，`x-primary-key=record_id`）；`student_profile.knowledge_states[].review`、`issues[].disputed_rubric_evidence`；`recommendation.review_context` / `review_required` / `plan[].basis_records` / `plan[].review_flags`；诊断新增 `--review-policy official|exclude_flagged` | **minor（输出）**：只加可选字段与一个新产物；无字段删除、无既有取值语义变更；旧画像/旧建议仍可通过 schema 与 `verify-run`/`verify-recommend` |
 | **v0.6** | 任务3建议层输出契约：`recommendation.json` 加可选 `node_id`、`plan[].activity_type`；明确 `issue_id`/材料/`check`/`probe_plan` 的约束与 `difficulty`/`est_minutes` 的启发式口径；`validation_report.json` 加可选 `errors`/`policy_version` | **minor（输出）**：只加可选字段，无字段删除、无既有取值语义变更；任务2 产物不受影响 |

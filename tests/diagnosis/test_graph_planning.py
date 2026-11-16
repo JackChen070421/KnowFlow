@@ -203,12 +203,12 @@ def _knowledge_base(graph: dict | None = None) -> dict:
             {
                 "material_id": material_id,
                 "title": material_id,
-                "body": "",
+                "body": "synthetic",
                 "material_type": material_type,
                 "item_format": "blank" if material_type == "assessment" else None,
                 "objective_id": OBJECTIVE,
                 "difficulty": None,
-                "est_minutes": "2",
+                "est_minutes": 2,
                 "rubric_json": json.dumps(
                     [{"id": f"{material_id}P1", "text": "答案正确", "points": 1}],
                     ensure_ascii=False,
@@ -217,21 +217,51 @@ def _knowledge_base(graph: dict | None = None) -> dict:
             }
         )
         for knowledge_id in knowledge_ids:
-            qmatrix.append({"material_id": material_id, "knowledge_id": knowledge_id, "weight": 1.0})
+            qmatrix.append(
+                {
+                    "material_id": material_id,
+                    "knowledge_id": knowledge_id,
+                    "weight": 1.0,
+                    "difficulty": None,
+                    "item_type": "assessment",
+                    "is_primary": True,
+                }
+            )
     knowledge_base = {
         "schema_version": "1.0.0",
         "dataset_id": "synthetic-graph",
         "generated_at": STAMP,
         "subject": "math",
         "grade": 7,
-        "counts": {},
-        "objectives": [{"objective_id": OBJECTIVE}],
+        "counts": {
+            "objective_count": 1,
+            "knowledge_count": len(KNOWLEDGE),
+            "material_count": len(materials),
+            "qmatrix_count": len(qmatrix),
+            "edge_count": 0,
+        },
+        "objectives": [
+            {
+                "objective_id": OBJECTIVE,
+                "subject": "math",
+                "grade": 7,
+                "theme": "synthetic",
+                "unit": "synthetic",
+                "objective_text": "synthetic",
+                "verb_level": "apply",
+                "source_material_id": None,
+                "source_locator": "synthetic",
+            }
+        ],
         "knowledge": [
             {
                 "knowledge_id": kid,
                 "objective_id": OBJECTIVE,
+                "parent_id": None,
                 "name": name,
+                "level": "knowledge",
                 "cognitive_type": "procedure",
+                "description": None,
                 "sort_order": index,
             }
             for index, (kid, name) in enumerate(KNOWLEDGE)
@@ -354,3 +384,369 @@ def test_missing_graph_keeps_the_old_neutral_behaviour() -> None:
         assert item["prerequisite_check"]["satisfied"] is True
         assert item["prerequisite_check"]["missing_knowledge_ids"] == []
         assert "relation_notes" not in item
+
+
+# --------------------------------------------------------------------------- #
+# direction 3: learning path identities, completion conditions, probe scoring
+# --------------------------------------------------------------------------- #
+
+from knowflow.knowledge.pipeline import write_knowledge_base  # noqa: E402
+from knowflow.recommend import path as path_module  # noqa: E402
+from knowflow.recommend import probe as probe_module  # noqa: E402
+from knowflow.recommend.pipeline import recommend_run  # noqa: E402
+from knowflow.recommend.validation import validate_saved_recommendations  # noqa: E402
+
+
+def _path_context(version: int, completed: list[dict], started: list[dict], history: list[dict]):
+    return {
+        "version": version,
+        "completed": completed,
+        "started": started,
+        "history": history,
+        "events": completed + started,
+        "probe_weights": probe_module.ProbeWeights(),
+        "source": "test",
+    }
+
+
+def test_plan_items_carry_ids_versions_and_completion_conditions() -> None:
+    rec, _ = _recommend(_bundle(), _graph())
+    assert rec["plan_version"] == 1
+    assert rec["plan_id"] == "PLAN-001-N01-v1"
+    ids = [item["plan_item_id"] for item in rec["plan"]]
+    assert len(ids) == len(set(ids))
+    for index, item in enumerate(rec["plan"], 1):
+        assert item["seq"] == index
+        assert item["plan_version"] == 1
+        assert item["status"] == "planned"
+        assert item["plan_item_id"].startswith("PL-001-N01-v1-")
+        condition = item["completion_condition"]
+        assert condition["material_ids"] == item["material_ids"] or set(
+            condition["material_ids"]
+        ) <= set(item["material_ids"])
+        if item["activity_type"] == "probe":
+            assert condition["type"] == "probe_evidence"
+            assert condition["min_graded"] == 3
+        else:
+            assert condition["type"] == "full_credit"
+
+
+def test_prerequisite_links_only_point_to_earlier_items() -> None:
+    rec, _ = _recommend(_bundle(), _graph())
+    target = _item(rec, "K-02")
+    assert set(target["prerequisite_item_ids"]) == {
+        "PL-001-N01-v1-01",
+        "PL-001-N01-v1-04",
+    }
+    assert "K-01" in target["prerequisite_knowledge_ids"]
+    assert "K-04" in target["prerequisite_knowledge_ids"]
+    assert rec["plan"][0]["knowledge_ids"] == ["K-01"]
+
+
+def test_probe_scoring_is_recomputable_and_has_no_fake_difficulty() -> None:
+    rec, _ = _recommend(_bundle(), _graph())
+    probe = rec["probe_plan"]
+    assert probe["scoring"]["policy_version"] == probe_module.PROBE_POLICY_VERSION
+    weights = probe["scoring"]["weights"]
+    assert set(weights) == set(probe_module.COMPONENTS)
+    for candidate in probe["scoring"]["candidates"]:
+        total = sum(
+            weights.get(name, 0.0) * value
+            for name, value in candidate["components"].items()
+        )
+        assert abs(total - candidate["total"]) < 1e-6
+        assert "difficulty" not in candidate["components"]
+        assert "discrimination" not in candidate["components"]
+    selected = set(probe["items"])
+    assert selected <= {candidate["material_id"] for candidate in probe["scoring"]["candidates"]}
+
+
+def test_probe_selection_is_deterministic() -> None:
+    first, _ = _recommend(_bundle(), _graph())
+    second, _ = _recommend(_bundle(), _graph())
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_probe_never_uses_attempted_pending_or_scored_items() -> None:
+    bundle = _bundle()
+    rec, _ = _recommend(bundle, _graph())
+    attempted = {
+        record["material_id"]
+        for record in bundle["records"]
+        if record["student_id"] == "S001" and record["attempted"]
+    }
+    for item in rec["plan"]:
+        if item["activity_type"] != "probe":
+            continue
+        for material_id in item["material_ids"]:
+            assert material_id not in attempted
+
+
+def test_pending_answers_are_excluded_from_probe_candidates() -> None:
+    bundle = _bundle()
+    node = bundle["nodes"][0]
+    # Mark M-011 as answered but ungraded: it must not become a probe.
+    pending = {
+        "record_id": "R-9001",
+        "student_id": "S001",
+        "material_id": "M-011",
+        "node_id": "N01",
+        "assigned": True,
+        "attempted": True,
+        "score": None,
+        "max_score": 1.0,
+        "is_correct": None,
+        "submitted_at": STAMP,
+        "duration_seconds": None,
+        "attempt_no": 1,
+        "source": "synthetic",
+        "score_points": [],
+    }
+    bundle["records"].append(pending)
+    profile = _profile(bundle, "S001")
+    rec = recommend_profile(
+        profile,
+        build_catalog(_knowledge_base(_graph())),
+        set(node["material_ids"]),
+        bundle["records"],
+        STAMP,
+        "0" * 64,
+        None,
+    )
+    for item in rec["plan"]:
+        if item["activity_type"] == "probe":
+            assert "M-011" not in item["material_ids"]
+
+
+def test_completed_event_moves_item_to_history_and_frees_budget() -> None:
+    bundle = _bundle()
+    first, _ = _recommend(bundle, _graph())
+    item = first["plan"][0]
+    event = path_module.make_event(
+        student_id="S001",
+        node_id="N01",
+        plan_version=first["plan_version"],
+        event_type="completed",
+        issue_id=item["issue_id"],
+        knowledge_id=item["knowledge_ids"][0],
+        material_ids=item["material_ids"],
+        activity_type=item["activity_type"],
+        seq=item["seq"],
+        event_id="PE-TEST-0001",
+        created_at=STAMP,
+        source="test",
+    )
+    state = path_module.path_state([event], "S001", "N01")
+    history = path_module.merge_history(first, state["completed"])
+    second = recommend_profile(
+        _profile(bundle, "S001"),
+        build_catalog(_knowledge_base(_graph())),
+        set(bundle["nodes"][0]["material_ids"]),
+        bundle["records"],
+        STAMP,
+        "0" * 64,
+        None,
+        _path_context(2, state["completed"], state["started"], history),
+    )
+    assert second["plan_version"] == 2
+    assert len(second["history"]) == 1
+    assert second["history"][0]["plan_item_id"] == item["plan_item_id"]
+    assert item["knowledge_ids"][0] not in [
+        entry["knowledge_ids"][0] for entry in second["plan"]
+    ]
+    assert len(second["plan"]) <= 3
+
+
+def test_started_item_is_kept_in_progress_with_the_same_id() -> None:
+    bundle = _bundle()
+    first, _ = _recommend(bundle, _graph())
+    item = first["plan"][0]
+    event = path_module.make_event(
+        student_id="S001",
+        node_id="N01",
+        plan_version=first["plan_version"],
+        event_type="started",
+        issue_id=item["issue_id"],
+        knowledge_id=item["knowledge_ids"][0],
+        material_ids=item["material_ids"],
+        activity_type=item["activity_type"],
+        seq=item["seq"],
+        event_id="PE-TEST-0002",
+        created_at=STAMP,
+        source="test",
+    )
+    state = path_module.path_state([event], "S001", "N01")
+    second = recommend_profile(
+        _profile(bundle, "S001"),
+        build_catalog(_knowledge_base(_graph())),
+        set(bundle["nodes"][0]["material_ids"]),
+        bundle["records"],
+        STAMP,
+        "0" * 64,
+        None,
+        _path_context(2, state["completed"], state["started"], []),
+    )
+    kept = next(
+        entry
+        for entry in second["plan"]
+        if entry["issue_id"] == item["issue_id"]
+    )
+    assert kept["status"] == "in_progress"
+    assert kept["plan_item_id"] == item["plan_item_id"]
+
+
+def test_progress_event_validation_rejects_unknown_student() -> None:
+    event = path_module.make_event(
+        student_id="S999",
+        node_id="N01",
+        plan_version=1,
+        event_type="completed",
+        issue_id="IS-999-01",
+        knowledge_id="K-01",
+        material_ids=["M-001"],
+        activity_type="probe",
+        seq=1,
+        event_id="PE-TEST-0003",
+        created_at=STAMP,
+    )
+    tables = {
+        "students": [{"student_id": "S001"}],
+        "nodes": [{"node_id": "N01"}],
+        "knowledge": [{"knowledge_id": "K-01"}],
+        "materials": [{"material_id": "M-001"}],
+    }
+    assert path_module.validate_event_refs(event, tables)
+
+
+def _fake_run(tmp_path, bundle: dict, profile: dict):
+    run = tmp_path / "run"
+    (run / "nodes" / "N01" / "students").mkdir(parents=True)
+    (run / "diagnosis_input.json").write_text(json.dumps(bundle), encoding="utf-8")
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.5.0",
+                "dataset_id": bundle["dataset_id"],
+                "generated_at": STAMP,
+                "scope": "task2_only",
+                "nodes": ["N01"],
+                "configuration": {},
+                "source_files": {},
+                "review": None,
+                "targets": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "nodes" / "N01" / "students" / "S001.json").write_text(
+        json.dumps(profile), encoding="utf-8"
+    )
+    return run
+
+
+def test_recommend_run_replans_with_progress_and_records_the_diff(tmp_path) -> None:
+    bundle = _bundle()
+    profile = _profile(bundle, "S001")
+    run = _fake_run(tmp_path, bundle, profile)
+    knowledge_path = tmp_path / "knowledge_base.json"
+    write_knowledge_base(_knowledge_base(_graph()), knowledge_path)
+
+    first = recommend_run(
+        run=str(run),
+        knowledge=str(knowledge_path),
+        node="N01",
+        output=str(tmp_path / "rec1"),
+        generated_at=STAMP,
+    )
+    assert first["gate"] == "pass"
+    rec1 = json.loads((tmp_path / "rec1/nodes/N01/students/S001.json").read_text(encoding="utf-8"))
+    item = rec1["plan"][0]
+    event = path_module.make_event(
+        student_id="S001",
+        node_id="N01",
+        plan_version=rec1["plan_version"],
+        event_type="completed",
+        issue_id=item["issue_id"],
+        knowledge_id=item["knowledge_ids"][0],
+        material_ids=item["material_ids"],
+        activity_type=item["activity_type"],
+        seq=item["seq"],
+        event_id="PE-TEST-0010",
+        created_at=STAMP,
+        source="test",
+    )
+    events = tmp_path / "events.jsonl"
+    path_module.append_event(events, event)
+
+    second = recommend_run(
+        run=str(run),
+        knowledge=str(knowledge_path),
+        node="N01",
+        output=str(tmp_path / "rec2"),
+        generated_at=STAMP,
+        progress=str(events),
+        previous=str(tmp_path / "rec1"),
+    )
+    assert second["gate"] == "pass"
+    rec2 = json.loads((tmp_path / "rec2/nodes/N01/students/S001.json").read_text(encoding="utf-8"))
+    assert rec2["plan_version"] == rec1["plan_version"] + 1
+    assert rec2["history"][0]["plan_item_id"] == item["plan_item_id"]
+    assert rec2["plan_diff"]["previous_plan_id"] == rec1["plan_id"]
+    assert any(
+        entry["plan_item_id"] == item["plan_item_id"]
+        for entry in rec2["plan_diff"]["completed"]
+    )
+    assert item["knowledge_ids"][0] not in [
+        entry["knowledge_ids"][0] for entry in rec2["plan"]
+    ]
+    assert validate_saved_recommendations(tmp_path / "rec2")["gate"] == "pass"
+
+
+def test_plan_version_stays_when_nothing_changed(tmp_path) -> None:
+    bundle = _bundle()
+    run = _fake_run(tmp_path, bundle, _profile(bundle, "S001"))
+    knowledge_path = tmp_path / "knowledge_base.json"
+    write_knowledge_base(_knowledge_base(_graph()), knowledge_path)
+    recommend_run(
+        run=str(run), knowledge=str(knowledge_path), node="N01",
+        output=str(tmp_path / "rec1"), generated_at=STAMP,
+    )
+    second = recommend_run(
+        run=str(run), knowledge=str(knowledge_path), node="N01",
+        output=str(tmp_path / "rec2"), generated_at=STAMP,
+        previous=str(tmp_path / "rec1"),
+    )
+    assert second["gate"] == "pass"
+    rec1 = json.loads((tmp_path / "rec1/nodes/N01/students/S001.json").read_text(encoding="utf-8"))
+    rec2 = json.loads((tmp_path / "rec2/nodes/N01/students/S001.json").read_text(encoding="utf-8"))
+    assert rec2["plan_version"] == rec1["plan_version"]
+    assert rec2["plan_diff"]["added"] == []
+
+
+def test_probe_weights_are_configurable_and_recorded(tmp_path) -> None:
+    bundle = _bundle()
+    run = _fake_run(tmp_path, bundle, _profile(bundle, "S001"))
+    knowledge_path = tmp_path / "knowledge_base.json"
+    write_knowledge_base(_knowledge_base(_graph()), knowledge_path)
+    result = recommend_run(
+        run=str(run),
+        knowledge=str(knowledge_path),
+        node="N01",
+        output=str(tmp_path / "rec"),
+        generated_at=STAMP,
+        probe_weights={"material_quality": 0.0, "coverage_gain": 3.0},
+    )
+    assert result["gate"] == "pass"
+    manifest = json.loads((tmp_path / "rec/run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["policy"]["probe_weights"]["material_quality"] == 0.0
+    assert manifest["policy"]["probe_weights"]["coverage_gain"] == 3.0
+    rec = json.loads((tmp_path / "rec/nodes/N01/students/S001.json").read_text(encoding="utf-8"))
+    scoring = rec["probe_plan"].get("scoring")
+    if scoring:
+        assert scoring["weights"]["coverage_gain"] == 3.0
+        for candidate in scoring["candidates"]:
+            total = sum(
+                scoring["weights"].get(name, 0.0) * value
+                for name, value in candidate["components"].items()
+            )
+            assert abs(total - candidate["total"]) < 1e-6

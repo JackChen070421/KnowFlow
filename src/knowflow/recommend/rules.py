@@ -426,6 +426,9 @@ def _finalize_plan(
         item["seq"] = index
         if item["issue_id"] in carried_ids:
             item["status"] = "in_progress"
+        elif item.get("plan_item_id"):
+            item.setdefault("plan_version", version)
+            item.setdefault("status", "planned")
         else:
             item["status"] = "planned"
             item["plan_item_id"] = path_module.plan_item_id(
@@ -586,11 +589,15 @@ def recommend_profile(
     version = int((path or {}).get("version") or 1)
     completed = list((path or {}).get("completed") or [])
     started = list((path or {}).get("started") or [])
+    locked = list((path or {}).get("locked") or [])
+    removed = list((path or {}).get("removed") or [])
     history = list((path or {}).get("history") or [])
     weights = (path or {}).get("probe_weights") or probe_module.ProbeWeights()
     reserved = {item["knowledge_ids"][0] for item in completed}
     carried_ids = {event["issue_id"] for event in started}
     reserved |= {event["knowledge_id"] for event in started}
+    reserved |= {entry["knowledge_id"] for entry in locked}
+    reserved |= {entry["knowledge_id"] for entry in removed if entry.get("knowledge_id")}
     base = {
         "schema_version": "1.1.0",
         "student_id": student_id,
@@ -648,6 +655,36 @@ def recommend_profile(
         item["plan_version"] = event["plan_version"]
         plan.append(item)
 
+    locked_issues = 0
+    for entry in sorted(locked, key=lambda item: (item.get("seq", 1), item["plan_item_id"])):
+        issue = issues_by_id.get(entry.get("issue_id")) or issues_by_knowledge.get(
+            entry.get("knowledge_id")
+        )
+        if issue is None:
+            unmatched += 1
+            continue
+        item = _plan_item(
+            0, issue, profile, catalog, node_available, attempted, used, review
+        )
+        if item is None:
+            unmatched += 1
+            continue
+        item["plan_item_id"] = entry["plan_item_id"]
+        item["plan_version"] = int(entry.get("plan_version") or version)
+        item["status"] = "planned"
+        item["teacher_locked"] = True
+        if entry.get("material_ids"):
+            materials = [mid for mid in entry["material_ids"] if mid in catalog["materials"]]
+            if materials:
+                item["material_ids"] = materials
+                item["primary_material_id"] = materials[0]
+        if entry.get("est_minutes") is not None:
+            item["est_minutes"] = int(entry["est_minutes"])
+        if entry.get("difficulty") is not None:
+            item["difficulty"] = int(entry["difficulty"])
+        plan.append(item)
+        locked_issues += 1
+
     fresh_issues = [issue for issue in issues if issue["knowledge_id"] not in reserved]
     gaps = []
     probes = []
@@ -677,12 +714,20 @@ def recommend_profile(
     deferred = [
         {
             "issue_id": issue["issue_id"],
-            "reason": "计划预算为 3 项；已开始/已完成的计划项占用预算，本轮暂不列入。"
+            "reason": "计划预算为 3 项；已开始/已完成/教师锁定的计划项占用预算，本轮暂不列入。"
             if plan
             else "计划预算为 3 项；先修巩固/补充观测优先，本轮暂不列入，下一轮重新规划。",
         }
         for issue in ordered[budget_left:]
     ]
+    for entry in removed:
+        deferred.append(
+            {
+                "issue_id": entry.get("issue_id"),
+                "knowledge_id": entry.get("knowledge_id"),
+                "reason": f"教师移除：{entry.get('reason', '')}（事件 {entry.get('event_id')}）",
+            }
+        )
 
     unresolved = {issue["knowledge_id"] for issue in issues}
     probe_candidates: dict[str, list[dict]] = {}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://knowflow.local/schemas/output/recommendation.schema.json",
   "title": "recommendation.json",
-  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测。契约 v0.9；canonical v0.5。",
+  "description": "任务 3 产物：可执行、可追溯、可调整的学习建议 + 探测性小测 + 教学反馈。契约 v0.10；canonical v0.5。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -270,7 +270,7 @@
             "description": "可选：本计划项实际依据的 record_id（contract v0.7）。不得包含存疑记录；用于“依据可回查”。",
             "items": {
               "type": "string",
-              "pattern": "^R-[0-9]{4}$"
+              "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"
             },
             "uniqueItems": true
           },
@@ -287,7 +287,7 @@
               "properties": {
                 "record_id": {
                   "type": "string",
-                  "pattern": "^R-[0-9]{4}$"
+                  "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"
                 },
                 "review_status": {
                   "type": "string",
@@ -367,6 +367,66 @@
               "criterion": {
                 "type": "string",
                 "minLength": 1
+              }
+            }
+          },
+          "teacher_locked": {
+            "type": "boolean",
+            "description": "教师锁定：重新规划时保留该项及其材料，不因诊断变化自动移除"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/adjustment"
+            }
+          },
+          "teacher_comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/comment"
+            }
+          },
+          "student_feedback": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "event_id",
+                "kind",
+                "created_at"
+              ],
+              "properties": {
+                "event_id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "difficulty",
+                    "confusion",
+                    "request",
+                    "other"
+                  ]
+                },
+                "rating": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "text": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
               }
             }
           }
@@ -482,7 +542,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^R-[0-9]{4}$"
+            "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"
           },
           "uniqueItems": true
         },
@@ -511,7 +571,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^R-[0-9]{4}$"
+              "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"
             },
             "uniqueItems": true,
             "minItems": 1
@@ -541,6 +601,13 @@
           "reason": {
             "type": "string",
             "minLength": 1
+          },
+          "knowledge_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^K-[0-9]{2,3}$"
           }
         }
       }
@@ -591,6 +658,9 @@
           "type": "string"
         }
       }
+    },
+    "feedback": {
+      "$ref": "#/$defs/feedback"
     }
   },
   "$defs": {
@@ -747,6 +817,186 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/diff_entry"
+          }
+        }
+      }
+    },
+    "adjustment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "action",
+        "actor",
+        "created_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^EV-[A-Za-z0-9._-]{6,40}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "lock",
+            "unlock",
+            "remove",
+            "restore",
+            "replace_materials",
+            "set_time",
+            "set_difficulty"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "comment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "text",
+        "actor",
+        "created_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^EV-[A-Za-z0-9._-]{6,40}$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "issue_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applied",
+        "source",
+        "events",
+        "teacher_adjustments",
+        "student_feedback",
+        "comments",
+        "applied_items",
+        "unmatched_items"
+      ],
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        },
+        "events": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "teacher_adjustments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "student_feedback": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "comments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "applied_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unmatched_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "general_comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comment"
+          }
+        },
+        "student_feedback_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "event_id",
+              "kind",
+              "created_at"
+            ],
+            "properties": {
+              "event_id": {
+                "type": "string"
+              },
+              "plan_item_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "difficulty",
+                  "confusion",
+                  "request",
+                  "other"
+                ]
+              },
+              "rating": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "maximum": 5
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       }

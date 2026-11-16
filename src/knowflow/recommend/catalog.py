@@ -59,8 +59,8 @@ def build_catalog(knowledge_base: dict) -> dict:
     }
     if not objective_order:
         objective_order = {
-            row["objective_id"]: index
-            for index, row in enumerate(
+            objective_id: index
+            for index, objective_id in enumerate(
                 sorted({knowledge_row["objective_id"] for knowledge_row in knowledge_rows})
             )
         }

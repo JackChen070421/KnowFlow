@@ -42,8 +42,8 @@ def main() -> int:
     print("  - required directories/files present")
     print("  - schemas parse and $id values are unique")
     print(
-        "  - files under data/raw, data/interim, data/reviews and data/progress "
-        "are git-ignored (never committed)"
+        "  - files under data/raw, data/interim, data/reviews, data/progress and "
+        "data/feedback are git-ignored (never committed)"
     )
     print(
         "  - curriculum graph structure validated "

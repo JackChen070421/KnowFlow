@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-16 · v0.23
+> 最后更新：2026-11-16 · v0.24
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -45,6 +45,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 | **3b 图谱层** | `knowledge/`、`src/knowflow/knowledge/graph.py` | 教材细目图谱：边 ID/类型/来源/审核状态；前端与建议共用；未审核不排序 | ✅ 方向二 |
 | **4 诊断层** | `src/knowflow/cleaning/`、`src/knowflow/diagnosis/` | 五态/覆盖度/Beta/问题/个体与班级画像；只读 canonical，不写数据 | ✅ 任务2基础版 |
 | **4b 审查层** | `src/knowflow/review/` | 只读 canonical 提出存疑评分线索；本机追加式复核账本；官方/剔除双口径 | ✅ 方向一 |
+| **4c 反馈层** | `src/knowflow/feedback/` | 教学调整、学生反馈、补充证据、诊断差异 | ✅ 方向五（本机账本） |
 | **5 建议层** | `src/knowflow/recommend/` | 检索/约束/路径依赖/完成条件/probe 评分/validator | ✅ 规则版（模板生成、可复算；`--llm` 只润色文字） |
 | **6 LLM 边缘层** | `src/knowflow/llm/`、`schemas/llm/` | 只读摘要，写 `reason`/`check`；数字锁/ID 锁/降级 | ✅ 可选，默认关闭 |
 | **7 验证层** | `scripts/`、`tests/`、未来 `validation/` | 三检查脚本 + 数据落地 + 契约测试 + 校验报告 | ✅ |
@@ -77,6 +78,7 @@ KnowFlow/
 │  ├─ interim/<dataset_id>/ # 适配后 canonical，不进 Git
 │  ├─ reviews/<dataset_id>/ # 人工复核账本，不进 Git
 │  ├─ progress/<dataset_id>/# 学习路径进度事件，不进 Git
+│  ├─ feedback/<dataset_id>/# 教学反馈与补充证据，不进 Git
 │  └─ README.md
 └─ .github/                 # CI + PR 模板
 ```
@@ -92,7 +94,7 @@ KnowFlow/
 | 1. 取材料 | 赛题组统一渠道获取 `赛题资料包`，解压到本机任意路径 | 目录内含 `1_赛题规则.pdf` |
 | 2. 落地 | `python scripts/ingest_raw.py --source "<上一步路径>"` | `INGEST OK dataset_id=official-v1 files=21 bytes=76518706` |
 | 3. 自检 | `python scripts/ingest_raw.py --check` | `CHECK OK ...` + `compared against .../data/manifests/official-v1.structure.json` |
-| 4. 验不进库 | `python scripts/check_contracts.py` | `files under data/raw and data/interim are git-ignored` |
+| 4. 验不进库 | `python scripts/check_contracts.py` | `files under data/raw, data/interim, data/reviews, data/progress and data/feedback are git-ignored` |
 | 5. 处理数据 | `python scripts/build_canonical.py --dataset-id official-v1` | `ADAPT OK` + 10 表行数（3/9/65/63/9/40/2/799/806/0） |
 | 6. 复检 | `python scripts/validate_canonical.py --dataset-id official-v1` | `VALIDATE OK dataset_id=official-v1 tables=10 records=799` |
 
@@ -164,8 +166,8 @@ Git/GitHub 的具体命令与自然语言映射见 [`shortcuts.md`](shortcuts.md
 |---|---|---|
 | G0 结构/样例 | 必需目录/文件、schema 头、CSV 表头/类型/主键 | `check_contracts` + `check_examples`；`check_contracts` 另验课程图谱结构（节点/边 ID、端点、计数、对称存储、先修无环） |
 | G1 Schema | 字段/类型/枚举 | `python scripts/validate_outputs.py --schema ... --data ...` |
-| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `validate_canonical`；诊断层 `verify-run`；审查层 `review-scan`；建议层 `verify-recommend` 校验 `plan_item_id`/先修项/边 ID/事件引用 |
-| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态；诊断层 `verify-run`；审查层 `review.usable_*`；建议层图关系/完成条件/版本与差异一致 |
+| G2 引用 | 所有 ID 存在、无悬空 | 数据层 `validate_canonical`；诊断层 `verify-run`（含补充 `EV-...` 复算）；审查层 `review-scan`；建议层 `verify-recommend` 校验 `plan_item_id`/先修项/边 ID/反馈事件引用 |
+| G3 一致性 | `evidence_count`=长度、`mastery` 可复算 | 数据层去重/五态；诊断层 `verify-run`（canonical + 补充证据）；审查层 `review.usable_*`；建议层图关系/完成条件/版本/反馈与差异一致 |
 | G4 隐私 | 受限数据未入库（`git check-ignore` 复核）/无密钥/PII | `python scripts/check_contracts.py`；`data/reviews` 与 `data/raw`、`data/interim` 同为受限目录 |
 | G5 测试 | 契约/单元/端到端 | `python -m pytest` |
 
@@ -219,6 +221,12 @@ $env:PYTHONPATH='src'; python -m knowflow.cli verify-recommend
 $env:PYTHONPATH='src'; python -m knowflow.cli knowledge --dataset official-v1 `
   --graph knowledge/curriculum_graph.json
 
+# 方向五：补充证据 → 重新诊断 → 教学调整
+$env:PYTHONPATH='src'; python -m knowflow.cli feedback-attempt --student S001 --node N01 `
+  --material M-003 --score 1.0
+$env:PYTHONPATH='src'; python -m knowflow.cli run --dataset official-v1 --node N01 `
+  --supplemental data/feedback/official-v1/events.jsonl --previous artifacts/run/<上一版>
+
 # 方向三：记录一次进度事件并重新规划（不改诊断）
 $env:PYTHONPATH='src'; python -m knowflow.cli path-event --student S001 --node N01 `
   --seq 1 --event completed --plan artifacts/recommend/<目录>
@@ -261,6 +269,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 - ❌ 手改 `edge_id`/端点来“修复”图谱关系，或让 LLM 生成先修/易混关系。
 - ❌ 把“完成活动”当作答对或掌握，或把完成事件写进诊断/成绩。
 - ❌ 声称计算了 IRT/信息量；没有难度与区分度数据时只能输出规则启发式评分。
+- ❌ 把教师调整写进分数/掌握度，或把补充证据写进 canonical；补充证据必须标 `source=supplemental` 且未经复核。
 - ❌ 直接 push `main`、force-push、合并未经 review 的合约变更。
 
 ## 13. 变更记录
@@ -269,6 +278,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.24 | 2026-11-16 | 方向五：`data/feedback` 事件账本（补充作答/教师调整/评语/学生反馈）、派生诊断与 `diagnosis_diff`、教师调整重放（锁定/移除/换材料/时间/难度）、`/api/feedback` 与教师/学生界面；契约 v0.10（22 schemas）；测试 239 项 |
 | v0.23 | 2026-11-16 | 方向三：学习路径（`plan_item_id`/依赖/完成条件/状态/版本/`history`/`plan_diff`）、probe 启发式评分、`path-event` 进度事件与 `recommend --progress/--previous`；契约 v0.9（21 schemas）；测试 231 项 |
 | v0.22 | 2026-11-16 | 方向二：`knowledge/curriculum_graph.json`（21 节点/18 关系，全部 draft）、`knowledge --graph`、curation 图谱复核；建议层 `prerequisite_check`/`relation_notes`/`deferred`；前端去硬编码；契约 v0.8（20 schemas）；测试 217 项 |
 | v0.21 | 2026-11-16 | 方向一：审查层 `review/`、`review-scan`/`review-decide`、`run --review`；画像加 `review` 双口径与 `disputed_rubric_evidence`；建议加 `review_context`/`review_required`/`basis_records`；契约 v0.7（19 schemas）；测试 186 项 |

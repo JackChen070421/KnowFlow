@@ -1,8 +1,8 @@
-# 数据契约（contract v0.9；输入表 canonical 仍为 v0.4.0）
+# 数据契约（contract v0.10；输入表 canonical 仍为 v0.4.0）
 
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
-> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱；v0.9 加学习路径与补充观测。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
+> v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱；v0.9 加学习路径与补充观测；v0.10 加教学反馈与补充证据闭环。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。
 
 ---
 
@@ -433,16 +433,55 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 - 预算只计当前活动项（`planned`+`in_progress`）；已完成项进 `history`，不计入 3 项上限。
 - 版本：无变化保持不变；有新增/完成/内容变化时 `plan_version + 1`，`plan_diff` 记录旧版本、原因与差异。旧计划与历史不被静默删除。
 
-**边界**：方向三只处理“执行进度”，不把新作答写入诊断；带评分的新证据、教师评阅与重新诊断留在方向五。`recommend --progress <file>` 可指定事件文件；默认读 `data/progress/<dataset>/events.jsonl`（不存在则忽略）。
+**边界**：方向三只处理“执行进度”，不把新作答写入诊断；带评分的新证据、教师评阅与重新诊断由方向五的 `feedback_event` 账本实现（见 §13）。`recommend --progress <file>` 可指定事件文件；默认读 `data/progress/<dataset>/events.jsonl`（不存在则忽略）。
 
 **明确不做**：不按题号先后当作信息量；不让 LLM 决定题目或顺序；不虚构完成条件；不因“完成活动”推断掌握。
 
 ---
 
-## 13. 变更记录
+## 13. v0.10：教学反馈与补充证据闭环（方向五）
+
+目标：让“教师调整、学生反馈、补充作答”进入同一条可追溯链路，同时保证**官方分数、canonical 和历史结论不被改写**。
+
+**事件账本（`feedback_event.jsonl`，本机、追加式、Git 忽略）**
+
+- 位置：`data/feedback/<dataset>/events.jsonl`；一行一个事件，字段见 `schemas/output/feedback_event.schema.json`。
+- 四种事件：
+  - `supplemental_attempt`：补充作答（学生/本机录入），带 `material_id`、`score`、`max_score`、可选 `rubric_points`；
+  - `teacher_adjustment`：教师调整计划项（`lock`/`unlock`/`remove`/`restore`/`replace_materials`/`set_time`/`set_difficulty`），必须带理由；`lock`/`remove` 还要带计划项快照；
+  - `teacher_comment`：教师评语，只展示，不改分数或计划；
+  - `student_feedback`：学生反馈（`difficulty`/`confusion`/`request`/`other`，可带 1–5 评分与文本），只展示。
+- `actor` 区分 `teacher` / `student`；`source` 记录本机来源。没有认证，只允许本机演示使用。
+
+**补充证据 → 派生诊断**
+
+- 补充作答转成独立记录 `EV-...`（`source=supplemental`），写入本次 run 的 `supplemental_input.json`；`diagnosis_input.json` 仍是 canonical 快照，官方分数与质量报告不变。
+- 派生 run 用 canonical + 补充记录计算画像/班级/质量复算；`verify-run` 读取 `supplemental_input.json` 复算，manifest 的 `supplemental` 与 `auxiliary_files` 绑定哈希。
+- 可选 `--previous <run>` 输出 `diagnosis_diff.json`：逐学生列出状态变化、mastery 变化、issue 增删；`supplemental_events` 记录来源。
+- 补充证据没有人工复核状态；不得把它当作官方成绩，报告中必须标注“派生/本机补充”。
+
+**教师调整 → 计划重放**
+
+- 事件按 `(created_at, event_id)` 重放；同一计划项以最新 `lock`/`unlock`/`remove`/`restore` 决定状态，`replace_materials`/`set_time`/`set_difficulty` 取最新值。
+- 锁定项在重排时保留原 `plan_item_id`/材料，并计入 3 项预算；移除项不进入计划，写入 `deferred` 并注明“教师移除”；`restore` 可逆。
+- 调整按 `issue_id` 回退匹配：计划版本升级导致 `plan_item_id` 变化时，仍能应用到同一知识点的当前项；旧事件保留在 `adjustments` 中。
+- 教师调整只改计划字段，不改诊断、掌握度或官方分数；`recommendation.feedback` 记录应用数、未匹配项与来源。
+
+**前端接口**
+
+- `POST /api/feedback`（仅回环地址、同源 JSON、`X-KnowFlow-Feedback: 1`）：教师调整/评语、学生反馈、补充作答；写账本后重建本机快照。
+- 教师端“教学调整与反馈闭环”面板；学生端计划卡“太难/没看懂/需要更多例题”反馈按钮；计划卡展示锁定、调整理由、教师评语。
+- 注意：这是**单机演示**，没有账号、权限与并发控制；“教师/学生”角色只是页面视角，不是安全边界。
+
+**明确不做**：不把补充证据写进 canonical；不让教师调整改分数；不因教师评语推断掌握；不把本机事件当正式成绩或对外提交材料。
+
+---
+
+## 14. 变更记录
 
 | 版本 | 变更 | 兼容性 |
 |---|---|---|
+| **v0.10** | 新增 `feedback_event.jsonl` 契约与 `data/feedback`（本机）；补充作答派生 `EV-...` 证据、`supplemental_input.json`、`diagnosis_diff.json`；建议新增 `feedback`/`teacher_locked`/`adjustments`/`teacher_comments`/`student_feedback`；`/api/feedback` 与教师/学生反馈界面 | **minor（输出/本机）**：canonical 不变；输出只加可选字段与两个本机文件；EV 记录 ID 扩展了画像/建议的 record_id 模式 |
 | **v0.9** | `recommendation` 加 `plan_id/plan_version/history/plan_diff/progress`、`plan[].plan_item_id/plan_version/status/prerequisite_item_ids/prerequisite_knowledge_ids/completion_condition`、`probe_plan.scoring`；新增 `path_event.jsonl` 契约；`recommend --progress/--previous`、`path-event` 命令 | **minor（输出）**：只加可选字段与一个新事件表；无字段删除；旧建议仍可校验 |
 | **v0.8** | 新增 `curriculum_graph.json`（21 节点 / 18 关系，含 `edge_id`、类型、来源、理由、审核状态）；`knowledge_base.json` 加可选 `curriculum_graph`；`recommendation.json` 的 `prerequisite_check` 加 `pending_knowledge_ids/reviewed_edges/draft_edges/note`、`plan[].relation_notes`、顶层 `deferred`；新增 `knowledge --graph` 与 curation 的图谱复核补丁 | **minor（输出）**：只加可选字段与一个新资产；无字段删除；旧底座（无图谱）行为不变，旧产物仍可校验 |
 | **v0.7** | 新增 `review_report.json`（存疑评分候选 + 人工结论，`x-primary-key=record_id`）；`student_profile.knowledge_states[].review`、`issues[].disputed_rubric_evidence`；`recommendation.review_context` / `review_required` / `plan[].basis_records` / `plan[].review_flags`；诊断新增 `--review-policy official|exclude_flagged` | **minor（输出）**：只加可选字段与一个新产物；无字段删除、无既有取值语义变更；旧画像/旧建议仍可通过 schema 与 `verify-run`/`verify-recommend` |

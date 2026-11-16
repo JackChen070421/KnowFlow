@@ -249,7 +249,7 @@ function studentsPage() {
 
 function profileDetail(p, teacher = false) {
   const s = D.stats[state.node][p.student_id];
-  return `<section class="profile-banner"><div class="student-identity"><div class="student-avatar">${esc(p.student_id.slice(-3))}</div><div><h2>${esc(p.student_id)} <span class="pill">${esc(p.group_id)}</span></h2><p>${esc(state.node)} · ${p.coverage.scope_known?'节点范围已确认':'参与范围待确认'} · ${s.graded} 条有效评分</p></div></div><div class="profile-actions">${teacher?`<a class="button light" href="${routeURL('student')}">以学生视角打开 ${icon('arrow',14)}</a>`:''}<button class="button" data-export>${icon('download',14)}导出本机摘要</button></div></section><div class="mini-metrics"><div class="mini-metric">已评分得分率<strong>${pct(s.score_ratio)}</strong><small>${s.earned_score} / ${s.possible_score} 分 · 仅已评分题</small></div><div class="mini-metric">节点观测覆盖<strong>${p.coverage.scope_known?pct(p.coverage.ratio):'—'}</strong><small>${p.coverage.observed_items} / ${p.coverage.applicable_items ?? '—'} 个可测题目</small></div><div class="mini-metric">历史作答完成<strong>${pct(s.completion)}</strong><small>${s.attempted} / ${s.assigned} 条已布置记录</small></div></div><div class="grid-main"><section class="panel">${panelHead('知识表现与不确定性','点选一个知识点，查看评分证据、课程要求与学习建议。')}${masteryBars(p.knowledge_states,nameFor)}</section><section class="panel">${panelHead('知识状态分布','以本课程知识点为单位，每个知识点只归入一种状态。')}${donut(statusCount(p),p.knowledge_states.length,'个知识点')}${note('状态由诊断模块给出，不以得分率直接替代。证据不足时，优先补充观察。')}</section></div><div class="grid-half"><section class="panel">${panelHead('需要巩固的内容','结合模型状态与评分点表现，而不是只看单次分数。')}${knowledgeList(p.lists.needs_consolidation,'当前没有进入巩固清单的知识点。')}</section><section class="panel">${panelHead('优势与待观察','保留已知与未知的边界，避免给学生贴标签。')}<h3 class="muted" style="font-size:11px;margin-bottom:10px">掌握较好</h3>${knowledgeList(p.lists.strengths,'当前证据尚不足以确认优势知识点。')}<h3 class="muted" style="font-size:11px;margin:18px 0 10px">待观察 · ${p.lists.needs_observation.length} 个</h3><div class="material-buttons">${listIds(p.lists.needs_observation).map(k=>`<button class="material-chip" data-knowledge="${esc(k)}">${esc(k)} ${icon('arrow',12)}</button>`).join('')}</div></section></div><section class="panel">${panelHead('从学习问题，到下一步行动','建议由任务 3 的规则模块生成；原因、材料、验证标准逐条对应。','<span class="pill">可追溯建议</span>')}${plans(p.student_id,teacher)}</section>`;
+  return `<section class="profile-banner"><div class="student-identity"><div class="student-avatar">${esc(p.student_id.slice(-3))}</div><div><h2>${esc(p.student_id)} <span class="pill">${esc(p.group_id)}</span></h2><p>${esc(state.node)} · ${p.coverage.scope_known?'节点范围已确认':'参与范围待确认'} · ${s.graded} 条有效评分</p></div></div><div class="profile-actions">${teacher?`<a class="button light" href="${routeURL('student')}">以学生视角打开 ${icon('arrow',14)}</a>`:''}<button class="button" data-export>${icon('download',14)}导出本机摘要</button></div></section><div class="mini-metrics"><div class="mini-metric">已评分得分率<strong>${pct(s.score_ratio)}</strong><small>${s.earned_score} / ${s.possible_score} 分 · 仅已评分题</small></div><div class="mini-metric">节点观测覆盖<strong>${p.coverage.scope_known?pct(p.coverage.ratio):'—'}</strong><small>${p.coverage.observed_items} / ${p.coverage.applicable_items ?? '—'} 个可测题目</small></div><div class="mini-metric">历史作答完成<strong>${pct(s.completion)}</strong><small>${s.attempted} / ${s.assigned} 条已布置记录</small></div></div><div class="grid-main"><section class="panel">${panelHead('知识表现与不确定性','点选一个知识点，查看评分证据、课程要求与学习建议。')}${masteryBars(p.knowledge_states,nameFor)}</section><section class="panel">${panelHead('知识状态分布','以本课程知识点为单位，每个知识点只归入一种状态。')}${donut(statusCount(p),p.knowledge_states.length,'个知识点')}${note('状态由诊断模块给出，不以得分率直接替代。证据不足时，优先补充观察。')}</section></div><div class="grid-half"><section class="panel">${panelHead('需要巩固的内容','结合模型状态与评分点表现，而不是只看单次分数。')}${knowledgeList(p.lists.needs_consolidation,'当前没有进入巩固清单的知识点。')}</section><section class="panel">${panelHead('优势与待观察','保留已知与未知的边界，避免给学生贴标签。')}<h3 class="muted" style="font-size:11px;margin-bottom:10px">掌握较好</h3>${knowledgeList(p.lists.strengths,'当前证据尚不足以确认优势知识点。')}<h3 class="muted" style="font-size:11px;margin:18px 0 10px">待观察 · ${p.lists.needs_observation.length} 个</h3><div class="material-buttons">${listIds(p.lists.needs_observation).map(k=>`<button class="material-chip" data-knowledge="${esc(k)}">${esc(k)} ${icon('arrow',12)}</button>`).join('')}</div></section></div><section class="panel">${panelHead('从学习问题，到下一步行动','建议由任务 3 的规则模块生成；原因、材料、验证标准逐条对应。','<span class="pill">可追溯建议</span>')}${plans(p.student_id,teacher)}</section>${teacher?feedbackPanel(p.student_id):''}`;
 }
 
 function knowledgeList(list, fallback) {
@@ -260,7 +260,14 @@ function plans(sid, teacher = false) {
   const r = D.recommendations[state.node][sid];
   if (!r.plan.length) return empty('此节点没有生成新计划。若参与范围不明，请先确认范围；表现较好时也不强行加练。');
   const history = r.history || [];
-return `<div class="plan-list">${history.length?`<div class="notice">已完成 ${history.length} 项，保留在历史记录中；本轮只重排未开始项。</div>`:''}${r.plan.map(p=>{const done=p.material_ids.filter(m=>submission(sid,p.seq,m)).length;return `<article class="plan-card ${p.activity_type==='probe'?'probe':''}"><div class="plan-top"><div class="plan-heading"><span class="plan-index">${String(p.seq).padStart(2,'0')}</span><div><h3>${esc(p.activity)}</h3>${p.status==='in_progress'?'<span class="pill warm">进行中</span>':''}<div class="plan-meta"><span>${esc(p.issue_id)}</span><span>${esc(p.knowledge_ids.join(' / '))}</span><span>预计 ${p.est_minutes} 分钟 · 规则估算</span></div></div></div><span class="pill ${p.activity_type==='probe'?'purple':'warm'}">${p.activity_type==='probe'?'先补充观察':'巩固与验证'}</span></div><p>${esc(p.reason)}</p><div class="check-line">${icon('check',15)}<span><strong>怎样判断完成有效：</strong>${esc(p.check)}</span></div>${(p.prerequisite_check?.missing_knowledge_ids||[]).length?`<div class="notice warm">先修待巩固：${p.prerequisite_check.missing_knowledge_ids.map(k=>esc(k)).join('、')}</div>`:''}${(p.prerequisite_check?.pending_knowledge_ids||[]).length?`<div class="notice">先修证据不足：${p.prerequisite_check.pending_knowledge_ids.map(k=>esc(k)).join('、')}，先补观测再判断。</div>`:''}${(p.prerequisite_check?.draft_edges||[]).length?`<div class="notice">关系待核验：${p.prerequisite_check.draft_edges.length} 条先修/关联关系尚未人工核对，本轮不参与排序。</div>`:''}${(p.relation_notes||[]).map(n=>`<div class="notice">${esc(n.note)}</div>`).join('')}<div class="material-buttons">${p.material_ids.map(m=>`<button class="material-chip" data-material="${esc(m)}" data-plan="${p.seq}" data-owner="${esc(sid)}">${icon(materialFor(m)?.material_type==='assessment'?'target':'book',13)}${esc(m)} · ${materialFor(m)?.material_type==='assessment'?'练习':'阅读'}${submission(sid,p.seq,m)?' ✓':''}</button>`).join('')}</div><div class="progress-strip"><span>${done?`本机已提交 ${done} / ${p.material_ids.length} 项 · 待评阅`:'新计划完成情况：未记录'}</span><div class="progress-track"><i style="width:${done/p.material_ids.length*100}%"></i></div><span>${teacher?'可查看学生在同一浏览器提交的内容':'点击材料开始活动'}</span></div></article>`;}).join('')}</div><div class="notice">${storageOK?'新练习保存在当前浏览器，教师页和学生页可在同一浏览器中查看。':'当前浏览器不允许本地存储，暂时无法保存新练习。'}提交后标记“待评阅”，不会自动改写历史成绩或知识状态。</div>`;
+return `<div class="plan-list">${history.length?`<div class="notice">已完成 ${history.length} 项，保留在历史记录中；本轮只重排未开始项。</div>`:''}${r.plan.map(p=>{const done=p.material_ids.filter(m=>submission(sid,p.seq,m)).length;return `<article class="plan-card ${p.activity_type==='probe'?'probe':''}"><div class="plan-top"><div class="plan-heading"><span class="plan-index">${String(p.seq).padStart(2,'0')}</span><div><h3>${esc(p.activity)}</h3>${p.status==='in_progress'?'<span class="pill warm">进行中</span>':''}<div class="plan-meta"><span>${esc(p.issue_id)}</span><span>${esc(p.knowledge_ids.join(' / '))}</span><span>预计 ${p.est_minutes} 分钟 · 规则估算</span></div></div></div><span class="pill ${p.activity_type==='probe'?'purple':'warm'}">${p.activity_type==='probe'?'先补充观察':'巩固与验证'}</span></div><p>${esc(p.reason)}</p><div class="check-line">${icon('check',15)}<span><strong>怎样判断完成有效：</strong>${esc(p.check)}</span></div>${(p.prerequisite_check?.missing_knowledge_ids||[]).length?`<div class="notice warm">先修待巩固：${p.prerequisite_check.missing_knowledge_ids.map(k=>esc(k)).join('、')}</div>`:''}${(p.prerequisite_check?.pending_knowledge_ids||[]).length?`<div class="notice">先修证据不足：${p.prerequisite_check.pending_knowledge_ids.map(k=>esc(k)).join('、')}，先补观测再判断。</div>`:''}${(p.prerequisite_check?.draft_edges||[]).length?`<div class="notice">关系待核验：${p.prerequisite_check.draft_edges.length} 条先修/关联关系尚未人工核对，本轮不参与排序。</div>`:''}${(p.relation_notes||[]).map(n=>`<div class="notice">${esc(n.note)}</div>`).join('')}${p.teacher_locked?`<div class="notice warm">教师已锁定：重新规划时保留此安排。</div>`:''}${(p.adjustments||[]).map(a=>`<div class="notice">教师调整（${ADJUST_LABEL[a.action]||a.action}）：${esc(a.reason||'')}</div>`).join('')}${(p.teacher_comments||[]).map(c=>`<div class="notice">教师评语：${esc(c.text)}</div>`).join('')}${!teacher?`<div class="feedback-row">${[['difficulty','太难'],['confusion','没看懂'],['request','需要更多例题']].map(([kind,label])=>`<button type="button" class="text-button" data-feedback-kind="${kind}" data-feedback-item="${esc(p.plan_item_id)}">${label}</button>`).join('')}</div>`:''}<div class="material-buttons">${p.material_ids.map(m=>`<button class="material-chip" data-material="${esc(m)}" data-plan="${p.seq}" data-owner="${esc(sid)}">${icon(materialFor(m)?.material_type==='assessment'?'target':'book',13)}${esc(m)} · ${materialFor(m)?.material_type==='assessment'?'练习':'阅读'}${submission(sid,p.seq,m)?' ✓':''}</button>`).join('')}</div><div class="progress-strip"><span>${done?`本机已提交 ${done} / ${p.material_ids.length} 项 · 待评阅`:'新计划完成情况：未记录'}</span><div class="progress-track"><i style="width:${done/p.material_ids.length*100}%"></i></div><span>${teacher?'可查看学生在同一浏览器提交的内容':'点击材料开始活动'}</span></div></article>`;}).join('')}</div><div class="notice">${storageOK?'新练习保存在当前浏览器，教师页和学生页可在同一浏览器中查看。':'当前浏览器不允许本地存储，暂时无法保存新练习。'}提交后标记“待评阅”，不会自动改写历史成绩或知识状态。</div>`;
+}
+
+function feedbackPanel(sid) {
+  const r = D.recommendations[state.node][sid];
+  const items = r.plan || [];
+  if (!items.length) return '';
+  return `<section class="panel section-gap" id="teacher-feedback">${panelHead('教学调整与反馈闭环','调整只改计划，不改分数或掌握度；提交后立即重建本机快照。')}<form id="feedback-form" class="feedback-form"><label class="filter">计划项<select id="fb-item">${items.map(p=>`<option value="${esc(p.plan_item_id)}">${p.seq}. ${esc(p.knowledge_ids.join('/'))} · ${esc(p.activity_type)}</option>`).join('')}</select></label><label class="filter">动作<select id="fb-action"><option value="lock">锁定</option><option value="unlock">解除锁定</option><option value="remove">移除</option><option value="restore">恢复</option><option value="replace_materials">更换材料</option><option value="set_time">调整用时</option><option value="set_difficulty">调整难度</option><option value="comment">写评语</option></select></label><input id="fb-value" placeholder="材料 ID（逗号）/ 分钟 / 难度 / 评语"><input id="fb-reason" placeholder="调整理由（调整必填）"><button class="button" type="submit">提交调整</button></form><div id="fb-result" class="muted"></div>${note('事件追加到本机 data/feedback；教师调整不进入诊断，补充作答才作为派生证据参与重新诊断。')}</section>`;
 }
 
 function coursePage(personal) {
@@ -302,6 +309,16 @@ function qualityPage() {
   };
   return `${hero('TRUST & TRACEABILITY / 05','每一个结论，都经得起回看。','展示数据整理、质量检查和证据链，把“为什么这样判断”说清楚。')}<section class="panel">${panelHead('从原始记录到可用证据','此页为整个数据集的质量审计，跨两个节点；不受班级筛选影响。','<span class="pill">全数据集</span>')}<div class="audit-flow">${[[q.input_records,'输入逻辑记录','CSV 解析后的记录数'],[q.duplicates_removed,'修订 / 重复淘汰','按数据层规则保留版本'],[q.rejected_records,'不纳入记录','保留拒绝原因'],[q.total_records,'最终保留记录','进入画像与复算']].map(([v,t,d],i)=>`<div class="audit-step"><small>STEP ${String(i+1).padStart(2,'0')}</small><strong>${v}</strong><span>${t}<br>${d}</span></div>`).join('')}</div><div class="notice">核对关系：输入 ${q.input_records} = 保留 ${q.total_records} + 修订 / 重复淘汰 ${q.duplicates_removed} + 不纳入 ${q.rejected_records}。保留中包含 ${q.partial_credit_records} 条部分得分记录，未按“全错”抹掉。</div><div class="audit-status">${['知识底座结构与引用','个人 / 班级画像复算','学习建议约束与复算'].map(t=>`<span>${icon('shield',15)}${t} · 通过</span>`).join('')}</div>${note(`数据生成时间：${esc(D.meta.generated_at)}。成果保存在被 Git 忽略的本机目录；页面没有调用外部模型。`)}</section><div class="grid-half section-gap"><section class="panel">${panelHead('五态记录分布','按数据层整理结果统计。')}${donut(Object.entries(q.records_by_state).map(([k,v],i)=>({label:labels[k]||k,value:v,color:['#398575','#d6a16f','#ab98be','#cad6d0','#e6ece7'][i]})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}</section><section class="panel">${panelHead('清洗与诊断的判断边界','缺失、待评分、未作答和部分得分分别处理。')}<ul class="rule-list">${q.handling_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="notice warm">评分点失分是学习线索，不自动等于具体误概念。教师可以从知识点抽屉继续回查原始作答。</div></section></div><section class="panel">${panelHead('源文件与数据指纹','保留材料出处，支持本机核对版本。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>输入文件</th><th>逻辑记录数</th><th>SHA-256 指纹</th></tr></thead><tbody>${q.input_files.map(f=>`<tr><td>${esc(f.path)}</td><td>${f.rows??'—'}</td><td class="mono" title="${esc(f.sha256)}">${esc(f.sha256.slice(0,16))}…</td></tr>`).join('')}</tbody></table></div></section><section class="panel section-gap">${panelHead('质量检查发现','规则和处理动作来自任务 2 输出。')}<div class="table-scroll"><table class="data-table"><thead><tr><th>字段 / 记录</th><th>问题</th><th>数量 / 处理</th></tr></thead><tbody>${q.field_quality.map(f=>`<tr><td>${esc(f.field)}</td><td>${esc(f.issue)}</td><td>${f.count}</td></tr>`).join('')}${q.anomalies.slice(0,25).map(a=>`<tr><td>${esc(a.record_id||'—')}</td><td>${esc(a.reason)}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>${!q.anomalies.length&&!q.field_quality.length?empty('当前没有记录到质量异常。'):''}${q.anomalies.length>25?note(`异常共有 ${q.anomalies.length} 项，页面展示前 25 项；全部保留在本机质量报告中。`):''}</section>`;
 }
+
+const ADJUST_LABEL = {
+  lock: '锁定',
+  unlock: '解除锁定',
+  remove: '移除',
+  restore: '恢复',
+  replace_materials: '更换材料',
+  set_time: '调整用时',
+  set_difficulty: '调整难度'
+};
 
 const REVIEW_STATUS_LABEL = {
   flagged: '待复核',
@@ -763,6 +780,19 @@ document.addEventListener('click', event => {
     closeDrawer();
     return;
   }
+  if (b.dataset.feedbackKind) {
+    postJSON('/api/feedback', {
+      event_type: 'student_feedback',
+      student_id: state.student,
+      node_id: state.node,
+      plan_item_id: b.dataset.feedbackItem,
+      kind: b.dataset.feedbackKind
+    }, 'X-KnowFlow-Feedback').then(() => {
+      toast('反馈已记录，正在重建快照…');
+      location.reload();
+    }).catch(error => toast(error.message));
+    return;
+  }
   if (b.dataset.view) {
     state.view = b.dataset.view;
     if (state.view === 'settings') {
@@ -873,6 +903,46 @@ document.addEventListener('submit', async event => {
     const text = input ? input.value : '';
     if (input) input.value = '';
     await sendChat(text);
+    return;
+  }
+  if (event.target.id === 'feedback-form') {
+    event.preventDefault();
+    const action = document.querySelector('#fb-action').value;
+    const value = document.querySelector('#fb-value').value.trim();
+    const reason = document.querySelector('#fb-reason').value.trim();
+    const payload = {
+      event_type: 'teacher_adjustment',
+      student_id: state.student,
+      node_id: state.node,
+      plan_item_id: document.querySelector('#fb-item').value,
+      action,
+      reason
+    };
+    if (action === 'comment') {
+      payload.event_type = 'teacher_comment';
+      payload.text = value;
+      if (!payload.text) {
+        toast('评语不能为空');
+        return;
+      }
+    } else {
+      if (!reason) {
+        toast('请填写调整理由');
+        return;
+      }
+      if (action === 'replace_materials') payload.materials = value;
+      if (action === 'set_time') payload.est_minutes = Number(value);
+      if (action === 'set_difficulty') payload.difficulty = Number(value);
+    }
+    const result = document.querySelector('#fb-result');
+    if (result) result.textContent = '正在保存并重建快照…';
+    try {
+      await postJSON('/api/feedback', payload, 'X-KnowFlow-Feedback');
+      location.reload();
+    } catch (error) {
+      if (result) result.textContent = error.message;
+      toast(error.message);
+    }
     return;
   }
   if (event.target.id === 'settings-form') {

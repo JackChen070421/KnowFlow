@@ -62,6 +62,12 @@ def source_fingerprint(root: Path, raw: Path) -> str:
     graph_root = root / "knowledge"
     if graph_root.is_dir():
         files += list(graph_root.rglob("*.json"))
+    for ledger in (
+        root / "data/feedback/official-v1/events.jsonl",
+        root / "data/progress/official-v1/events.jsonl",
+    ):
+        if ledger.is_file():
+            files.append(ledger)
     for path in sorted(files):
         digest.update(str(path.relative_to(root)).encode("utf-8"))
         digest.update(path.read_bytes())
@@ -106,7 +112,20 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
     review = build_context(load_report(run / "review"), run / "review", "official")
     print("[4/5] Building student and class profiles...", flush=True)
     bundle, _ = build_bundle("official-v1", root=canonical.parent)
-    run_diagnosis(bundle, run / "diagnosis", node_id="all", review=review)
+    from knowflow.feedback import feedback_path, load_events
+
+    ledger = feedback_path("official-v1")
+    feedback_events = load_events(ledger) if ledger.is_file() else []
+    supplemental = [
+        event for event in feedback_events if event["event_type"] == "supplemental_attempt"
+    ]
+    run_diagnosis(
+        bundle,
+        run / "diagnosis",
+        node_id="all",
+        review=review,
+        supplemental=supplemental,
+    )
     print("[5/5] Building evidence-linked recommendations...", flush=True)
     report = recommend_run(
         run=str(run / "diagnosis"),

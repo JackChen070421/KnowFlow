@@ -145,7 +145,7 @@
           },
           "evidence": {
             "type": "array",
-            "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+            "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
             "uniqueItems": true
           },
           "credible_interval": {
@@ -219,7 +219,7 @@
               },
               "disputed_record_ids": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "uniqueItems": true,
                 "minItems": 1
               },
@@ -231,7 +231,7 @@
                   "additionalProperties": false,
                   "required": ["record_id", "review_status", "flag_codes"],
                   "properties": {
-                    "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                    "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                     "review_status": {
                       "type": "string",
                       "enum": ["flagged", "confirmed_issue", "dismissed", "needs_more_evidence"]
@@ -246,7 +246,7 @@
               },
               "usable_evidence": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "uniqueItems": true
               },
               "usable_evidence_count": {"type": "integer", "minimum": 0},
@@ -372,7 +372,7 @@
             "properties": {
               "records": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "items": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "uniqueItems": true
               },
               "material_ids": {
@@ -392,7 +392,7 @@
               "additionalProperties": false,
               "required": ["record_id", "material_id", "point_id", "criterion", "score", "max_score"],
               "properties": {
-                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
                 "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
                 "criterion": {
@@ -421,7 +421,7 @@
                 "review_status"
               ],
               "properties": {
-                "record_id": {"type": "string", "pattern": "^R-[0-9]{4}$"},
+                "record_id": {"type": "string", "pattern": "^(R-[0-9]{4}|EV-[A-Za-z0-9._-]{6,40})$"},
                 "material_id": {"type": "string", "pattern": "^M-[0-9]{3}$"},
                 "point_id": {"type": "string", "pattern": "^M-[0-9]{3}P[0-9]+$"},
                 "criterion": {"type": "string", "minLength": 1},

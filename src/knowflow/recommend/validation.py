@@ -294,6 +294,40 @@ def validate_recommendation(
             if entry["issue_id"] in active_issues:
                 errors.append("plan_diff: removed issue is still in the plan")
 
+    feedback = rec.get("feedback")
+    has_feedback_marks = any(
+        item.get("adjustments") or item.get("teacher_comments") or item.get("teacher_locked")
+        for item in rec["plan"]
+    )
+    if has_feedback_marks and feedback is None:
+        errors.append("plan carries feedback marks without a feedback block")
+    if feedback is not None:
+        if feedback["applied"] and not (
+            feedback["teacher_adjustments"] or feedback["comments"] or feedback["events"]
+        ):
+            errors.append("feedback.applied needs at least one feedback event")
+        applied_items = set(feedback["applied_items"])
+        if not applied_items <= set(plan_ids):
+            errors.append("feedback: applied item is not in the plan")
+        if set(feedback["unmatched_items"]) & set(plan_ids):
+            errors.append("feedback: unmatched item is actually in the plan")
+        adjustment_count = sum(
+            1 for item in rec["plan"] for _ in item.get("adjustments") or []
+        )
+        if adjustment_count and not feedback["teacher_adjustments"]:
+            errors.append("feedback: adjustments exist but teacher_adjustments is zero")
+        for item in rec["plan"]:
+            for adjustment in item.get("adjustments") or []:
+                if not adjustment["event_id"].startswith("EV-"):
+                    errors.append("plan adjustment cites a non-feedback event id")
+                if not adjustment["actor"]:
+                    errors.append("plan adjustment is missing the actor")
+            if item.get("teacher_locked") and not any(
+                adjustment["action"] == "lock"
+                for adjustment in item.get("adjustments") or []
+            ):
+                errors.append("teacher_locked item is missing its lock adjustment")
+
     probe = rec["probe_plan"]
     if len(set(probe["items"])) != len(probe["items"]):
         errors.append("probe_plan: duplicate material")
@@ -323,7 +357,13 @@ def validate_recommendation(
                     f"probe_plan: candidate {candidate['material_id']} total is not recomputable"
                 )
         candidate_ids = {candidate["material_id"] for candidate in scoring["candidates"]}
-        if not set(probe["items"]) <= candidate_ids:
+        teacher_materials = {
+            material_id
+            for item in rec["plan"]
+            if item["activity_type"] == "probe" and item.get("adjustments")
+            for material_id in item["material_ids"]
+        }
+        if not set(probe["items"]) <= candidate_ids | teacher_materials:
             errors.append("probe_plan: selected probe is missing from the scoring record")
     if not profile["coverage"]["scope_known"]:
         if rec["plan"] or probe["items"] or probe["needed"]:

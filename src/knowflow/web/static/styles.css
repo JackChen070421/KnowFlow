@@ -3713,3 +3713,28 @@ span.chat-cite {
     height: min(520px, calc(100vh - 100px))
   }
 }
+
+/* Direction 5: teacher adjustments and student feedback */
+.feedback-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin: 12px 0 10px;
+}
+.feedback-form input {
+  min-width: 220px;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: #fff;
+  font: inherit;
+  color: var(--ink);
+}
+.feedback-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+}

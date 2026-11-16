@@ -614,6 +614,24 @@ def validate_saved_run(path: Path) -> dict:
     bundle = json.loads(input_path.read_text(encoding="utf-8"))
     config = DiagnosisConfig(**manifest["configuration"])
     errors = validate_bundle(bundle)
+    effective = bundle
+    supplemental_path = path / "supplemental_input.json"
+    if supplemental_path.is_file():
+        supplemental = json.loads(supplemental_path.read_text(encoding="utf-8"))
+        records = supplemental.get("records") or []
+        participation = list(bundle["participation"])
+        for record in records:
+            key = {"student_id": record["student_id"], "node_id": record["node_id"]}
+            if key not in participation:
+                participation.append(key)
+        effective = {**bundle, "records": list(bundle["records"]) + records, "participation": participation}
+    elif manifest.get("supplemental"):
+        errors.append("manifest references supplemental evidence but no supplemental_input.json exists")
+    if supplemental_path.is_file() and manifest.get("supplemental"):
+        expected = manifest["supplemental"].get("sha256")
+        actual = hashlib.sha256(supplemental_path.read_bytes()).hexdigest()
+        if expected and actual != expected:
+            errors.append("supplemental evidence differs from the manifest hash")
     review = None
     if manifest.get("review"):
         from knowflow.review.pipeline import context_from_run_manifest
@@ -679,9 +697,9 @@ def validate_saved_run(path: Path) -> dict:
             errors.append("quality report differs from the input snapshot")
     if not errors:
         for profile in students:
-            errors.extend(validate_student(profile, bundle, config, review))
+            errors.extend(validate_student(profile, effective, config, review))
         for profile in classes:
-            errors.extend(validate_class(profile, students, bundle, review))
+            errors.extend(validate_class(profile, students, effective, review))
     return {
         "run": str(path),
         "gate": "fail" if errors else "pass",

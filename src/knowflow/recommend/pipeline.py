@@ -16,6 +16,18 @@ from pathlib import Path
 
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import latest_run_dir
+from knowflow.feedback import (
+    FEEDBACK_POLICY_VERSION,
+    apply_to_recommendation,
+    feedback_path,
+    locked_items,
+    removed_items,
+    state_for,
+    validate_event,
+)
+from knowflow.feedback import (
+    load_events as load_feedback,
+)
 from knowflow.recommend.catalog import build_catalog, load_knowledge_base
 from knowflow.recommend.path import (
     PATH_POLICY_VERSION,
@@ -243,9 +255,9 @@ def _plan_diff(prev: dict | None, rec: dict, events_applied: int) -> dict:
         if item.get("status") != "in_progress" and issue_id not in prev_plan
     ]
     retained = [
-        _diff_entry(issue_id, item, "沿用已开始计划项，不重新规划")
+        _diff_entry(issue_id, item, "沿用已开始/教师锁定计划项，不重新规划")
         for issue_id, item in current.items()
-        if item.get("status") == "in_progress"
+        if item.get("status") == "in_progress" or item.get("teacher_locked")
     ]
     removed = [
         _diff_entry(issue_id, item, "本轮未选中（预算或证据变化）")
@@ -301,6 +313,8 @@ def _build_recommendation(
     history: list[dict],
     version: int,
     weights,
+    locked: list[dict],
+    removed: list[dict],
 ) -> dict:
     source = "local_progress" if state["events"] else "none"
     return recommend_profile(
@@ -319,6 +333,8 @@ def _build_recommendation(
             "events": state["events"],
             "probe_weights": weights,
             "source": source,
+            "locked": locked,
+            "removed": removed,
         },
     )
 
@@ -334,6 +350,7 @@ def recommend_run(
     progress: str | None = None,
     previous: str | None = None,
     probe_weights: dict | None = None,
+    feedback: str | None = None,
 ) -> dict:
     run_dir = _resolve_run(run)
     knowledge_path = Path(knowledge) if knowledge else default_knowledge_path()
@@ -344,6 +361,15 @@ def recommend_run(
 
     run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     bundle = json.loads((run_dir / "diagnosis_input.json").read_text(encoding="utf-8"))
+    supplemental_path = run_dir / "supplemental_input.json"
+    supplemental = None
+    if supplemental_path.is_file():
+        supplemental = json.loads(supplemental_path.read_text(encoding="utf-8"))
+        bundle["records"] = list(bundle["records"]) + list(supplemental.get("records") or [])
+        for record in supplemental.get("records") or []:
+            key = {"student_id": record["student_id"], "node_id": record["node_id"]}
+            if key not in bundle["participation"]:
+                bundle["participation"].append(key)
     from knowflow.review.pipeline import context_from_run_manifest
 
     review = context_from_run_manifest(run_manifest)
@@ -385,6 +411,12 @@ def recommend_run(
     events = load_events(progress_file) if progress_file.is_file() else []
     _validate_progress_events(events, bundle, catalog)
     weights = ProbeWeights(**(probe_weights or {}))
+    feedback_file = Path(feedback) if feedback else feedback_path(bundle["dataset_id"])
+    feedback_events = load_feedback(feedback_file) if feedback_file.is_file() else []
+    for event in feedback_events:
+        errors = validate_event(event, bundle, catalog)
+        if errors:
+            raise ValueError(f"{event['event_id']}: {errors[0]}")
     previous_dir = None
     for node_id in node_ids:
         node_available = set(_nodes(bundle)[node_id]["material_ids"])
@@ -394,6 +426,9 @@ def recommend_run(
             shutil.copy2(profile_path, local_profiles / profile_path.name)
             profile_sha = hashlib.sha256(profile_path.read_bytes()).hexdigest()
             state = path_state(events, profile["student_id"], node_id)
+            fb_state = state_for(feedback_events, profile["student_id"], node_id)
+            locked = locked_items(fb_state)
+            removed = removed_items(fb_state)
             previous_path, previous_rec = _find_previous(
                 target, node_id, profile["student_id"], previous, bundle["dataset_id"]
             )
@@ -414,10 +449,16 @@ def recommend_run(
                 history,
                 base_version,
                 weights,
+                locked,
+                removed,
             )
             previous_events = int(((previous_rec or {}).get("progress") or {}).get("events_applied") or 0)
+            previous_feedback = int(
+                ((previous_rec or {}).get("feedback") or {}).get("events") or 0
+            )
             if previous_rec is not None and (
                 len(state["events"]) != previous_events
+                or len(fb_state["events"]) != previous_feedback
                 or _plan_signature(rec) != _plan_signature(previous_rec)
             ):
                 rec = _build_recommendation(
@@ -432,8 +473,16 @@ def recommend_run(
                     history,
                     previous_version + 1,
                     weights,
+                    locked,
+                    removed,
                 )
+            if fb_state["events"]:
+                apply_to_recommendation(rec, fb_state, catalog)
             rec["plan_diff"] = _plan_diff(previous_rec, rec, len(state["events"]))
+            if rec.get("feedback", {}).get("teacher_adjustments"):
+                rec["plan_diff"]["reason"] += (
+                    f"；应用 {rec['feedback']['teacher_adjustments']} 条教学调整"
+                )
             if writer is not None:
                 stats = rewrite_plan(rec, profile, catalog, bundle["dataset_id"], writer)
                 for key in ("items_used", "items_fallback", "attempts"):
@@ -483,6 +532,14 @@ def recommend_run(
             "path": str(run_dir.resolve()),
             "generated_at": run_manifest.get("generated_at"),
             "nodes": run_manifest.get("nodes", []),
+            "supplemental": None
+            if supplemental is None
+            else {
+                "file": "supplemental_input.json",
+                "sha256": hashlib.sha256(supplemental_path.read_bytes()).hexdigest(),
+                "records": len(supplemental.get("records") or []),
+                "students": supplemental.get("summary", {}).get("students", []),
+            },
         },
         "source_knowledge": {
             "path": "knowledge_base.json",
@@ -500,6 +557,17 @@ def recommend_run(
             "path_policy": PATH_POLICY_VERSION,
             "probe_policy": PROBE_POLICY_VERSION,
             "probe_weights": weights.as_dict(),
+        },
+        "feedback": {
+            "policy": FEEDBACK_POLICY_VERSION,
+            "file": str(feedback_file.resolve()) if feedback_file.is_file() else None,
+            "events": len(feedback_events),
+            "supplemental_attempts": sum(
+                1 for event in feedback_events if event["event_type"] == "supplemental_attempt"
+            ),
+            "teacher_adjustments": sum(
+                1 for event in feedback_events if event["event_type"] == "teacher_adjustment"
+            ),
         },
         "path": {
             "progress_file": str(progress_file.resolve()) if progress_file.is_file() else None,

@@ -10,6 +10,21 @@
 
 ---
 
+## 2026-11-16 — 方向五：教学反馈与补充证据闭环
+
+**本机提交** · `feat/feedback-loop`
+
+- 新增 `data/feedback/<dataset>/events.jsonl`（追加式、Git 忽略）：补充作答、教师调整、教师评语、学生反馈；无认证，仅本机演示。
+- 补充作答转 `EV-...` 派生证据，写入 `supplemental_input.json`；`diagnosis_input.json` 仍是 canonical，官方分数与质量报告不变；`verify-run` 用 canonical + 补充记录复算。
+- `run --supplemental ... --previous <run>` 输出 `diagnosis_diff.json`：逐学生状态、mastery、issue 增删。
+- 建议层重放教师调整：锁定项保留并占预算，移除项进入 `deferred` 且可 `restore`，换材料/调时间/调难度；按 `issue_id` 跨版本回退匹配；只改计划，不改诊断。
+- 学生反馈/教师评语进入计划卡与 `recommendation.feedback`；新增 `/api/feedback`（本机、同源、`X-KnowFlow-Feedback`）与教师“教学调整与反馈闭环”面板、学生反馈按钮。
+- 契约 v0.10（22 schemas），`record_id` 扩展 `EV-...`。
+- 验证：`pytest 239 passed`、`ruff`、`check_contracts`、`verify-run`（含补充 evidence）、`verify-recommend`（含反馈调整）。
+- 回退：移除 `feedback/` 与 `--supplemental`/`--previous`/`/api/feedback`；旧 run/建议仍可校验。
+
+---
+
 ## 2026-11-16 — 方向三：学习路径与主动补充观测
 
 **本机提交** · `feat/learning-path`

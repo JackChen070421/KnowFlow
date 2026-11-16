@@ -97,6 +97,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     elif args.review_policy != "official":
         print("KnowFlow: --review-policy requires --review <目录>", file=sys.stderr)
         return 2
+    supplemental = []
+    if args.supplemental:
+        from .feedback.ledger import load_events
+
+        supplemental = load_events(Path(args.supplemental))
     output = (
         Path(args.output)
         if args.output
@@ -105,7 +110,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         / "run"
         / f"{bundle['dataset_id']}-{datetime.now():%Y%m%d-%H%M%S-%f}"
     )
-    result = run_diagnosis(bundle, output, config, args.node, review)
+    result = run_diagnosis(
+        bundle,
+        output,
+        config,
+        args.node,
+        review,
+        supplemental,
+        args.previous,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -178,6 +191,7 @@ def _cmd_recommend(args: argparse.Namespace) -> int:
             if args.probe_weights
             else None
         ),
+        feedback=args.feedback,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["gate"] == "pass" else 1
@@ -241,6 +255,208 @@ def _cmd_path_event(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def _feedback_args(args: argparse.Namespace) -> tuple[dict, dict, dict]:
+    from .diagnosis.pipeline import build_bundle
+    from .recommend.catalog import build_catalog, load_knowledge_base
+    from .recommend.pipeline import default_knowledge_path
+
+    bundle, _ = build_bundle(args.dataset)
+    knowledge = load_knowledge_base(default_knowledge_path())
+    return bundle, build_catalog(knowledge), {}
+
+
+def _cmd_feedback_attempt(args: argparse.Namespace) -> int:
+    from .feedback.ledger import (
+        append_event,
+        feedback_path,
+        load_events,
+        make_event,
+        validate_event,
+    )
+
+    bundle, _, _ = _feedback_args(args)
+    material = next(
+        (m for m in bundle["materials"] if m["material_id"] == args.material), None
+    )
+    if material is None:
+        raise ValueError(f"material {args.material} is not an assessment item")
+    max_score = args.max_score if args.max_score is not None else material["max_score"]
+    path = Path(args.events) if args.events else feedback_path(args.dataset)
+    existing = load_events(path)
+    points = json.loads(Path(args.rubric_json).read_text(encoding="utf-8")) if args.rubric_json else None
+    event = make_event(
+        event_type="supplemental_attempt",
+        student_id=args.student,
+        node_id=args.node,
+        actor="student",
+        source=args.source,
+        material_id=args.material,
+        score=args.score,
+        max_score=max_score,
+        submitted_at=args.submitted_at,
+        rubric_points=points,
+        note=args.note,
+        existing=existing,
+    )
+    errors = validate_event(event, bundle, {"materials": {}})
+    if errors:
+        raise ValueError("invalid supplemental attempt: " + "; ".join(errors))
+    append_event(path, event)
+    print(
+        json.dumps(
+            {"event": event, "events_file": str(path.resolve())},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_feedback_adjust(args: argparse.Namespace) -> int:
+    from .feedback.ledger import (
+        append_event,
+        feedback_path,
+        load_events,
+        make_event,
+        plan_snapshot,
+        validate_event,
+    )
+    from .recommend.pipeline import latest_recommend_dir
+
+    bundle, catalog, _ = _feedback_args(args)
+    plan_path = Path(args.plan) if args.plan else latest_recommend_dir()
+    if plan_path.is_dir():
+        plan_path = plan_path / "nodes" / args.node / "students" / f"{args.student}.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    items = plan.get("plan") or []
+    if args.seq is not None:
+        item = next((entry for entry in items if entry.get("seq") == args.seq), None)
+    else:
+        item = next(
+            (entry for entry in items if entry.get("plan_item_id") == args.plan_item), None
+        )
+    if item is None:
+        raise ValueError("plan item not found in the current recommendation")
+    payload = {}
+    if args.materials:
+        payload["material_ids"] = [value.strip() for value in args.materials.split(",") if value.strip()]
+    if args.minutes is not None:
+        payload["est_minutes"] = args.minutes
+    if args.difficulty is not None:
+        payload["difficulty"] = args.difficulty
+    path = Path(args.events) if args.events else feedback_path(args.dataset)
+    existing = load_events(path)
+    event = make_event(
+        event_type="teacher_adjustment",
+        student_id=args.student,
+        node_id=args.node,
+        actor="teacher",
+        source=args.source,
+        plan_item_id=item["plan_item_id"],
+        plan_version=item.get("plan_version", plan["plan_version"]),
+        action=args.action,
+        issue_id=item["issue_id"],
+        knowledge_id=item["knowledge_ids"][0],
+        activity_type=item.get("activity_type", "consolidate"),
+        payload=payload or None,
+        reason=args.reason,
+        snapshot=plan_snapshot(item),
+        existing=existing,
+    )
+    errors = validate_event(event, bundle, catalog)
+    if errors:
+        raise ValueError("invalid teacher adjustment: " + "; ".join(errors))
+    append_event(path, event)
+    print(
+        json.dumps(
+            {"event": event, "events_file": str(path.resolve())},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_feedback_comment(args: argparse.Namespace) -> int:
+    from .feedback.ledger import (
+        append_event,
+        feedback_path,
+        load_events,
+        make_event,
+        validate_event,
+    )
+    from .recommend.pipeline import latest_recommend_dir
+
+    bundle, catalog, _ = _feedback_args(args)
+    plan_item_id = None
+    if args.seq is not None or args.plan_item:
+        plan_path = Path(args.plan) if args.plan else latest_recommend_dir()
+        if plan_path.is_dir():
+            plan_path = plan_path / "nodes" / args.node / "students" / f"{args.student}.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        items = plan.get("plan") or []
+        item = next(
+            (
+                entry
+                for entry in items
+                if (args.seq is not None and entry.get("seq") == args.seq)
+                or (args.plan_item and entry.get("plan_item_id") == args.plan_item)
+            ),
+            None,
+        )
+        if item is None:
+            raise ValueError("plan item not found")
+        plan_item_id = item["plan_item_id"]
+    path = Path(args.events) if args.events else feedback_path(args.dataset)
+    event = make_event(
+        event_type="teacher_comment",
+        student_id=args.student,
+        node_id=args.node,
+        actor="teacher",
+        source=args.source,
+        plan_item_id=plan_item_id,
+        text=args.text,
+        existing=load_events(path),
+    )
+    errors = validate_event(event, bundle, catalog)
+    if errors:
+        raise ValueError("invalid teacher comment: " + "; ".join(errors))
+    append_event(path, event)
+    print(json.dumps({"event": event}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_feedback_student(args: argparse.Namespace) -> int:
+    from .feedback.ledger import (
+        append_event,
+        feedback_path,
+        load_events,
+        make_event,
+        validate_event,
+    )
+
+    bundle, catalog, _ = _feedback_args(args)
+    path = Path(args.events) if args.events else feedback_path(args.dataset)
+    event = make_event(
+        event_type="student_feedback",
+        student_id=args.student,
+        node_id=args.node,
+        actor="student",
+        source=args.source,
+        plan_item_id=args.plan_item,
+        kind=args.kind,
+        rating=args.rating,
+        text=args.text,
+        existing=load_events(path),
+    )
+    errors = validate_event(event, bundle, catalog)
+    if errors:
+        raise ValueError("invalid student feedback: " + "; ".join(errors))
+    append_event(path, event)
+    print(json.dumps({"event": event}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -347,6 +563,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output", help="new run directory; defaults to artifacts/run/<dataset>-<timestamp>"
     )
+    run_parser.add_argument(
+        "--supplemental",
+        help="feedback events JSONL; supplemental attempts become derived evidence (canonical untouched)",
+    )
+    run_parser.add_argument("--previous", help="previous run directory for diagnosis_diff.json")
     run_parser.set_defaults(func=_cmd_run)
 
     verify_parser = subparsers.add_parser(
@@ -418,6 +639,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="previous recommendation file/dir for the plan diff; defaults to the newest matching run",
     )
     recommend_parser.add_argument(
+        "--feedback",
+        help="feedback events JSONL; defaults to data/feedback/<dataset>/events.jsonl",
+    )
+    recommend_parser.add_argument(
         "--probe-weights",
         help="JSON file overriding probe weights (issue_relevance/coverage_gain/"
         "prerequisite_value/material_quality/redundancy_penalty)",
@@ -444,6 +669,74 @@ def build_parser() -> argparse.ArgumentParser:
     path_event_parser.add_argument("--note")
     path_event_parser.add_argument("--source", default="local_demo_user")
     path_event_parser.set_defaults(func=_cmd_path_event)
+
+    attempt_parser = subparsers.add_parser(
+        "feedback-attempt", help="append one supplemental graded attempt (derived evidence)"
+    )
+    attempt_parser.add_argument("--dataset", default="official-v1")
+    attempt_parser.add_argument("--student", required=True)
+    attempt_parser.add_argument("--node", required=True)
+    attempt_parser.add_argument("--material", required=True)
+    attempt_parser.add_argument("--score", type=float, required=True)
+    attempt_parser.add_argument("--max-score", type=float)
+    attempt_parser.add_argument("--rubric-json", help="JSON array of criterion/score/max_score")
+    attempt_parser.add_argument("--submitted-at")
+    attempt_parser.add_argument("--events", help="ledger path; defaults to data/feedback/<dataset>/events.jsonl")
+    attempt_parser.add_argument("--source", default="local_demo_user")
+    attempt_parser.add_argument("--note")
+    attempt_parser.set_defaults(func=_cmd_feedback_attempt)
+
+    adjust_parser = subparsers.add_parser(
+        "feedback-adjust", help="append a teacher adjustment for one plan item"
+    )
+    adjust_parser.add_argument("--dataset", default="official-v1")
+    adjust_parser.add_argument("--student", required=True)
+    adjust_parser.add_argument("--node", required=True)
+    adjust_parser.add_argument("--plan", help="recommendation file/dir; defaults to the newest run")
+    adjust_parser.add_argument("--seq", type=int)
+    adjust_parser.add_argument("--plan-item")
+    adjust_parser.add_argument(
+        "--action",
+        required=True,
+        choices=["lock", "unlock", "remove", "restore", "replace_materials", "set_time", "set_difficulty"],
+    )
+    adjust_parser.add_argument("--reason", required=True)
+    adjust_parser.add_argument("--materials", help="comma-separated material ids")
+    adjust_parser.add_argument("--minutes", type=int)
+    adjust_parser.add_argument("--difficulty", type=int)
+    adjust_parser.add_argument("--events")
+    adjust_parser.add_argument("--source", default="local_demo_user")
+    adjust_parser.set_defaults(func=_cmd_feedback_adjust)
+
+    comment_parser = subparsers.add_parser(
+        "feedback-comment", help="append a teacher comment (no effect on diagnosis)"
+    )
+    comment_parser.add_argument("--dataset", default="official-v1")
+    comment_parser.add_argument("--student", required=True)
+    comment_parser.add_argument("--node", required=True)
+    comment_parser.add_argument("--plan")
+    comment_parser.add_argument("--seq", type=int)
+    comment_parser.add_argument("--plan-item")
+    comment_parser.add_argument("--text", required=True)
+    comment_parser.add_argument("--events")
+    comment_parser.add_argument("--source", default="local_demo_user")
+    comment_parser.set_defaults(func=_cmd_feedback_comment)
+
+    student_parser = subparsers.add_parser(
+        "feedback-student", help="append student feedback (no effect on diagnosis)"
+    )
+    student_parser.add_argument("--dataset", default="official-v1")
+    student_parser.add_argument("--student", required=True)
+    student_parser.add_argument("--node", required=True)
+    student_parser.add_argument("--plan-item")
+    student_parser.add_argument(
+        "--kind", required=True, choices=["difficulty", "confusion", "request", "other"]
+    )
+    student_parser.add_argument("--rating", type=int, choices=[1, 2, 3, 4, 5])
+    student_parser.add_argument("--text")
+    student_parser.add_argument("--events")
+    student_parser.add_argument("--source", default="local_demo_user")
+    student_parser.set_defaults(func=_cmd_feedback_student)
 
     explain_parser = subparsers.add_parser(
         "explain", help="explain one saved issue with the optional language layer"

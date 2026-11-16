@@ -378,15 +378,137 @@ def _source_hashes(base: Path) -> list[dict]:
     ]
 
 
+def _supplemental_bundle(bundle: dict, events: list[dict]) -> tuple[dict, dict | None]:
+    """Merge local supplemental attempts for computation only (canonical stays intact)."""
+
+    from knowflow.feedback.ledger import supplemental_record, validate_event
+
+    attempts = [event for event in events if event.get("event_type") == "supplemental_attempt"]
+    if not attempts:
+        return bundle, None
+    materials = {material["material_id"]: material for material in bundle["materials"]}
+    records = []
+    for event in attempts:
+        errors = validate_event(event, bundle, {"materials": {}})
+        if errors:
+            raise ValueError(f"supplemental event {event['event_id']}: {errors[0]}")
+        records.append(supplemental_record(event, materials[event["material_id"]]))
+    participation = list(bundle["participation"])
+    for record in records:
+        key = {"student_id": record["student_id"], "node_id": record["node_id"]}
+        if key not in participation:
+            participation.append(key)
+    effective = {
+        **bundle,
+        "records": list(bundle["records"]) + records,
+        "participation": participation,
+    }
+    data = {
+        "schema_version": "1.0.0",
+        "dataset_id": bundle["dataset_id"],
+        "events": [event["event_id"] for event in attempts],
+        "records": records,
+        "summary": {
+            "events": len(attempts),
+            "records": len(records),
+            "students": sorted({record["student_id"] for record in records}),
+        },
+        "note": "补充证据只参与本次派生诊断；canonical 记录与官方分数未修改。",
+    }
+    return effective, data
+
+
+def _diagnosis_diff(previous: Path, profiles: list[dict], supplemental: dict | None) -> dict:
+    previous = Path(previous)
+    if not (previous / "run_manifest.json").is_file():
+        raise ValueError(f"previous run not found: {previous}")
+    old = {}
+    for path in (previous / "nodes").glob("*/students/S*.json"):
+        profile = json.loads(path.read_text(encoding="utf-8"))
+        old[(profile["student_id"], profile["node_id"])] = profile
+    changed = []
+    supplemental_students = set((supplemental or {}).get("summary", {}).get("students", []))
+    for profile in profiles:
+        key = (profile["student_id"], profile["node_id"])
+        before = old.get(key)
+        if before is None:
+            continue
+        old_states = {state["knowledge_id"]: state for state in before["knowledge_states"]}
+        status_changes, mastery_changes = [], []
+        for state in profile["knowledge_states"]:
+            prior = old_states.get(state["knowledge_id"])
+            if prior is None:
+                continue
+            if prior["status"] != state["status"]:
+                status_changes.append(
+                    {
+                        "knowledge_id": state["knowledge_id"],
+                        "from": prior["status"],
+                        "to": state["status"],
+                    }
+                )
+            if state["mastery"] is None or prior["mastery"] is None:
+                continue
+            delta = round(state["mastery"] - prior["mastery"], 6)
+            if abs(delta) > 1e-9:
+                mastery_changes.append(
+                    {
+                        "knowledge_id": state["knowledge_id"],
+                        "from": prior["mastery"],
+                        "to": state["mastery"],
+                        "delta": delta,
+                    }
+                )
+        old_issues = {issue["issue_id"] for issue in before.get("issues", [])}
+        new_issues = {issue["issue_id"] for issue in profile.get("issues", [])}
+        added = sorted(new_issues - old_issues)
+        removed = sorted(old_issues - new_issues)
+        if not (status_changes or mastery_changes or added or removed):
+            if profile["student_id"] not in supplemental_students:
+                continue
+        changed.append(
+            {
+                "student_id": profile["student_id"],
+                "node_id": profile["node_id"],
+                "evidence_added": profile["student_id"] in supplemental_students,
+                "status_changes": status_changes,
+                "mastery_changes": mastery_changes,
+                "issues_added": added,
+                "issues_removed": removed,
+            }
+        )
+    return {
+        "schema_version": "1.0.0",
+        "previous_run": previous.name,
+        "supplemental_events": (supplemental or {}).get("summary", {}).get("events", 0),
+        "students": changed,
+        "summary": {
+            "students_changed": sum(
+                1
+                for entry in changed
+                if entry["status_changes"] or entry["mastery_changes"]
+                or entry["issues_added"] or entry["issues_removed"]
+            ),
+            "status_changes": sum(len(entry["status_changes"]) for entry in changed),
+            "mastery_changes": sum(len(entry["mastery_changes"]) for entry in changed),
+            "issues_added": sum(len(entry["issues_added"]) for entry in changed),
+            "issues_removed": sum(len(entry["issues_removed"]) for entry in changed),
+        },
+    }
+
+
 def run_diagnosis(
     bundle: dict,
     output: Path,
     config: DiagnosisConfig | None = None,
     node_id: str = "all",
     review: dict | None = None,
+    supplemental: list[dict] | None = None,
+    previous: Path | str | None = None,
 ) -> dict:
     config = config or DiagnosisConfig()
     _checked(bundle)
+    effective, supplemental_data = _supplemental_bundle(bundle, supplemental or [])
     output = _protect_output(Path(output))
     nodes = bundle["nodes"]
     if node_id == "latest":
@@ -399,14 +521,14 @@ def run_diagnosis(
     generated, all_students, all_classes = [], [], []
     for node in nodes:
         profiles = [
-            build_student_profile(bundle, s, node, config, review) for s in bundle["students"]
+            build_student_profile(effective, s, node, config, review) for s in bundle["students"]
         ]
         classes = [
-            build_class_profile(profiles, group, bundle, node["node_id"], review)
+            build_class_profile(profiles, group, effective, node["node_id"], review)
             for group in sorted({s["group_id"] for s in bundle["students"]}) + ["ALL"]
         ]
         for profile in profiles:
-            errors = validate_student(profile, bundle, config, review)
+            errors = validate_student(profile, effective, config, review)
             if errors:
                 raise ValueError("student checks failed:\n" + "\n".join(errors[:20]))
             generated.append(
@@ -417,7 +539,7 @@ def run_diagnosis(
                 )
             )
         for profile in classes:
-            errors = validate_class(profile, profiles, bundle, review)
+            errors = validate_class(profile, profiles, effective, review)
             if errors:
                 raise ValueError("class checks failed:\n" + "\n".join(errors[:20]))
             generated.append(
@@ -438,6 +560,8 @@ def run_diagnosis(
             "output/data_quality_report.schema.json",
         ),
     ]
+    if supplemental_data is not None:
+        generated.append(("supplemental_input.json", supplemental_data, None))
     output.mkdir(parents=True)
     targets = []
     for relative, data, schema in generated:
@@ -454,7 +578,7 @@ def run_diagnosis(
         )
 
     latest = max(nodes, key=lambda n: (n["date"], n["node_id"]))["node_id"]
-    cases = choose_cases([p for p in all_students if p["node_id"] == latest], bundle)
+    cases = choose_cases([p for p in all_students if p["node_id"] == latest], effective)
     write_json(
         output / "case_candidates.json",
         {
@@ -524,6 +648,13 @@ def run_diagnosis(
         "核对实际答案、过程和分点评分。",
         "",
     ]
+    if supplemental_data is not None:
+        text += [
+            f"补充证据：{supplemental_data['summary']['events']} 条本机补充作答，"
+            f"涉及 {len(supplemental_data['summary']['students'])} 名学生；"
+            "只参与本次派生诊断，canonical 与官方分数未修改。",
+            "",
+        ]
     if review is not None:
         text += [
             f"存疑评分审查：策略 {review['policy']}；剔除 "
@@ -536,6 +667,21 @@ def run_diagnosis(
         f"- {c['case_type']}：{c['student_id']}；{c['reason']}" for c in cases
     ]
     (output / "运行说明.md").write_text("\n".join(text) + "\n", encoding="utf-8")
+
+    diff = None
+    if previous is not None:
+        diff = _diagnosis_diff(Path(previous), all_students, supplemental_data)
+        write_json(output / "diagnosis_diff.json", diff)
+
+    auxiliary = [
+        "case_candidates.json",
+        "coverage_matrix.csv",
+        "运行说明.md",
+    ]
+    if supplemental_data is not None:
+        auxiliary.append("supplemental_input.json")
+    if diff is not None:
+        auxiliary.append("diagnosis_diff.json")
 
     manifest = {
         "schema_version": RUN_SCHEMA_VERSION,
@@ -554,9 +700,16 @@ def run_diagnosis(
             "counts": review["report"]["counts"],
         },
         "targets": targets,
+        "supplemental": None
+        if supplemental_data is None
+        else {
+            "file": "supplemental_input.json",
+            "sha256": hashlib.sha256((output / "supplemental_input.json").read_bytes()).hexdigest(),
+            **supplemental_data["summary"],
+        },
+        "previous_run": None if previous is None else Path(previous).name,
         "auxiliary_files": {
-            name: hashlib.sha256((output / name).read_bytes()).hexdigest()
-            for name in ["case_candidates.json", "coverage_matrix.csv", "运行说明.md"]
+            name: hashlib.sha256((output / name).read_bytes()).hexdigest() for name in auxiliary
         },
     }
     write_json(output / "run_manifest.json", manifest)
@@ -619,6 +772,10 @@ def run_diagnosis(
         "retained_records": q["total_records"],
         "superseded_records": q["duplicates_removed"],
         "rejected_records": q["rejected_records"],
+        "supplemental_records": 0
+        if supplemental_data is None
+        else supplemental_data["summary"]["records"],
+        "diff": diff,
         "gate": verification["gate"],
     }
 

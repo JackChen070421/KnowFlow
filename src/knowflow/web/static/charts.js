@@ -1,4 +1,5 @@
 // Dependency-free SVG charts; each chart also has readable labels and counts.
+import {placeLabels} from './analytics.mjs';
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -122,20 +123,39 @@ export function stateBars(rows, nameFor) {
   };
   return `<div class="state-bars">${rows.map(r=>`<button class="state-bar-row" data-knowledge="${esc(r.knowledge_id)}"><span class="bar-label"><b>${esc(r.knowledge_id)}</b>${esc(nameFor(r.knowledge_id))}</span><span class="bar-track" aria-label="${esc(Object.entries(fields).map(([k,f])=>states[k].label+' '+r[f]+'人').join('；'))}">${Object.entries(fields).map(([s,f])=>r[f]?`<span class="segment-${s}" style="width:${r[f]/Math.max(1,r.student_count)*100}%;background:${states[s].color}" title="${states[s].label} ${r[f]} 人">${r[f]>=3?r[f]:''}</span>`:'').join('')}</span><span class="bar-end">${r.student_count} 人</span></button>`).join('')}</div>`;
 }
-export function lineChart(series) {
-  const width = 540,
-    height = 210,
-    left = 40,
-    right = 30,
-    top = 20,
-    bottom = 44;
+export function lineChart(series, width = 480) {
+  const height = 256, left = 46, right = 50, top = 30, bottom = 62;
   const max = Math.max(1, ...series.flatMap(s => s.points.map(p => p.value)));
-  const yMax = Math.ceil(max / 100) * 100 || 1,
-    n = Math.max(2, ...series.map(s => s.points.length));
-  const x = i => left + i * (width - left - right) / (n - 1),
-    y = v => height - bottom - v / yMax * (height - top - bottom);
-  const grid = [0, 0.5, 1].map(v => `<line x1="${left}" x2="${width-right}" y1="${y(v*yMax)}" y2="${y(v*yMax)}" stroke="#e5ebe9" stroke-dasharray="4 5"/><text x="${left-8}" y="${y(v*yMax)+4}" text-anchor="end" class="axis-label">${Math.round(v*yMax)}</text>`).join('');
-  return `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(series.map(s=>s.label+': '+s.points.map(p=>p.label+' '+p.value+'条').join(', ')).join('; '))}">${grid}${series.map(s=>`<polyline points="${s.points.map((p,i)=>`${x(i)},${y(p.value)}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5"/>${s.points.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.value)}" r="5" stroke="white" stroke-width="2" fill="${s.color}"><title>${esc(s.label+' '+p.label)}：${p.value} 条</title></circle><text x="${x(i)}" y="${y(p.value)-11}" text-anchor="middle" fill="${s.color}" class="point-label">${p.value}</text>`).join('')}`).join('')}${(series[0]?.points || []).map((p,i)=>`<text x="${x(i)}" y="${height-20}" text-anchor="middle" class="axis-label">${esc(p.label)}</text><text x="${x(i)}" y="${height-3}" text-anchor="middle" class="axis-label">${esc(p.date||'')}</text>`).join('')}</svg><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join('')}</div>`;
+  const magnitude = 10 ** Math.floor(Math.log10(max / 4));
+  const step = Math.max(1, [1, 2, 5, 10].map(n => n * magnitude).find(n => n >= max / 4) || 1);
+  const yMax = Math.ceil(max / step) * step;
+  const n = Math.max(2, ...series.map(s => s.points.length));
+  const x = i => left + i * (width - left - right) / (n - 1);
+  const y = value => height - bottom - value / yMax * (height - top - bottom);
+  const ticks = Array.from({length: Math.round(yMax / step) + 1}, (_, i) => i * step);
+  const labels = Array.from({length: n}, (_, index) => {
+    const present = series.map((s, i) => ({point: s.points[index], i})).filter(s => s.point);
+    const positions = placeLabels(present.map(s => y(s.point.value) - 16), 14, height - bottom - 12, 24);
+    return new Map(present.map((s, i) => [s.i, positions[i]]));
+  });
+  const grid = ticks.map(t => `<line x1="${left}" x2="${width-right}" y1="${y(t)}" y2="${y(t)}" stroke="#e5ebe9" stroke-dasharray="3 5"/><text x="${left-12}" y="${y(t)+4}" text-anchor="end" class="axis-label">${Number(t.toFixed(2))}</text>`).join('');
+  const lines = series.map(s => `<polyline points="${s.points.map((p,i)=>`${x(i)},${y(p.value)}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`).join('');
+  const points = series.map((s, si) => s.points.map((p, i) => {
+    const ly = labels[i].get(si), boxWidth = Math.max(30, String(p.value).length * 8 + 12);
+    const labelX = x(i) + (i === 0 ? 22 : 0);
+    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="4.5" stroke="white" stroke-width="2" fill="${s.color}"><title>${esc(s.label+' '+p.label)}：${p.value} 条</title></circle><path d="M${x(i)} ${y(p.value)}L${labelX} ${ly}" stroke="${s.color}" stroke-opacity=".3"/><g class="value-label" data-series="${si}" data-point="${i}"><rect x="${labelX-boxWidth/2}" y="${ly-10}" width="${boxWidth}" height="20" rx="5" fill="white"/><text x="${labelX}" y="${ly+4}" text-anchor="middle" fill="${s.color}" class="point-label">${p.value}</text></g>`;
+  }).join('')).join('');
+  const axis = (series[0]?.points || []).map((p, i) => `<text x="${x(i)}" y="${height-36}" text-anchor="middle" class="axis-label">${esc(p.label)}</text><text x="${x(i)}" y="${height-15}" text-anchor="middle" class="axis-label axis-date">${esc(p.date||'')}</text>`).join('');
+  return `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(series.map(s=>s.label+': '+s.points.map(p=>p.label+' '+p.value+'条').join(', ')).join('; '))}">${grid}${lines}${points}${axis}</svg><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join('')}</div>`;
+}
+
+export function histogram(result, color = '#539883') {
+  const maximum = Math.max(4, Math.ceil(Math.max(0, ...result.bins.map(b => b.value)) / 4) * 4);
+  return `<div class="histogram" role="img" aria-label="${esc(result.bins.map(b=>b.interval+'：'+b.value+'人').join('；'))}"><div class="hist-grid" aria-hidden="true"><span>${maximum} 人</span><span>${Math.round(maximum/2)}</span><span>0</span></div><div class="hist-bars">${result.bins.map(b=>`<div class="hist-column" title="${esc(b.interval)}：${b.value} 人"><div class="hist-well"><div class="hist-fill" style="height:${b.value/maximum*100}%;--bar-color:${color}"><strong>${b.value}</strong></div></div><span>${b.label}</span></div>`).join('')}</div></div>`;
+}
+
+export function comparisonBars(rows, series) {
+  return `<div class="comparison-chart">${rows.map(row=>`<div class="comparison-row"><div class="comparison-label"><strong>${esc(row.label)}</strong>${row.detail?`<small>${esc(row.detail)}</small>`:''}</div><div class="comparison-series">${series.map(s=>{const value=row.values[s.key];return `<div class="comparison-line"><span class="comparison-track"><i style="width:${Number.isFinite(value)?value*100:0}%;background:${s.color}"></i></span><strong>${pct(value)}</strong></div>`;}).join('')}</div></div>`).join('')}<div class="comparison-scale"><span>0%</span><span>50%</span><span>100%</span></div></div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join('')}</div>`;
 }
 export function masteryBars(items, nameFor) {
   return `<div class="mastery-bars">${items.map(k=>`<button class="mastery-row" data-knowledge="${esc(k.knowledge_id)}"><span>${esc(k.knowledge_id)}<b>${esc(nameFor(k.knowledge_id))}</b></span><span class="estimate-track">${k.credible_interval?`<i class="interval" style="left:${k.credible_interval[0]*100}%;width:${(k.credible_interval[1]-k.credible_interval[0])*100}%"></i>`:''}${k.mastery!=null?`<i class="estimate-dot" style="left:${k.mastery*100}%;background:${states[k.status]?.color||'#238778'}"></i>`:''}</span><strong>${pct(k.mastery)}</strong><small>${k.evidence_count} 条</small></button>`).join('')}</div><p class="chart-note">圆点为满分成功概率的模型估计，淡色区间表示不确定性；“—”表示无法估计。估计值不等于考试成绩或能力百分比。</p>`;

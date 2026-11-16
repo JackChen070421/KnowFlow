@@ -878,6 +878,7 @@ async function sendChat(raw) {
         student_id: state.student
       }
     }, 'X-KnowFlow-Chat');
+    const staleMode = !data.trace || data.trace.mode !== state.chatMode;
     chatMessages.push({
       role: 'assistant',
       text: data.answer,
@@ -885,7 +886,7 @@ async function sendChat(raw) {
       source: data.source,
       trace: data.trace,
       mode: data.trace?.mode || state.chatMode,
-      note: data.note
+      note: data.note || (staleMode ? '当前后端进程未加载所选回答方式（旧版本）；请关闭并重启 dashboard 后重试。' : undefined)
     });
   } catch (error) {
     chatMessages.push({

@@ -2294,7 +2294,7 @@ dialog::backdrop {
 
   .sidebar {
     width: 194px;
-    padding: 28px 15px
+    padding: 28px 15px 96px
   }
 
   .brand strong {
@@ -3965,4 +3965,68 @@ span.chat-cite {
   .donut-wrap { flex-direction: column; gap: 12px; }
   .donut { width: 160px; }
   .donut-legend { width: 100%; flex: auto; min-width: 0; }
+}
+
+/* --- data quality collapsibles, review entry, short sidebar --- */
+.sidebar > * { flex-shrink: 0; }
+
+.collapsible-panel { padding: 0; overflow: hidden; }
+.collapse-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 19px 24px;
+}
+.collapse-summary::-webkit-details-marker { display: none; }
+.collapse-summary .panel-title { margin: 0; }
+.collapse-summary .panel-title h2 { font-size: 17px; }
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.collapse-toggle svg { transition: transform .18s ease; }
+.when-open { display: none; }
+details[open] .when-closed { display: none; }
+details[open] .when-open { display: inline; }
+details[open] .collapse-toggle svg { transform: rotate(90deg); }
+.collapse-body {
+  padding: 16px 24px 22px;
+  border-top: 1px solid var(--line);
+}
+.collapse-body > .panel-sub:first-child { margin-top: 0; }
+
+.review-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: linear-gradient(135deg, #f4f8f2, #edf4ef);
+}
+.review-entry-card .eyebrow { color: var(--teal); }
+.review-entry-card h2 { margin: 3px 0 6px; }
+.review-entry-card p { color: var(--muted); font-size: 12px; line-height: 1.8; max-width: 720px; }
+
+@media(max-width:700px) {
+  .review-entry-card { flex-direction: column; align-items: flex-start; }
+  .collapse-summary, .collapse-body { padding-left: 18px; padding-right: 18px; }
+}
+
+@media(max-height:760px) {
+  .sidebar { padding-top: 18px; padding-bottom: 96px; }
+  .sidebar-label { margin: 20px 14px 8px; }
+  .nav { gap: 3px; }
+  .nav button { padding: 9px 12px; }
+  .sidebar-tools { margin-top: 12px; }
+  .side-story { margin-top: 14px; padding: 12px; }
+  .side-story h3 { font-size: 14px; line-height: 1.5; }
+  .side-story p { margin-top: 4px; font-size: 10px; line-height: 1.5; }
+  .side-story .steps { margin-top: 8px; }
+  .sidebar-footer { padding-top: 12px; }
 }

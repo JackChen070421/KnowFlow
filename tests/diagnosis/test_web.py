@@ -342,6 +342,74 @@ def test_chat_accepts_grounded_answer_from_client(dashboard_run):
     assert result["citations"]
 
 
+def test_chat_modes_are_explainable_and_differ(dashboard_run, monkeypatch):
+    monkeypatch.setattr("knowflow.llm.chat.build_client", lambda settings: None)
+    data = load_dashboard(dashboard_run)
+    concise = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        mode="concise",
+    )
+    evidence = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        mode="evidence",
+    )
+    assert concise["source"] == evidence["source"] == "rules"
+    assert "S002" in concise["answer"]
+    assert "M-" not in concise["answer"]
+    assert "结论：" in evidence["answer"] and "依据：" in evidence["answer"]
+    for result, mode in ((concise, "concise"), (evidence, "evidence")):
+        trace = result["trace"]
+        assert trace["mode"] == mode
+        assert trace["steps"] and trace["evidence"]
+        assert "reasoning" not in trace
+        assert trace["guard"]["numbers_checked"] is True
+        assert trace["note"].startswith("展示事实卡")
+
+
+def test_chat_evidence_mode_requires_structure(dashboard_run):
+    data = load_dashboard(dashboard_run)
+
+    def unstructured(user: str) -> str:
+        payload = user.split("FACTS（唯一可用信息）：\n", 1)[1].split("\n\n用户问题：", 1)[0]
+        facts = json.loads(payload)
+        student = facts.get("student", {}).get("id") or facts["class"]["id"]
+        return f"{student} 先补观测。"
+
+    def structured(user: str) -> str:
+        payload = user.split("FACTS（唯一可用信息）：\n", 1)[1].split("\n\n用户问题：", 1)[0]
+        facts = json.loads(payload)
+        student = facts.get("student", {}).get("id") or facts["class"]["id"]
+        knowledge = facts["knowledge"][0]["id"] if facts.get("knowledge") else "课程要求"
+        return f"结论：{student} 先补 {knowledge}。\n依据：当前数据只有该知识点的基础信息。"
+
+    client = SequenceClient([unstructured, structured])
+    result = answer_question(
+        snapshot=data,
+        message="S002 现在最需要补什么？",
+        context={"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+        client=client,
+        mode="evidence",
+    )
+    assert result["source"] == "llm"
+    assert client.calls == 2
+    assert "结论" in result["answer"] and "依据" in result["answer"]
+
+
+def test_chat_rejects_unknown_mode(dashboard_run):
+    data = load_dashboard(dashboard_run)
+    with pytest.raises(ValueError, match="concise 或 evidence"):
+        answer_question(
+            snapshot=data,
+            message="S002 现在最需要补什么？",
+            context={"node_id": "N02"},
+            mode="verbose",
+        )
+
+
 def test_chat_reports_model_call_failure(dashboard_run):
     data = load_dashboard(dashboard_run)
 
@@ -400,6 +468,27 @@ def test_chat_endpoint_is_local_and_validates_input(dashboard_run, monkeypatch):
         empty = json.dumps({"message": ""}).encode()
         status, _ = call(
             empty, {"Content-Type": "application/json", "X-KnowFlow-Chat": "1"}
+        )
+        assert status == 400
+
+        evidence = json.dumps(
+            {
+                "message": "S002 现在最需要补什么？",
+                "mode": "evidence",
+                "context": {"node_id": "N02", "group_id": "G1", "student_id": "S002"},
+            }
+        ).encode()
+        status, payload = call(
+            evidence,
+            {"Content-Type": "application/json", "X-KnowFlow-Chat": "1"},
+        )
+        assert status == 200
+        assert json.loads(payload)["trace"]["mode"] == "evidence"
+
+        bad_mode = json.dumps({"message": "S002", "mode": "verbose"}).encode()
+        status, _ = call(
+            bad_mode,
+            {"Content-Type": "application/json", "X-KnowFlow-Chat": "1"},
         )
         assert status == 400
     finally:

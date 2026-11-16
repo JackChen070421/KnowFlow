@@ -344,11 +344,17 @@ def create_server(
 
             question = payload.get("message")
             context = payload.get("context") or {}
+            mode = payload.get("mode") or "concise"
+            if mode not in ("concise", "evidence"):
+                self.json({"error": "mode 必须是 concise 或 evidence。"}, 400)
+                return
             if not isinstance(question, str) or not isinstance(context, dict):
                 self.json({"error": "message 必须是字符串，context 必须是对象。"}, 400)
                 return
             try:
-                result = answer_question(snapshot=snapshot, message=question, context=context)
+                result = answer_question(
+                    snapshot=snapshot, message=question, context=context, mode=mode
+                )
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)
                 return

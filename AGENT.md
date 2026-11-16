@@ -1,7 +1,7 @@
 # AGENT.md — KnowFlow 协作入口
 
 > 适用：所有参与 KnowFlow 的人与 AI Agent。
-> 最后更新：2026-11-16 · v0.24
+> 最后更新：2026-11-17 · v0.25
 > 阅读顺序：本文件 → [`README.md`](README.md) → [`CHANGELOG.md`](CHANGELOG.md)（最近改了什么）→ [`schemas/CONTRACT.md`](schemas/CONTRACT.md) → 你的任务。
 > Git/GitHub 操作见 [`shortcuts.md`](shortcuts.md)；不要一上来通读全仓。
 
@@ -278,6 +278,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.25 | 2026-11-17 | AI 学伴：窗口拖动/缩放、简洁/证据模式、回答下方“推理依据”（事实卡步骤与证据，不含模型隐藏思维链）；`/api/chat` 增加 `mode`；测试 242 项 |
 | v0.24 | 2026-11-16 | 方向五：`data/feedback` 事件账本（补充作答/教师调整/评语/学生反馈）、派生诊断与 `diagnosis_diff`、教师调整重放（锁定/移除/换材料/时间/难度）、`/api/feedback` 与教师/学生界面；契约 v0.10（22 schemas）；测试 239 项 |
 | v0.23 | 2026-11-16 | 方向三：学习路径（`plan_item_id`/依赖/完成条件/状态/版本/`history`/`plan_diff`）、probe 启发式评分、`path-event` 进度事件与 `recommend --progress/--previous`；契约 v0.9（21 schemas）；测试 231 项 |
 | v0.22 | 2026-11-16 | 方向二：`knowledge/curriculum_graph.json`（21 节点/18 关系，全部 draft）、`knowledge --graph`、curation 图谱复核；建议层 `prerequisite_check`/`relation_notes`/`deferred`；前端去硬编码；契约 v0.8（20 schemas）；测试 217 项 |

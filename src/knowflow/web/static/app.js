@@ -26,6 +26,7 @@ let D, kb, storageOK = true,
   chatOpen = new URLSearchParams(location.search).get('chat') === '1',
   chatBusy = false,
   chatMessages = [];
+let chatGeometry = null;
 const params = new URLSearchParams(location.search);
 const state = {
   role: location.pathname === '/student' ? 'student' : 'teacher',
@@ -38,6 +39,7 @@ const state = {
   courseView: 'map',
   lab: 'axis',
   profileTab: 'analysis',
+  chatMode: 'concise',
   studentSort: 'id',
   allHeatmap: false
 };
@@ -648,6 +650,7 @@ function render() {
   const map = $('#app [data-interactive-map]');
   unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
+  if (chatOpen) bindChatChrome();
   if (state.view === 'settings' && !llmSettings && !settingsError) {
     ensureSettings().then(() => {
       if (state.view === 'settings') render();
@@ -726,14 +729,112 @@ function citeChip(id) {
 
 function chatLog() {
   if (!chatMessages.length) {
-    return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
+    return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。简洁模式少列数字，证据模式按“结论 / 依据”展开。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
   }
-  return chatMessages.map(message => `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${message.source?`<small class="chat-source">${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`).join('');
+  return chatMessages.map(message => {
+    const trace = message.trace;
+    const modeLabel = message.mode === 'evidence' ? '证据' : '简洁';
+    return `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${trace?`<details class="chat-trace"><summary>查看推理依据</summary><div class="chat-trace-steps">${trace.steps.map((step,index)=>`<div class="chat-trace-step"><span>${index+1}</span><div><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p></div></div>`).join('')}</div>${trace.evidence?.length?`<div class="chat-trace-evidence"><strong>用到的证据</strong><div class="chat-evidence-list">${trace.evidence.map(item=>`<span class="chat-evidence">${item.id?citeChip(item.id):''}<span>${esc(item.text)}</span></span>`).join('')}</div></div>`:''}<p class="chat-trace-note">${esc(trace.note||'展示事实卡与规则步骤，不含模型隐藏思维链。')}</p></details>`:''}${message.source?`<small class="chat-source">${modeLabel}模式 · ${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`;
+  }).join('');
 }
 
 function chatPanel() {
-  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话"><header class="chat-head"><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><textarea id="chat-input" rows="2" maxlength="500" placeholder="问当前班级、学生或知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></form><div class="chat-foot">基于当前学情回答 · 点击引用查看依据</div></section>`;
+  const resizeHandles = ['n','s','e','w','ne','nw','se','sw'].map(dir=>`<span class="chat-resize" data-resize="${dir}" aria-hidden="true"></span>`).join('');
+  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话">${resizeHandles}<header class="chat-head" data-chat-drag><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><div class="chat-input-row"><select id="chat-mode" class="chat-mode-select" aria-label="回答方式" ${chatBusy?'disabled':''}><option value="concise" ${state.chatMode==='concise'?'selected':''}>简洁</option><option value="evidence" ${state.chatMode==='evidence'?'selected':''}>证据</option></select><textarea id="chat-input" rows="2" maxlength="500" placeholder="问当前班级、学生或知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></div></form><div class="chat-foot">基于当前学情 · 简洁 / 证据两种回答 · 每条回答下方可展开依据</div></section>`;
 }
+
+function clampChatRect(rect) {
+  const margin = 8;
+  const width = Math.max(340, Math.min(rect.width, window.innerWidth - margin * 2));
+  const height = Math.max(300, Math.min(rect.height, window.innerHeight - margin * 2));
+  return {
+    width,
+    height,
+    left: Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)),
+    top: Math.max(margin, Math.min(rect.top, window.innerHeight - height - margin))
+  };
+}
+
+function applyChatGeometry() {
+  const panel = document.querySelector('.chat-panel');
+  if (!panel) return;
+  if (!chatGeometry || window.innerWidth <= 900) {
+    ['left','top','width','height','bottom','right'].forEach(prop => panel.style.removeProperty(prop));
+    return;
+  }
+  panel.style.left = `${chatGeometry.left}px`;
+  panel.style.top = `${chatGeometry.top}px`;
+  panel.style.width = `${chatGeometry.width}px`;
+  panel.style.height = `${chatGeometry.height}px`;
+  panel.style.bottom = 'auto';
+  panel.style.right = 'auto';
+}
+
+function resetChatGeometry() {
+  chatGeometry = null;
+  applyChatGeometry();
+}
+
+function beginChatGesture(event, kind, direction = '') {
+  const panel = document.querySelector('.chat-panel');
+  if (!panel || window.innerWidth <= 900) return;
+  event.preventDefault();
+  const rect = panel.getBoundingClientRect();
+  chatGeometry = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  const start = { ...chatGeometry, x: event.clientX, y: event.clientY };
+  const onMove = move => {
+    const dx = move.clientX - start.x;
+    const dy = move.clientY - start.y;
+    const next = { ...start };
+    if (kind === 'drag') {
+      next.left = start.left + dx;
+      next.top = start.top + dy;
+    } else {
+      if (direction.includes('e')) next.width = start.width + dx;
+      if (direction.includes('s')) next.height = start.height + dy;
+      if (direction.includes('w')) {
+        next.width = start.width - dx;
+        next.left = start.left + dx;
+      }
+      if (direction.includes('n')) {
+        next.height = start.height - dy;
+        next.top = start.top + dy;
+      }
+    }
+    chatGeometry = clampChatRect(next);
+    applyChatGeometry();
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+function bindChatChrome() {
+  const panel = document.querySelector('.chat-panel');
+  if (!panel || panel.dataset.chatBound) return;
+  panel.dataset.chatBound = '1';
+  const head = panel.querySelector('.chat-head');
+  head?.addEventListener('pointerdown', event => {
+    if (event.target.closest('button')) return;
+    beginChatGesture(event, 'drag');
+  });
+  head?.addEventListener('dblclick', resetChatGeometry);
+  panel.querySelectorAll('.chat-resize').forEach(handle => {
+    handle.addEventListener('pointerdown', event => beginChatGesture(event, 'resize', handle.dataset.resize));
+  });
+  applyChatGeometry();
+}
+
+window.addEventListener('resize', () => {
+  if (!chatGeometry) return;
+  chatGeometry = clampChatRect(chatGeometry);
+  applyChatGeometry();
+});
 
 function chatWidget() {
   return `<div id="chat-host">${chatOpen ? chatPanel() : ''}</div><button type="button" class="chat-fab ${chatOpen?'open':''}" id="chat-fab" aria-label="与 AI 对话" aria-expanded="${chatOpen}" title="与 AI 对话">${icon('chat',22)}<span>AI 学伴</span></button>`;
@@ -746,7 +847,10 @@ function scrollChat() {
 
 function renderChat() {
   const host = document.querySelector('#chat-host');
-  if (host) host.innerHTML = chatOpen ? chatPanel() : '';
+  if (host) {
+    host.innerHTML = chatOpen ? chatPanel() : '';
+    if (chatOpen) bindChatChrome();
+  }
   const fab = document.querySelector('#chat-fab');
   if (fab) {
     fab.classList.toggle('open', chatOpen);
@@ -767,18 +871,22 @@ async function sendChat(raw) {
   try {
     const data = await postJSON('/api/chat', {
       message: text,
+      mode: state.chatMode,
       context: {
         node_id: state.node,
         group_id: state.group,
         student_id: state.student
       }
     }, 'X-KnowFlow-Chat');
+    const staleMode = !data.trace || data.trace.mode !== state.chatMode;
     chatMessages.push({
       role: 'assistant',
       text: data.answer,
       citations: data.citations || [],
       source: data.source,
-      note: data.note
+      trace: data.trace,
+      mode: data.trace?.mode || state.chatMode,
+      note: data.note || (staleMode ? '当前后端进程未加载所选回答方式（旧版本）；请关闭并重启 dashboard 后重试。' : undefined)
     });
   } catch (error) {
     chatMessages.push({
@@ -1002,6 +1110,10 @@ document.addEventListener('click', event => {
   if (b.hasAttribute('data-export')) exportSummary();
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'chat-mode') {
+    state.chatMode = event.target.value;
+    return;
+  }
   if (event.target.id === 'llm-enabled') {
     const config = document.querySelector('#llm-config');
     if (config) config.hidden = !event.target.checked;

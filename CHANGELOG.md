@@ -10,6 +10,20 @@
 
 ---
 
+## 2026-11-21 — 本机登录与按角色的数据裁剪
+
+**本机登录** · `feat/web-login`
+
+- 新增 `data/auth/users.json`（Git 忽略）：首次启动生成 `teacher` 与学生 `S001` 两个账号，初始密码 `123456`，密码以 scrypt 加盐哈希存储，不存明文。
+- 新增 `/login` 页面与 `/api/login`、`/api/logout`、`/api/session`；会话保存在进程内存，Cookie 为 `HttpOnly; SameSite=Strict`，关窗口即失效。未登录访问页面 302 到登录页、访问 API 返回 401。
+- 学生快照在服务端裁剪：只下发本人 `profiles`/`recommendations`/`records`/`stats` 与班级聚合；`quality`、`reviews` 置空；`/api/evidence` 越权 403，`/api/settings/llm` 与教师调整类反馈对学生 403。
+- 移除顶栏“教师视角/学生视角”切换，改为身份徽标 + 退出登录；学生账号锁定本人，隐藏学生搜索与设置入口；教师仍可用 `/student?student=S003` 预览单个学生。
+- 验证：244 Python 测试（新增 2 项登录/越权用例）、`check_contracts`、`check_examples`、5 个前端模块语法解析；教师/学生登录、越权 403、错误密码 401、退出后会话失效均实测。
+- 未验证：未在真实浏览器里点过登录表单（本机无可用浏览器自动化），仅通过 HTTP 断言页面与接口；未做密码强度/找回流程。
+- 回退：`--no-auth` 启动可临时跳过登录；彻底回退需删除 `src/knowflow/web/auth.py`、`static/login.*`，并还原 `server.py`/`app.js` 的路由与顶栏。
+
+---
+
 ## 2026-11-17 — AI 学伴：可拖拽/缩放窗口、简洁/证据模式、依据展开
 
 - 窗口：标题栏拖动、8 个边缘/角手柄缩放；最小 340×300，限制在视口内；双击标题重置；≤900px 宽度沿用全宽布局。

@@ -495,3 +495,137 @@ def test_chat_endpoint_is_local_and_validates_input(dashboard_run, monkeypatch):
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_password_hash_is_salted_and_verifiable():
+    from knowflow.web.auth import hash_password, verify_password
+
+    first = hash_password("123456")
+    second = hash_password("123456")
+    assert first["salt"] != second["salt"]
+    assert first["password_hash"] != second["password_hash"]
+    assert verify_password("123456", first["salt"], first["password_hash"])
+    assert not verify_password("123457", first["salt"], first["password_hash"])
+    assert not verify_password("", "", "")
+
+
+def test_login_is_required_and_students_only_receive_their_own_data(dashboard_run, tmp_path):
+    from knowflow.web.auth import AuthStore
+
+    data = load_dashboard(dashboard_run)
+    student_id = data["students"][0]["student_id"]
+    auth = AuthStore(tmp_path / "users.json", student_id)
+    assert auth.created is True
+    server = create_server(dashboard_run, data, port=0, auth=auth)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+
+    def call(method, path, payload=None, headers=None, cookie=None):
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        all_headers = dict(headers or {})
+        if cookie:
+            all_headers["Cookie"] = cookie
+        body = None
+        if payload is not None:
+            body = json.dumps(payload)
+            all_headers.setdefault("Content-Type", "application/json")
+        connection.request(method, path, body=body, headers=all_headers)
+        response = connection.getresponse()
+        raw = response.read()
+        result = (response.status, dict(response.getheaders()), raw)
+        connection.close()
+        return result
+
+    def login(username, password, header=True):
+        headers = {"X-KnowFlow-Login": "1"} if header else {}
+        return call(
+            "POST",
+            "/api/login",
+            {"username": username, "password": password},
+            headers,
+        )
+
+    try:
+        # Anonymous requests never reach the workspace or its data.
+        assert call("GET", "/api/snapshot")[0] == 401
+        status, headers, _ = call("GET", "/teacher")
+        assert status == 302 and headers["Location"] == "/login"
+        assert call("GET", "/login")[0] == 200
+
+        # Login must come from the local page, with a real password.
+        assert call("POST", "/api/login", {"username": "teacher", "password": "123456"})[0] == 403
+        assert login("teacher", "wrong-password")[0] == 401
+
+        status, headers, raw = login(student_id, "123456")
+        assert status == 200
+        set_cookie = headers["Set-Cookie"]
+        assert "HttpOnly" in set_cookie and "SameSite=Strict" in set_cookie
+        cookie = set_cookie.split(";")[0]
+        assert json.loads(raw)["redirect"] == "/student"
+
+        status, _, raw = call("GET", "/api/snapshot", cookie=cookie)
+        assert status == 200
+        scoped = json.loads(raw)
+        assert scoped["meta"]["viewer"]["role"] == "student"
+        assert [s["student_id"] for s in scoped["students"]] == [student_id]
+        for people in scoped["profiles"].values():
+            assert list(people) == [student_id]
+        assert {r["student_id"] for r in scoped["records"]} <= {student_id}
+        assert scoped["quality"] is None
+        assert scoped["reviews"] is None
+        assert scoped["classes"], "class aggregates stay available to students"
+
+        # A student may read only their own raw answer evidence.
+        other = next(r for r in data["records"] if r["student_id"] != student_id)
+        assert call("GET", "/api/evidence/" + other["record_id"], cookie=cookie)[0] == 403
+        own = next(r for r in data["records"] if r["student_id"] == student_id)
+        assert call("GET", "/api/evidence/" + own["record_id"], cookie=cookie)[0] == 200
+
+        # Teacher-only surfaces stay closed.
+        assert call("GET", "/api/settings/llm", cookie=cookie)[0] == 403
+        adjustment = {
+            "event_type": "teacher_adjustment",
+            "student_id": student_id,
+            "node_id": data["nodes"][0]["node_id"],
+            "plan_item_id": "PL-unknown",
+            "action": "lock",
+            "reason": "synthetic",
+        }
+        assert (
+            call(
+                "POST",
+                "/api/feedback",
+                adjustment,
+                {"X-KnowFlow-Feedback": "1"},
+                cookie=cookie,
+            )[0]
+            == 403
+        )
+
+        # The teacher account still sees the whole dataset.
+        status, headers, raw = login("teacher", "123456")
+        teacher_cookie = headers["Set-Cookie"].split(";")[0]
+        status, _, raw = call("GET", "/api/snapshot", cookie=teacher_cookie)
+        assert status == 200
+        full = json.loads(raw)
+        assert len(full["students"]) == len(data["students"])
+        assert full["meta"]["viewer"]["role"] == "teacher"
+        assert call("GET", "/teacher", cookie=teacher_cookie)[0] == 200
+
+        # Logout revokes the session for later requests.
+        assert (
+            call(
+                "POST",
+                "/api/logout",
+                {},
+                {"X-KnowFlow-Logout": "1"},
+                cookie=teacher_cookie,
+            )[0]
+            == 200
+        )
+        assert call("GET", "/api/snapshot", cookie=teacher_cookie)[0] == 401
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+

@@ -117,3 +117,6 @@ desktop.ini
 
 # --- keep directory markers ---
 !**/.gitkeep
+
+data/auth/
+

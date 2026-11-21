@@ -45,9 +45,61 @@ const state = {
   profileTab: 'analysis',
   chatMode: 'concise',
   studentSort: 'id',
-  allHeatmap: false
+  allHeatmap: false,
+  settingsTab: params.get('settingsTab') || 'appearance'
 };
 const $ = s => document.querySelector(s);
+
+const THEME_KEY = 'knowflow.theme';
+const THEMES = [
+  {id: 'light', label: '白天', desc: '浅色纸面，日常光照下的默认配色。'},
+  {id: 'dark', label: '黑夜', desc: '深色背景与柔和高光，弱光环境更省眼。'},
+  {id: 'eye', label: '护眼', desc: '低对比绿纸与更暖的文字，适合长时间阅读。'}
+];
+const SETTINGS_TABS = [
+  ['appearance', '外观', 'spark'],
+  ['profile', '个人信息', 'students'],
+  ['llm', '模型配置', 'settings']
+];
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'light';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {}
+}
+
+// The new palette grows out of the click point as a circle, so the switch
+// changes only the visible area: same layout, same type scale, no reflow.
+function switchTheme(theme, event) {
+  if (!theme || theme === currentTheme()) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!document.startViewTransition || reduce) {
+    applyTheme(theme);
+    return;
+  }
+  const x = event && Number.isFinite(event.clientX) ? event.clientX : window.innerWidth - 48;
+  const y = event && Number.isFinite(event.clientY) ? event.clientY : 32;
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+  try {
+    const transition = document.startViewTransition(() => applyTheme(theme));
+    transition.ready.then(() => {
+      document.documentElement.animate({
+        clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`]
+      }, {
+        duration: 1100,
+        easing: 'cubic-bezier(.33,.02,.35,1)',
+        pseudoElement: '::view-transition-new(root)'
+      });
+    }).catch(() => {});
+  } catch {
+    applyTheme(theme);
+  }
+}
 const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'reviews' ? '存疑证据' : id === 'settings' ? '设置' : '工作台');
 const nameFor = id => kb.knowledge.find(k => k.knowledge_id === id)?.name || id;
 const objectiveFor = id => kb.objectives.find(o => o.objective_id === id);
@@ -78,6 +130,128 @@ function toast(message) {
   el.classList.add('visible');
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove('visible'), 3500);
+}
+
+// Avatars are keyed by account and kept in this browser only (no upload).
+const AVATAR_PREFIX = 'knowflow.avatar.';
+const avatarKey = () => AVATAR_PREFIX + (SESSION?.username || 'local');
+
+function readAvatar() {
+  try {
+    return localStorage.getItem(avatarKey()) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeAvatar(dataUrl) {
+  try {
+    if (dataUrl) localStorage.setItem(avatarKey(), dataUrl);
+    else localStorage.removeItem(avatarKey());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function avatarLabel() {
+  return SESSION?.role === 'teacher' ? '教' : '学';
+}
+
+function avatarBody() {
+  const src = readAvatar();
+  return src
+    ? `<img class="avatar-img" src="${esc(src)}" alt="">`
+    : `<span class="avatar-text">${avatarLabel()}</span>`;
+}
+
+function refreshAvatars() {
+  document.querySelectorAll('[data-avatar]').forEach(el => {
+    el.innerHTML = avatarBody();
+  });
+}
+
+function downsizedAvatar(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) {
+      reject(new Error('请选择 PNG、JPEG 或 WebP 图片。'));
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      reject(new Error('图片太大，请选择 8MB 以内的图片。'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('图片读取失败，请重试。'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('这张图片无法解析。'));
+      image.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        const side = Math.min(image.width, image.height);
+        context.drawImage(
+          image,
+          (image.width - side) / 2,
+          (image.height - side) / 2,
+          side,
+          side,
+          0,
+          0,
+          size,
+          size
+        );
+        resolve(canvas.toDataURL('image/jpeg', 0.86));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAvatarFile(file) {
+  try {
+    const dataUrl = await downsizedAvatar(file);
+    if (!writeAvatar(dataUrl)) {
+      toast('浏览器拒绝保存头像（本地存储已满或被禁用）。');
+      return;
+    }
+    refreshAvatars();
+    if (state.view === 'settings') render();
+    toast('头像已更新，只保存在本机浏览器。');
+  } catch (error) {
+    toast(error.message || '头像上传失败。');
+  }
+}
+
+// Popconfirm anchored to the header account chip. Kept outside the render
+// cycle so opening it never replays the list entrance animation.
+function closeAccountMenu() {
+  const wrap = document.querySelector('.account-wrap');
+  if (!wrap) return;
+  const pop = wrap.querySelector('.account-pop');
+  if (pop) pop.remove();
+  wrap.querySelector('[data-account-toggle]')?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleAccountMenu() {
+  const wrap = document.querySelector('.account-wrap');
+  const trigger = wrap?.querySelector('[data-account-toggle]');
+  if (!wrap || !trigger) return;
+  if (wrap.querySelector('.account-pop')) {
+    closeAccountMenu();
+    return;
+  }
+  const pop = document.createElement('div');
+  pop.className = 'account-pop';
+  pop.setAttribute('role', 'menu');
+  pop.innerHTML = `<div class="account-pop-head"><strong>${esc(SESSION?.display_name || '')}</strong><small>${SESSION?.role === 'teacher' ? '教师' : '学生'} · ${esc(SESSION?.username || '')}</small></div><button type="button" role="menuitem" data-account-profile>${icon('students', 14)}查看个人信息</button><button type="button" role="menuitem" class="danger" data-logout>${icon('close', 14)}退出登录</button>`;
+  wrap.append(pop);
+  trigger.setAttribute('aria-expanded', 'true');
+  pop.querySelector('[data-account-profile]')?.focus();
 }
 
 function readWork() {
@@ -114,7 +288,8 @@ function saveURL() {
     view: state.view,
     node: state.node,
     group: state.group,
-    student: state.student
+    student: state.student,
+    settingsTab: state.settingsTab
   });
   history.replaceState(null, '', `/${state.role}?${q}`);
 }
@@ -132,9 +307,11 @@ function normalize() {
   if (!D.nodes.some(n => n.node_id === state.node)) state.node = D.nodes.at(-1).node_id;
   if (!D.students.some(s => s.student_id === state.student)) state.student = D.students[0].student_id;
   if (!['ALL', ...groups()].includes(state.group)) state.group = 'ALL';
-  const allowedViews = [...navItems().map(x => x[0]), ...(isStudentAccount() ? [] : ['settings'])];
+  const allowedViews = [...navItems().map(x => x[0]), 'settings'];
   if (state.role === 'teacher') allowedViews.push('reviews');
   if (!allowedViews.includes(state.view)) state.view = 'overview';
+  const allowedTabs = isStudentAccount() ? ['appearance', 'profile'] : ['appearance', 'profile', 'llm'];
+  if (!allowedTabs.includes(state.settingsTab)) state.settingsTab = 'appearance';
 }
 
 function navItems() {
@@ -153,7 +330,7 @@ function navItems() {
 
 function shell() {
   const active = navItems().find(n => n[0] === state.view) || (state.view === 'reviews' ? ['reviews', '存疑证据', 'shield'] : ['settings', '设置', 'settings']);
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools">${isStudentAccount()?'':`<button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button>`}</div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><span class="viewer-chip" title="${isStudentAccount()?'学生账号':'教师账号'}">${icon(SESSION?.role==='teacher'?'shield':'students',14)}<strong>${esc(SESSION?.display_name||'')}</strong><small>${SESSION?.role==='teacher'?'教师':'学生'}</small></span><button class="text-button logout-button" data-logout>${icon('close',13)}退出登录</button><div class="avatar" title="${esc(SESSION?.display_name||'')}">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="account-wrap"><button type="button" class="avatar avatar-button" data-avatar data-account-toggle aria-haspopup="menu" aria-expanded="false" aria-label="账号菜单" title="${esc(SESSION?.display_name||'')}">${avatarBody()}</button></div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -664,7 +841,7 @@ function render() {
   unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
   if (chatOpen) bindChatChrome();
-  if (state.view === 'settings' && !llmSettings && !settingsError) {
+  if (state.view === 'settings' && state.settingsTab === 'llm' && !llmSettings && !settingsError) {
     ensureSettings().then(() => {
       if (state.view === 'settings') render();
     }).catch(error => {
@@ -954,19 +1131,76 @@ async function ensureSettings() {
   return llmSettings;
 }
 
-function settingsPage() {
+function settingsHero() {
+  return hero('SETTINGS / 06', '设置');
+}
+
+function settingsTabs() {
+  const tabs = SETTINGS_TABS.filter(([id]) => id !== 'llm' || !isStudentAccount());
+  return `<div class="settings-tabs" role="tablist" aria-label="设置分类">${tabs.map(([id, label, ico]) => `<button type="button" role="tab" aria-selected="${state.settingsTab === id}" class="${state.settingsTab === id ? 'active' : ''}" data-settings-tab="${id}">${icon(ico, 14)}${label}</button>`).join('')}</div>`;
+}
+
+function appearancePanel() {
+  const theme = currentTheme();
+  return `<section class="panel">
+    ${panelHead('外观主题', '三套主题共用同一套布局与字号，只改变配色与对比度。', '<span class="pill">本机保存</span>')}
+    <div class="theme-options" role="radiogroup" aria-label="外观主题">${THEMES.map(t => `<button type="button" class="theme-card ${theme === t.id ? 'active' : ''}" data-theme-choice="${t.id}" role="radio" aria-checked="${theme === t.id}">
+      <span class="theme-preview ${t.id}" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="theme-copy"><strong>${t.label}</strong><small>${t.desc}</small></span>
+      <span class="theme-check">${icon('check', 13)}</span>
+    </button>`).join('')}</div>
+  </section>`;
+}
+
+function infoRows() {
+  const teacher = SESSION?.role === 'teacher';
+  const rows = [
+    ['姓名', SESSION?.display_name || '—'],
+    ['账号', SESSION?.username || '—'],
+    ['身份', teacher ? '教师' : '学生']
+  ];
+  if (teacher) {
+    rows.push(['数据集', D.meta.dataset_id]);
+    rows.push(['学生数', `${D.students.length} 人`]);
+    rows.push(['测验节点', `${D.nodes.length} 个`]);
+  } else {
+    const p = currentProfile();
+    rows.push(['班级', p?.group_id || '—']);
+    rows.push(['年级', D.meta.grade || '—']);
+    rows.push(['当前测验', `${state.node}${node()?.date ? ' · ' + node().date : ''}`]);
+  }
+  const generated = String(D.meta.generated_at || '').replace('T', ' ').slice(0, 19);
+  rows.push(['数据快照', D.meta.snapshot_id || '—']);
+  rows.push(['生成时间', generated || '—']);
+  rows.push(['推荐模式', D.meta.recommendation_mode || '—']);
+  return rows;
+}
+
+function profilePanel() {
+  const name = SESSION?.display_name || '—';
+  const roleText = SESSION?.role === 'teacher' ? '教师账号' : '学生账号';
+  const subtitle = [SESSION?.username || '', roleText].filter(Boolean).join(' · ');
+  return `<section class="panel">
+    ${panelHead('个人信息', '本机账号与当前数据快照；这些信息只在这台电脑上使用。', '<span class="pill">本机账号</span>')}
+    <div class="info-hero"><span class="info-avatar" data-avatar>${avatarBody()}</span><div class="info-hero-copy"><h3>${esc(name)}</h3><p>${esc(subtitle)}</p></div><div class="avatar-actions"><label class="button light avatar-upload" for="avatar-input">${icon('download', 13)}上传头像</label><input type="file" id="avatar-input" accept="image/png,image/jpeg,image/webp" hidden>${readAvatar() ? '<button type="button" class="text-button" data-avatar-clear>移除头像</button>' : ''}</div></div>
+    <p class="avatar-hint">头像只保存在本机浏览器，不上传后端；未上传时教师显示「教」、学生显示「学」。</p>
+    <div class="info-grid">${infoRows().map(([label, value]) => `<div class="info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('')}</div>
+    <div class="notice"><strong>账号来源：</strong>账号与密码保存在本机 <code>data/auth/users.json</code>（Git 忽略），由启动时自动生成；修改后重启工作台生效。</div>
+  </section>`;
+}
+
+function llmPanel() {
   if (settingsError) {
-    return `${hero('SETTINGS / 06','设置暂时读不到。','后端没有返回本机配置，请确认启动窗口仍在运行。')}<section class="panel"><div class="error-box">${esc(settingsError)}</div><button class="button light section-gap" data-view="settings">重试 ${icon('arrow',14)}</button></section>`;
+    return `<section class="panel"><div class="error-box">${esc(settingsError)}</div><button class="button light section-gap" data-settings-tab="llm">重试 ${icon('arrow', 14)}</button></section>`;
   }
   if (!llmSettings) {
-    return `${hero('SETTINGS / 06','正在读取本机配置…','设置只写这台电脑上的 .env，不会离开本机。')}<section class="panel"><div class="empty">读取中…</div></section>`;
+    return `<section class="panel"><div class="empty">正在读取本机配置…</div></section>`;
   }
   const s = llmSettings;
   const provider = s.providers.find(p => p.value === s.provider) || s.providers[0];
-  return `${hero('SETTINGS / 06','把模型接进来，但数字仍由代码算。','这里改的是本机后端配置；保存后对之后生成的建议生效，页面上已有成果不会自动重算。')}
-  <div class="settings-grid">
+  return `<div class="settings-grid">
     <section class="panel">
-      ${panelHead('LLM 文字层','只改写 reason/check；输出要过数字锁与 ID 锁，失败逐条回退模板。','<span class="pill">本机设置</span>')}
+      ${panelHead('LLM 文字层', '只改写 reason/check；输出要过数字锁与 ID 锁，失败逐条回退模板。', '<span class="pill">本机设置</span>')}
       <form id="settings-form" class="settings-form" autocomplete="off">
         <label class="switch">
           <input type="checkbox" id="llm-enabled" ${s.enabled ? 'checked' : ''}>
@@ -995,7 +1229,7 @@ function settingsPage() {
       </form>
     </section>
     <section class="panel">
-      ${panelHead('当前状态','后端已解析的值；保存成功后立即刷新。')}
+      ${panelHead('当前状态', '后端已解析的值；保存成功后立即刷新。')}
       <div class="settings-status">
         <div><span>开关</span><strong>${s.enabled ? '已启用' : '未启用'}</strong></div>
         <div><span>可调用</span><strong>${s.ready ? '是' : '否（缺 Key 或未启用）'}</strong></div>
@@ -1010,9 +1244,62 @@ function settingsPage() {
   </div>`;
 }
 
+function settingsPage() {
+  const body = state.settingsTab === 'profile'
+    ? profilePanel()
+    : state.settingsTab === 'llm'
+      ? llmPanel()
+      : appearancePanel();
+  return `${settingsHero()}${settingsTabs()}${body}`;
+}
+
+// Any click outside the account chip dismisses the popconfirm.
+document.addEventListener('click', event => {
+  if (!event.target.closest('.account-wrap')) closeAccountMenu();
+}, true);
+
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b) return;
+  if (b.hasAttribute('data-account-toggle')) {
+    toggleAccountMenu();
+    return;
+  }
+  if (b.hasAttribute('data-account-profile')) {
+    closeAccountMenu();
+    state.view = 'settings';
+    state.settingsTab = 'profile';
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
+  if (b.hasAttribute('data-avatar-clear')) {
+    if (writeAvatar('')) {
+      refreshAvatars();
+      if (state.view === 'settings') render();
+      toast('头像已移除。');
+    }
+    return;
+  }
+  if (b.dataset.themeChoice) {
+    switchTheme(b.dataset.themeChoice, event);
+    document.querySelectorAll('[data-theme-choice]').forEach(el => {
+      const on = el.dataset.themeChoice === b.dataset.themeChoice;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-checked', String(on));
+    });
+    return;
+  }
+  if (b.dataset.settingsTab) {
+    state.settingsTab = b.dataset.settingsTab;
+    if (state.settingsTab === 'llm') {
+      llmSettings = null;
+      settingsError = null;
+    }
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
   if (b.hasAttribute('data-logout')) {
     logout();
     return;
@@ -1127,6 +1414,11 @@ document.addEventListener('click', event => {
   if (b.hasAttribute('data-export')) exportSummary();
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'avatar-input') {
+    handleAvatarFile(event.target.files?.[0]);
+    event.target.value = '';
+    return;
+  }
   if (event.target.id === 'chat-mode') {
     state.chatMode = event.target.value;
     return;
@@ -1293,6 +1585,7 @@ $('#drawer').addEventListener('cancel', () => {
 });
 document.addEventListener('keydown', event => {
   if (document.querySelector('#drawer')?.open) return;
+  if (event.key === 'Escape') closeAccountMenu();
   if (event.key === 'Escape' && chatOpen) {
     chatOpen = false;
     renderChat();

@@ -1,0 +1,277 @@
+@charset "UTF-8";
+
+/* =====================================================================
+   Motion layer — loaded after styles.css and theme.css.
+   - staggered list entrance: each child slides up with a small elastic
+   - button press: 0.96 compression + inner shadow, springy release
+   Everything here is disabled under prefers-reduced-motion.
+   ===================================================================== */
+
+@keyframes kf-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(.985);
+  }
+
+  62% {
+    opacity: 1;
+    transform: translate3d(0, -3px, 0) scale(1.002);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+
+  /* ---- staggered entrance ---- */
+  .stats-grid > *,
+  .focus-summary-grid > *,
+  .plan-list > *,
+  .path-list > *,
+  .requirement-grid > *,
+  .material-buttons > *,
+  .info-grid > *,
+  .mini-metrics > *,
+  .state-bars > *,
+  .settings-status > div,
+  .comparison-chart > .comparison-row,
+  .node-history > div,
+  .chat-log > .chat-msg,
+  .data-table tbody > tr {
+    animation: kf-rise .55s cubic-bezier(.22, .9, .3, 1.12) both;
+  }
+
+  /* 32ms staircase; capped so long lists do not feel slow. */
+  .stats-grid > :nth-child(1),
+  .focus-summary-grid > :nth-child(1),
+  .plan-list > :nth-child(1),
+  .path-list > :nth-child(1),
+  .requirement-grid > :nth-child(1),
+  .material-buttons > :nth-child(1),
+  .info-grid > :nth-child(1),
+  .mini-metrics > :nth-child(1),
+  .state-bars > :nth-child(1),
+  .settings-status > :nth-child(1),
+  .comparison-chart > :nth-child(1),
+  .node-history > :nth-child(1),
+  .chat-log > :nth-child(1),
+  .data-table tbody > tr:nth-child(1) {
+    animation-delay: 0ms;
+  }
+
+  .stats-grid > :nth-child(2),
+  .focus-summary-grid > :nth-child(2),
+  .plan-list > :nth-child(2),
+  .path-list > :nth-child(2),
+  .requirement-grid > :nth-child(2),
+  .material-buttons > :nth-child(2),
+  .info-grid > :nth-child(2),
+  .mini-metrics > :nth-child(2),
+  .state-bars > :nth-child(2),
+  .settings-status > :nth-child(2),
+  .comparison-chart > :nth-child(2),
+  .node-history > :nth-child(2),
+  .chat-log > :nth-child(2),
+  .data-table tbody > tr:nth-child(2) {
+    animation-delay: 32ms;
+  }
+
+  .stats-grid > :nth-child(3),
+  .focus-summary-grid > :nth-child(3),
+  .plan-list > :nth-child(3),
+  .path-list > :nth-child(3),
+  .requirement-grid > :nth-child(3),
+  .material-buttons > :nth-child(3),
+  .info-grid > :nth-child(3),
+  .mini-metrics > :nth-child(3),
+  .state-bars > :nth-child(3),
+  .settings-status > :nth-child(3),
+  .comparison-chart > :nth-child(3),
+  .node-history > :nth-child(3),
+  .chat-log > :nth-child(3),
+  .data-table tbody > tr:nth-child(3) {
+    animation-delay: 64ms;
+  }
+
+  .stats-grid > :nth-child(4),
+  .focus-summary-grid > :nth-child(4),
+  .plan-list > :nth-child(4),
+  .path-list > :nth-child(4),
+  .requirement-grid > :nth-child(4),
+  .material-buttons > :nth-child(4),
+  .info-grid > :nth-child(4),
+  .mini-metrics > :nth-child(4),
+  .state-bars > :nth-child(4),
+  .settings-status > :nth-child(4),
+  .comparison-chart > :nth-child(4),
+  .node-history > :nth-child(4),
+  .chat-log > :nth-child(4),
+  .data-table tbody > tr:nth-child(4) {
+    animation-delay: 96ms;
+  }
+
+  .stats-grid > :nth-child(5),
+  .focus-summary-grid > :nth-child(5),
+  .plan-list > :nth-child(5),
+  .path-list > :nth-child(5),
+  .requirement-grid > :nth-child(5),
+  .material-buttons > :nth-child(5),
+  .info-grid > :nth-child(5),
+  .mini-metrics > :nth-child(5),
+  .state-bars > :nth-child(5),
+  .settings-status > :nth-child(5),
+  .comparison-chart > :nth-child(5),
+  .node-history > :nth-child(5),
+  .chat-log > :nth-child(5),
+  .data-table tbody > tr:nth-child(5) {
+    animation-delay: 128ms;
+  }
+
+  .stats-grid > :nth-child(6),
+  .focus-summary-grid > :nth-child(6),
+  .plan-list > :nth-child(6),
+  .path-list > :nth-child(6),
+  .requirement-grid > :nth-child(6),
+  .material-buttons > :nth-child(6),
+  .info-grid > :nth-child(6),
+  .mini-metrics > :nth-child(6),
+  .state-bars > :nth-child(6),
+  .settings-status > :nth-child(6),
+  .comparison-chart > :nth-child(6),
+  .node-history > :nth-child(6),
+  .chat-log > :nth-child(6),
+  .data-table tbody > tr:nth-child(6) {
+    animation-delay: 160ms;
+  }
+
+  .stats-grid > :nth-child(7),
+  .focus-summary-grid > :nth-child(7),
+  .plan-list > :nth-child(7),
+  .path-list > :nth-child(7),
+  .requirement-grid > :nth-child(7),
+  .material-buttons > :nth-child(7),
+  .info-grid > :nth-child(7),
+  .mini-metrics > :nth-child(7),
+  .state-bars > :nth-child(7),
+  .settings-status > :nth-child(7),
+  .comparison-chart > :nth-child(7),
+  .node-history > :nth-child(7),
+  .chat-log > :nth-child(7),
+  .data-table tbody > tr:nth-child(7) {
+    animation-delay: 192ms;
+  }
+
+  .stats-grid > :nth-child(8),
+  .focus-summary-grid > :nth-child(8),
+  .plan-list > :nth-child(8),
+  .path-list > :nth-child(8),
+  .requirement-grid > :nth-child(8),
+  .material-buttons > :nth-child(8),
+  .info-grid > :nth-child(8),
+  .mini-metrics > :nth-child(8),
+  .state-bars > :nth-child(8),
+  .settings-status > :nth-child(8),
+  .comparison-chart > :nth-child(8),
+  .node-history > :nth-child(8),
+  .chat-log > :nth-child(8),
+  .data-table tbody > tr:nth-child(8) {
+    animation-delay: 224ms;
+  }
+
+  .stats-grid > :nth-child(9),
+  .focus-summary-grid > :nth-child(9),
+  .plan-list > :nth-child(9),
+  .path-list > :nth-child(9),
+  .requirement-grid > :nth-child(9),
+  .material-buttons > :nth-child(9),
+  .info-grid > :nth-child(9),
+  .mini-metrics > :nth-child(9),
+  .state-bars > :nth-child(9),
+  .settings-status > :nth-child(9),
+  .comparison-chart > :nth-child(9),
+  .node-history > :nth-child(9),
+  .chat-log > :nth-child(9),
+  .data-table tbody > tr:nth-child(9) {
+    animation-delay: 256ms;
+  }
+
+  .stats-grid > :nth-child(10),
+  .focus-summary-grid > :nth-child(10),
+  .plan-list > :nth-child(10),
+  .path-list > :nth-child(10),
+  .requirement-grid > :nth-child(10),
+  .material-buttons > :nth-child(10),
+  .info-grid > :nth-child(10),
+  .mini-metrics > :nth-child(10),
+  .state-bars > :nth-child(10),
+  .settings-status > :nth-child(10),
+  .comparison-chart > :nth-child(10),
+  .node-history > :nth-child(10),
+  .chat-log > :nth-child(10),
+  .data-table tbody > tr:nth-child(10) {
+    animation-delay: 288ms;
+  }
+
+  /* ---- press physics: compress, then spring back with a slight overshoot ---- */
+  .button,
+  .material-chip,
+  .account-trigger,
+  .settings-link,
+  .tabs button,
+  .profile-tabs button,
+  .settings-tabs button {
+    transition:
+      transform 280ms cubic-bezier(.34, 1.56, .64, 1),
+      box-shadow 240ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+    transform-origin: 50% 52%;
+  }
+
+  .text-button,
+  .state-bar-row,
+  .mastery-row,
+  .knowledge-link,
+  .cell,
+  .nav button,
+  .account-pop button {
+    transition:
+      transform 260ms cubic-bezier(.34, 1.56, .64, 1),
+      background-color 160ms ease,
+      color 160ms ease;
+    transform-origin: 50% 52%;
+  }
+
+  .button:active,
+  .material-chip:active,
+  .account-trigger:active,
+  .settings-link:active,
+  .tabs button:active,
+  .profile-tabs button:active,
+  .settings-tabs button:active {
+    transform: scale(.96);
+    box-shadow: var(--press-shadow);
+    transition-duration: 70ms, 70ms, 70ms, 70ms, 70ms;
+  }
+
+  .text-button:active,
+  .state-bar-row:active,
+  .mastery-row:active,
+  .knowledge-link:active,
+  .cell:active,
+  .nav button:active,
+  .account-pop button:active {
+    transform: scale(.96);
+    transition-duration: 70ms, 70ms, 70ms;
+  }
+
+  .button[disabled]:active,
+  .button:disabled:active {
+    transform: none;
+    box-shadow: none;
+  }
+}

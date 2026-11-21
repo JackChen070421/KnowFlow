@@ -1,0 +1,803 @@
+@charset "UTF-8";
+
+/* =====================================================================
+   Theme layer — loaded after styles.css.
+   light (default) / dark / eye-care share one layout and one type scale;
+   only the palette changes, so nothing reflows or rescales on switch.
+   ===================================================================== */
+
+:root {
+  --surface: #fff;
+  --surface-2: #f7f9f6;
+  --surface-3: #eef2ee;
+  --shadow-card: 0 18px 40px -32px rgba(17, 60, 64, .45);
+  --chart-track: #eef2f1;
+  --chart-grid: #e5ebe9;
+  --chart-label-bg: #fff;
+  --press-shadow: inset 0 3px 9px rgba(17, 60, 64, .2);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --ink: #e3ebee;
+  --muted: #93a6ac;
+  --teal: #5cb9a6;
+  --deep: #071417;
+  --mint: #17302c;
+  --paper: #0c1315;
+  --line: #243137;
+  --white: #151d21;
+  --orange: #d59a6b;
+  --purple: #a99ac9;
+  --surface: #141c20;
+  --surface-2: #192328;
+  --surface-3: #202c32;
+  --shadow-card: 0 22px 46px -34px rgba(0, 0, 0, .85);
+  --chart-track: #223036;
+  --chart-grid: #24323a;
+  --chart-label-bg: #192328;
+  --press-shadow: inset 0 3px 10px rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+[data-theme="eye"] {
+  --ink: #2b3a31;
+  --muted: #6c7d6e;
+  --teal: #3c7a5f;
+  --deep: #1e3a2b;
+  --mint: #e2ecda;
+  --paper: #e9efe0;
+  --line: #d2ddc6;
+  --white: #f5f8ef;
+  --orange: #b57a49;
+  --purple: #8d7aab;
+  --surface: #f5f8ef;
+  --surface-2: #eef3e6;
+  --surface-3: #e5ecd9;
+  --shadow-card: 0 16px 36px -30px rgba(45, 70, 50, .5);
+  --chart-track: #e2e9d9;
+  --chart-grid: #dee6d3;
+  --chart-label-bg: #f5f8ef;
+  --press-shadow: inset 0 3px 9px rgba(45, 70, 50, .22);
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------
+   Shared surface remap for the two non-default themes
+   --------------------------------------------------------------------- */
+
+[data-theme="dark"] body,
+[data-theme="eye"] body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .topbar,
+[data-theme="eye"] .topbar {
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border-bottom-color: var(--line);
+}
+
+[data-theme="dark"] .panel,
+[data-theme="eye"] .panel,
+[data-theme="dark"] .stat-card,
+[data-theme="eye"] .stat-card,
+[data-theme="dark"] .plan-card,
+[data-theme="eye"] .plan-card,
+[data-theme="dark"] .requirement-card,
+[data-theme="eye"] .requirement-card,
+[data-theme="dark"] .review-entry-card,
+[data-theme="eye"] .review-entry-card,
+[data-theme="dark"] .focus-summary,
+[data-theme="eye"] .focus-summary,
+[data-theme="dark"] .empty,
+[data-theme="eye"] .empty,
+[data-theme="dark"] .error-box,
+[data-theme="eye"] .error-box,
+[data-theme="dark"] .settings-status,
+[data-theme="eye"] .settings-status,
+[data-theme="dark"] .collapsible-panel,
+[data-theme="eye"] .collapsible-panel,
+[data-theme="dark"] .switch,
+[data-theme="eye"] .switch,
+[data-theme="dark"] dialog,
+[data-theme="eye"] dialog,
+[data-theme="dark"] .chat-panel,
+[data-theme="eye"] .chat-panel {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .node-card,
+[data-theme="eye"] .node-card,
+[data-theme="dark"] .profile-banner,
+[data-theme="eye"] .profile-banner,
+[data-theme="dark"] .student-hero,
+[data-theme="eye"] .student-hero {
+  background: linear-gradient(125deg, var(--surface-2), var(--surface-3));
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .button,
+[data-theme="eye"] .button {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .button.light,
+[data-theme="eye"] .button.light {
+  background: var(--surface-3);
+  border-color: transparent;
+  color: var(--teal);
+}
+
+[data-theme="dark"] .button.primary,
+[data-theme="eye"] .button.primary {
+  background: var(--teal);
+  color: #08171a;
+}
+
+[data-theme="dark"] .material-chip,
+[data-theme="eye"] .material-chip {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .pill,
+[data-theme="eye"] .pill {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .notice,
+[data-theme="eye"] .notice {
+  background: var(--surface-2);
+  border-left-color: var(--teal);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .data-table td,
+[data-theme="eye"] .data-table td {
+  border-bottom-color: var(--line);
+}
+
+[data-theme="dark"] .data-table tbody tr:hover td,
+[data-theme="eye"] .data-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] .data-table th,
+[data-theme="eye"] .data-table th {
+  color: var(--muted);
+}
+
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="eye"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] select,
+[data-theme="eye"] select,
+[data-theme="dark"] textarea,
+[data-theme="eye"] textarea,
+[data-theme="dark"] .search-field,
+[data-theme="eye"] .search-field {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .filter select,
+[data-theme="eye"] .filter select,
+[data-theme="dark"] .tabs button,
+[data-theme="eye"] .tabs button,
+[data-theme="dark"] .profile-tabs button,
+[data-theme="eye"] .profile-tabs button {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .tabs button.active,
+[data-theme="eye"] .tabs button.active,
+[data-theme="dark"] .profile-tabs button.active,
+[data-theme="eye"] .profile-tabs button.active {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .method-details,
+[data-theme="eye"] .method-details,
+[data-theme="dark"] .collapse-summary,
+[data-theme="eye"] .collapse-summary {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .hist-well,
+[data-theme="eye"] .hist-well,
+[data-theme="dark"] .bar-track,
+[data-theme="eye"] .bar-track,
+[data-theme="dark"] .progress-track,
+[data-theme="eye"] .progress-track,
+[data-theme="dark"] .comparison-track,
+[data-theme="eye"] .comparison-track {
+  background: var(--surface-3);
+}
+
+[data-theme="dark"] .chat-bubble,
+[data-theme="eye"] .chat-bubble,
+[data-theme="dark"] .chat-form,
+[data-theme="eye"] .chat-form,
+[data-theme="dark"] .chat-input-row,
+[data-theme="eye"] .chat-input-row {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .chat-msg.user .chat-bubble,
+[data-theme="eye"] .chat-msg.user .chat-bubble {
+  background: var(--mint);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .legend,
+[data-theme="eye"] .legend {
+  color: var(--muted);
+}
+
+/* Dark-only refinement: soft decorative glows stay subtle. */
+[data-theme="dark"] .stat-card:after {
+  opacity: .16;
+}
+
+/* Sidebar selected states keep the mint accent instead of a white pill. */
+[data-theme="dark"] .nav button.active,
+[data-theme="eye"] .nav button.active,
+[data-theme="dark"] .settings-link.active,
+[data-theme="eye"] .settings-link.active {
+  background: var(--mint);
+  color: var(--ink);
+}
+
+/* Tables: header band, selected row and hover stay on the themed surfaces. */
+[data-theme="dark"] .data-table th,
+[data-theme="eye"] .data-table th {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] .data-table tr.selected,
+[data-theme="eye"] .data-table tr.selected {
+  background: var(--surface-3);
+}
+
+[data-theme="dark"] .distribution-summary,
+[data-theme="eye"] .distribution-summary {
+  background: var(--surface-2);
+  border-top-color: var(--line);
+}
+
+[data-theme="dark"] .distribution-summary > span,
+[data-theme="eye"] .distribution-summary > span {
+  border-right-color: var(--line);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .distribution-summary strong,
+[data-theme="eye"] .distribution-summary strong {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .inline-stat,
+[data-theme="eye"] .inline-stat {
+  border-top-color: var(--line);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .inline-stat strong,
+[data-theme="eye"] .inline-stat strong {
+  color: var(--teal);
+}
+
+/* Remaining light literals on secondary surfaces. */
+[data-theme="dark"] .evidence-item,
+[data-theme="eye"] .evidence-item,
+[data-theme="dark"] .plain-text,
+[data-theme="eye"] .plain-text,
+[data-theme="dark"] .chat-msg.assistant .chat-bubble,
+[data-theme="eye"] .chat-msg.assistant .chat-bubble,
+[data-theme="dark"] .chat-prompts button,
+[data-theme="eye"] .chat-prompts button,
+[data-theme="dark"] .lab-tabs button,
+[data-theme="eye"] .lab-tabs button,
+[data-theme="dark"] .knowledge-node,
+[data-theme="eye"] .knowledge-node,
+[data-theme="dark"] .skip-link,
+[data-theme="eye"] .skip-link {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .chat-log,
+[data-theme="eye"] .chat-log {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] .chat-form textarea,
+[data-theme="eye"] .chat-form textarea,
+[data-theme="dark"] .answer-form textarea,
+[data-theme="eye"] .answer-form textarea,
+[data-theme="dark"] .field select,
+[data-theme="eye"] .field select,
+[data-theme="dark"] .field input,
+[data-theme="eye"] .field input {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .page-footer,
+[data-theme="dark"] .breadcrumb {
+  color: var(--muted);
+}
+
+/* Sidebar stays the anchor of both themes. */
+[data-theme="eye"] .sidebar {
+  background: var(--deep);
+}
+
+[data-theme="eye"] .settings-link {
+  border-color: #ffffff1f;
+  color: #b9d6c6;
+}
+
+/* ---------------------------------------------------------------------
+   Theme switch: a circle grows from the click point and covers the page.
+   Only the visible area changes; layout and font sizes stay untouched.
+   --------------------------------------------------------------------- */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Settings: tabs, appearance cards, personal info
+   --------------------------------------------------------------------- */
+
+.settings-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.settings-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.settings-tabs button.active {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 8px 18px -14px rgba(17, 60, 64, .55);
+}
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(194px, 1fr));
+  gap: 14px;
+  margin: 4px 0 16px;
+}
+
+.theme-card {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-card.active {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+
+.theme-card .theme-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #08171a;
+  opacity: 0;
+  transform: scale(.7);
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.theme-card.active .theme-check {
+  opacity: 1;
+  transform: none;
+}
+
+.theme-preview {
+  display: flex;
+  gap: 5px;
+  height: 66px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.theme-preview i {
+  flex: 1;
+  border-radius: 5px;
+}
+
+.theme-preview.light {
+  background: #f3f5f2;
+}
+
+.theme-preview.light i:nth-child(1) {
+  background: #113c40;
+}
+
+.theme-preview.light i:nth-child(2) {
+  background: #fff;
+  border: 1px solid #e4eae6;
+}
+
+.theme-preview.light i:nth-child(3) {
+  background: #e7f2ed;
+}
+
+.theme-preview.dark {
+  background: #0c1315;
+}
+
+.theme-preview.dark i:nth-child(1) {
+  background: #071417;
+}
+
+.theme-preview.dark i:nth-child(2) {
+  background: #141c20;
+  border: 1px solid #243137;
+}
+
+.theme-preview.dark i:nth-child(3) {
+  background: #5cb9a6;
+}
+
+.theme-preview.eye {
+  background: #e9efe0;
+}
+
+.theme-preview.eye i:nth-child(1) {
+  background: #1e3a2b;
+}
+
+.theme-preview.eye i:nth-child(2) {
+  background: #f5f8ef;
+  border: 1px solid #d2ddc6;
+}
+
+.theme-preview.eye i:nth-child(3) {
+  background: #e2ecda;
+}
+
+.theme-copy strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.theme-copy small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.info-hero {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(130deg, var(--surface-2), var(--surface-3));
+  margin-bottom: 16px;
+}
+
+.info-avatar {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #08171a;
+  font-weight: 700;
+  font-size: 18px;
+  flex: none;
+  overflow: hidden;
+}
+
+.info-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.info-hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.avatar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.avatar-upload {
+  cursor: pointer;
+}
+
+.avatar-hint {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.info-hero h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.info-hero p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(206px, 1fr));
+  gap: 12px;
+}
+
+.info-row {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.info-row span {
+  display: block;
+  font-size: 10.5px;
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+
+.info-row strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+/* ---------------------------------------------------------------------
+   Header account popconfirm
+   --------------------------------------------------------------------- */
+
+.account-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Header avatar doubles as the account menu trigger. */
+.avatar-button {
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 160ms ease, transform 240ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+.avatar-button:hover {
+  box-shadow: 0 0 0 3px rgba(92, 185, 166, .22);
+}
+
+.avatar-button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-text {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+[data-theme="dark"] .avatar {
+  background: var(--surface-3);
+  border-color: var(--surface);
+  color: var(--teal);
+}
+
+[data-theme="eye"] .avatar {
+  background: var(--surface-3);
+  border-color: var(--white);
+}
+
+.account-pop-head {
+  padding: 8px 10px 9px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-pop-head strong {
+  display: block;
+  font-size: 12.5px;
+}
+
+.account-pop-head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.account-trigger[aria-expanded="true"] {
+  border-color: var(--teal);
+}
+
+.account-trigger small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-trigger svg:last-child {
+  transform: rotate(90deg);
+  opacity: .55;
+}
+
+.account-pop {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 70;
+  min-width: 182px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 20px 44px -26px rgba(17, 60, 64, .58), 0 2px 8px rgba(17, 60, 64, .07);
+  animation: kf-pop-in .16s ease-out both;
+  transform-origin: top right;
+}
+
+[data-theme="dark"] .account-pop {
+  box-shadow: 0 24px 48px -24px rgba(0, 0, 0, .9), 0 0 0 1px rgba(255, 255, 255, .03);
+}
+
+.account-pop:before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: 24px;
+  width: 9px;
+  height: 9px;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+
+.account-pop button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-pop button:hover {
+  background: var(--surface-2);
+}
+
+.account-pop button.danger {
+  color: #c05a44;
+}
+
+[data-theme="dark"] .account-pop button.danger {
+  color: #e2907c;
+}
+
+@keyframes kf-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -4098,3 +4098,43 @@ details[open] .collapse-toggle svg { transform: rotate(90deg); }
   .chat-head { cursor: default; }
   .chat-panel { min-width: 0; min-height: 0; }
 }
+
+/* ---- account chrome: viewer chip + logout (replaces the old role switch) ---- */
+.viewer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--deep);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap
+}
+
+.viewer-chip strong {
+  font-weight: 600;
+  font-size: 12.5px
+}
+
+.viewer-chip small {
+  color: var(--muted);
+  font-size: 11px
+}
+
+.logout-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  white-space: nowrap
+}
+
+.logout-button:hover {
+  color: #b4543c
+}
+
+@media (max-width: 720px) {
+  .viewer-chip small { display: none }
+}

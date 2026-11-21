@@ -27,6 +27,10 @@ let D, kb, storageOK = true,
   chatBusy = false,
   chatMessages = [];
 let chatGeometry = null;
+let SESSION = null;
+// The signed-in account decides what may be changed; ``state.role`` is only the
+// view being rendered (a teacher may preview the student view of one learner).
+const isStudentAccount = () => SESSION?.role === 'student';
 const params = new URLSearchParams(location.search);
 const state = {
   role: location.pathname === '/student' ? 'student' : 'teacher',
@@ -120,10 +124,15 @@ function routeURL(role, view = 'overview') {
 }
 
 function normalize() {
+  if (isStudentAccount() && SESSION?.student_id) {
+    state.role = 'student';
+    state.student = SESSION.student_id;
+    state.group = 'ALL';
+  }
   if (!D.nodes.some(n => n.node_id === state.node)) state.node = D.nodes.at(-1).node_id;
   if (!D.students.some(s => s.student_id === state.student)) state.student = D.students[0].student_id;
   if (!['ALL', ...groups()].includes(state.group)) state.group = 'ALL';
-  const allowedViews = [...navItems().map(x => x[0]), 'settings'];
+  const allowedViews = [...navItems().map(x => x[0]), ...(isStudentAccount() ? [] : ['settings'])];
   if (state.role === 'teacher') allowedViews.push('reviews');
   if (!allowedViews.includes(state.view)) state.view = 'overview';
 }
@@ -144,7 +153,7 @@ function navItems() {
 
 function shell() {
   const active = navItems().find(n => n[0] === state.view) || (state.view === 'reviews' ? ['reviews', '存疑证据', 'shield'] : ['settings', '设置', 'settings']);
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="role-switch" aria-label="切换展示视角"><a href="${routeURL('teacher')}" class="${state.role==='teacher'?'active':''}">${icon('students',15)}教师视角</a><a href="${routeURL('student')}" class="${state.role==='student'?'active':''}">${icon('book',15)}学生视角</a></div><div class="avatar" title="本机演示，无登录账户">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools">${isStudentAccount()?'':`<button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button>`}</div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><span class="viewer-chip" title="${isStudentAccount()?'学生账号':'教师账号'}">${icon(SESSION?.role==='teacher'?'shield':'students',14)}<strong>${esc(SESSION?.display_name||'')}</strong><small>${SESSION?.role==='teacher'?'教师':'学生'}</small></span><button class="text-button logout-button" data-logout>${icon('close',13)}退出登录</button><div class="avatar" title="${esc(SESSION?.display_name||'')}">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -152,7 +161,7 @@ function hero(eyebrow, title, desc) {
 }
 
 function filters(student = false) {
-  return `<div class="toolbar"><div class="filters"><label class="filter">测验<select id="node-select">${D.nodes.map(n=>`<option value="${esc(n.node_id)}" ${n.node_id===state.node?'selected':''}>${esc(n.node_id)} · ${esc(n.date)}</option>`).join('')}</select></label>${state.role==='teacher'?`<label class="filter">班级范围<select id="group-select">${['ALL',...groups()].map(g=>`<option value="${esc(g)}" ${g===state.group?'selected':''}>${groupName(g)}</option>`).join('')}</select></label>`:''}${student?`<form id="student-form" class="search-field">${icon('search',16)}<input id="student-id" aria-label="输入学生 ID" list="student-ids" placeholder="输入学生 ID" value="${esc(state.student)}" autocomplete="off"><button class="text-button" type="submit">查看</button><datalist id="student-ids">${D.students.map(s=>`<option value="${esc(s.student_id)}">${esc(s.group_id)}</option>`).join('')}</datalist></form>`:''}</div></div>`;
+  return `<div class="toolbar"><div class="filters"><label class="filter">测验<select id="node-select">${D.nodes.map(n=>`<option value="${esc(n.node_id)}" ${n.node_id===state.node?'selected':''}>${esc(n.node_id)} · ${esc(n.date)}</option>`).join('')}</select></label>${state.role==='teacher'?`<label class="filter">班级范围<select id="group-select">${['ALL',...groups()].map(g=>`<option value="${esc(g)}" ${g===state.group?'selected':''}>${groupName(g)}</option>`).join('')}</select></label>`:''}${student && !isStudentAccount()?`<form id="student-form" class="search-field">${icon('search',16)}<input id="student-id" aria-label="输入学生 ID" list="student-ids" placeholder="输入学生 ID" value="${esc(state.student)}" autocomplete="off"><button class="text-button" type="submit">查看</button><datalist id="student-ids">${D.students.map(s=>`<option value="${esc(s.student_id)}">${esc(s.group_id)}</option>`).join('')}</datalist></form>`:''}</div></div>`;
 }
 
 function content() {
@@ -585,6 +594,10 @@ async function getJSON(url) {
   const r = await fetch(url, {
     cache: 'no-store'
   });
+  if (r.status === 401) {
+    location.replace('/login');
+    throw new Error('登录状态已失效，请重新登录。');
+  }
   if (!r.ok) {
     let message = '资料暂时无法读取。';
     try {
@@ -1000,6 +1013,10 @@ function settingsPage() {
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b) return;
+  if (b.hasAttribute('data-logout')) {
+    logout();
+    return;
+  }
   if (b.id === 'chat-fab') {
     chatOpen = !chatOpen;
     renderChat();
@@ -1294,10 +1311,30 @@ window.addEventListener('storage', event => {
     toast('本机练习记录已更新。');
   }
 });
+async function logout() {
+  try {
+    await fetch('/api/logout', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-KnowFlow-Logout': '1'},
+      body: '{}'
+    });
+  } catch {}
+  location.replace('/login');
+}
+
 async function init() {
   try {
+    SESSION = await getJSON('/api/session');
+    if (!SESSION.authenticated) {
+      location.replace('/login');
+      return;
+    }
     D = await getJSON('/api/snapshot');
     kb = D.knowledge_base;
+    if (isStudentAccount()) {
+      state.role = 'student';
+      state.student = SESSION.student_id;
+    }
     readWork();
     render();
   } catch (e) {

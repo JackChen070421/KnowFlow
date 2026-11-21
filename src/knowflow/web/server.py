@@ -1,10 +1,17 @@
-"""Loopback-only HTTP adapter; never expose the repository as a static directory."""
+"""Loopback-only HTTP adapter; never expose the repository as a static directory.
+
+Every page and API route except the login surface requires a local session. The
+snapshot is trimmed per account, so a student browser never receives another
+student's profiles, records or recommendations.
+"""
 
 from __future__ import annotations
 
 import json
 import sys
+import time
 import traceback
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -13,20 +20,61 @@ from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import export_evidence
 from knowflow.llm.chat import answer_question
 from knowflow.llm.settings_store import read_llm_settings, save_llm_settings
+from knowflow.web.auth import COOKIE_NAME, Account, AuthStore
 from knowflow.web.data import read_json
 
 STATIC = Path(__file__).with_name("static")
 ASSETS = {
     "/app.js": "text/javascript",
-    "/knowledge-map.js": "text/javascript",
-    "/knowledge-map.css": "text/css",
+    "/login.js": "text/javascript",
     "/charts.js": "text/javascript",
+    "/knowledge-map.js": "text/javascript",
     "/analytics.mjs": "text/javascript",
     "/styles.css": "text/css",
+    "/login.css": "text/css",
+    "/knowledge-map.css": "text/css",
     "/favicon.svg": "image/svg+xml",
 }
+PUBLIC_PAGES = {"/login"}
+SESSION_PAGES = {"/", "/teacher", "/student"}
 MAX_SETTINGS_BODY = 8192
 MAX_CHAT_BODY = 16384
+MAX_LOGIN_BODY = 4096
+LOGIN_FAILURE_DELAY = 0.4
+OPEN_ACCOUNT = Account("local", "teacher", None, "本机")
+
+
+def scope_snapshot(snapshot: dict, account: Account) -> dict:
+    """Return the part of the validated snapshot this account may see.
+
+    Students get their own profiles, recommendations, records and statistics
+    plus class-level aggregates (which carry no per-student rows). The raw
+    quality report and the disputed-score review are teacher-only.
+    """
+
+    scoped = dict(snapshot)
+    meta = dict(snapshot["meta"])
+    meta["viewer"] = {
+        "username": account.username,
+        "role": account.role,
+        "student_id": account.student_id,
+        "display_name": account.display_name,
+    }
+    scoped["meta"] = meta
+    if account.role != "student":
+        return scoped
+    sid = account.student_id
+    scoped["students"] = [s for s in snapshot["students"] if s["student_id"] == sid]
+    for key in ("profiles", "recommendations", "stats"):
+        scoped[key] = {
+            node_id: {student: value for student, value in people.items() if student == sid}
+            for node_id, people in snapshot[key].items()
+        }
+    scoped["records"] = [r for r in snapshot["records"] if r["student_id"] == sid]
+    scoped["quality"] = None
+    scoped["reviews"] = None
+    scoped["review_meta"] = None
+    return scoped
 
 
 class LocalHTTPServer(ThreadingHTTPServer):
@@ -46,6 +94,7 @@ def create_server(
     snapshot: dict,
     port: int = 8765,
     settings_path: Path | None = None,
+    auth: AuthStore | None = None,
 ) -> ThreadingHTTPServer:
     materials = {m["material_id"]: m for m in read_json(run / "knowledge_base.json")["materials"]}
     raw = (repo_root() / "data/raw" / snapshot["meta"]["dataset_id"]).resolve()
@@ -63,16 +112,25 @@ def create_server(
         if mid in documents:
             item["document_url"] = "/api/document/" + mid
     record_ids = {r["record_id"] for r in snapshot["records"]}
-    state = {"bytes": json.dumps(snapshot, ensure_ascii=False).encode("utf-8")}
+    record_owner = {r["record_id"]: r["student_id"] for r in snapshot["records"]}
+    scoped_cache: dict[str, bytes] = {}
+
+    def snapshot_bytes(account: Account) -> bytes:
+        key = account.student_id if account.role == "student" else "teacher"
+        if key not in scoped_cache:
+            scoped_cache[key] = json.dumps(
+                scope_snapshot(snapshot, account), ensure_ascii=False
+            ).encode("utf-8")
+        return scoped_cache[key]
 
     def reload_snapshot() -> str:
         from knowflow.web.data import load_dashboard, prepare
 
+        scoped_cache.clear()
         run = prepare(refresh=True)
         fresh = load_dashboard(run)
         snapshot.clear()
         snapshot.update(fresh)
-        state["bytes"] = json.dumps(fresh, ensure_ascii=False).encode("utf-8")
         return run.name
 
     def handle_feedback(payload: dict) -> dict:
@@ -191,7 +249,14 @@ def create_server(
             # Do not log student IDs or raw evidence query strings.
             return
 
-        def respond(self, data: bytes, content_type: str, status: int = 200) -> None:
+        def respond(
+            self,
+            data: bytes,
+            content_type: str,
+            status: int = 200,
+            cookies: tuple[str, ...] = (),
+            extra_headers: dict[str, str] | None = None,
+        ) -> None:
             self.send_response(status)
             self.send_header(
                 "Content-Type",
@@ -205,14 +270,24 @@ def create_server(
                 "Content-Security-Policy",
                 "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             )
+            for cookie in cookies:
+                self.send_header("Set-Cookie", cookie)
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(data)
 
-        def json(self, data: dict, status: int = 200) -> None:
+        def json(self, data: dict, status: int = 200, **kwargs) -> None:
             self.respond(
-                json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json", status
+                json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                "application/json",
+                status,
+                **kwargs,
             )
+
+        def redirect(self, location: str) -> None:
+            self.respond(b"", "text/html", 302, extra_headers={"Location": location})
 
         def do_HEAD(self):
             self.do_GET()
@@ -223,18 +298,80 @@ def create_server(
                 f"localhost:{self.server.server_port}",
             }
 
+        def session_token(self) -> str | None:
+            raw = self.headers.get("Cookie")
+            if not raw:
+                return None
+            jar = SimpleCookie()
+            try:
+                jar.load(raw)
+            except Exception:  # noqa: BLE001 - a malformed cookie is simply anonymous
+                return None
+            morsel = jar.get(COOKIE_NAME)
+            return morsel.value if morsel else None
+
+        def account(self) -> Account | None:
+            if auth is None:
+                return OPEN_ACCOUNT
+            return auth.resolve(self.session_token())
+
+        def require_teacher(self, account: Account) -> bool:
+            if account.role == "teacher":
+                return True
+            self.json({"error": "该操作仅限教师账号。"}, 403)
+            return False
+
+        def read_body(self, limit: int) -> bytes | None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if length > limit:
+                self.close_connection = True
+                self.json({"error": "请求体过大。"}, 413)
+                return None
+            body = self.rfile.read(length) if length > 0 else b""
+            return body
+
         def do_GET(self):
             if not self.allowed_host():
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
-            if path in ("/", "/teacher", "/student"):
-                self.respond((STATIC / "index.html").read_bytes(), "text/html")
-            elif path in ASSETS:
+            if path in PUBLIC_PAGES:
+                self.respond((STATIC / "login.html").read_bytes(), "text/html")
+                return
+            if path in ASSETS:
                 self.respond((STATIC / path[1:]).read_bytes(), ASSETS[path])
-            elif path == "/api/snapshot":
-                self.respond(state["bytes"], "application/json")
+                return
+            if path == "/api/session":
+                account = self.account()
+                self.json(account.as_dict() if account else {"authenticated": False})
+                return
+            if path in SESSION_PAGES:
+                account = self.account()
+                if account is None:
+                    self.redirect("/login")
+                    return
+                home = "/teacher" if account.role == "teacher" else "/student"
+                if path == "/":
+                    self.redirect(home)
+                    return
+                if path == "/teacher" and account.role != "teacher":
+                    self.redirect(home)
+                    return
+                self.respond((STATIC / "index.html").read_bytes(), "text/html")
+                return
+
+            account = self.account()
+            if account is None:
+                self.json({"error": "请先登录。"}, 401)
+                return
+            if path == "/api/snapshot":
+                self.respond(snapshot_bytes(account), "application/json")
             elif path == "/api/settings/llm":
+                if not self.require_teacher(account):
+                    return
                 try:
                     self.json(read_llm_settings())
                 except Exception:  # a broken .env must not kill the connection
@@ -256,8 +393,12 @@ def create_server(
                 path.startswith("/api/evidence/")
                 and path.removeprefix("/api/evidence/") in record_ids
             ):
+                record_id = path.removeprefix("/api/evidence/")
+                if account.role == "student" and record_owner.get(record_id) != account.student_id:
+                    self.json({"error": "只能查看本人的原始作答。"}, 403)
+                    return
                 try:
-                    target = export_evidence(run / "diagnosis", path.removeprefix("/api/evidence/"))
+                    target = export_evidence(run / "diagnosis", record_id)
                     self.json(read_json(target))
                 except (ValueError, OSError):
                     self.json({"error": "原始证据文件不可用或已变化，请重新生成展示数据。"}, 409)
@@ -270,29 +411,16 @@ def create_server(
             # page cannot silently write settings or ask questions.
             # Drain the body first: answering before reading it makes Windows
             # reset the connection instead of delivering the 4xx.
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = 0
-            if length > MAX_CHAT_BODY:
-                self.close_connection = True
-                self.json({"error": "请求体过大。"}, 413)
-                return
-            body = self.rfile.read(length) if length > 0 else b""
             if not self.allowed_host():
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
-            if path not in ("/api/settings/llm", "/api/chat", "/api/feedback"):
-                self.json({"error": "没有找到该接口。"}, 404)
+            limit = MAX_LOGIN_BODY if path == "/api/login" else MAX_CHAT_BODY
+            body = self.read_body(limit)
+            if body is None:
                 return
-            required_header = {
-                "/api/settings/llm": "X-KnowFlow-Settings",
-                "/api/chat": "X-KnowFlow-Chat",
-                "/api/feedback": "X-KnowFlow-Feedback",
-            }[path]
-            if self.headers.get(required_header) != "1":
-                self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
+            if path not in ("/api/login", "/api/logout", "/api/settings/llm", "/api/chat", "/api/feedback"):
+                self.json({"error": "没有找到该接口。"}, 404)
                 return
             content_type = (
                 (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -312,7 +440,64 @@ def create_server(
                 self.json({"error": "请求体必须是 JSON 对象。"}, 400)
                 return
 
+            if path == "/api/login":
+                if self.headers.get("X-KnowFlow-Login") != "1":
+                    self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
+                    return
+                if auth is None:
+                    self.json({"error": "本机未启用登录。"}, 400)
+                    return
+                username = str(payload.get("username") or "")
+                password = str(payload.get("password") or "")
+                account = auth.authenticate(username, password)
+                if account is None:
+                    time.sleep(LOGIN_FAILURE_DELAY)
+                    self.json({"error": "用户名或密码不正确。"}, 401)
+                    return
+                token = auth.new_session(account)
+                cookie = (
+                    f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict; "
+                    f"Max-Age={auth.ttl}"
+                )
+                home = "/teacher" if account.role == "teacher" else "/student"
+                self.json(
+                    {**account.as_dict(), "redirect": home},
+                    cookies=(cookie,),
+                )
+                return
+
+            account = self.account()
+            if account is None:
+                self.json({"error": "请先登录。"}, 401)
+                return
+
+            if path == "/api/logout":
+                if self.headers.get("X-KnowFlow-Logout") != "1":
+                    self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
+                    return
+                if auth is not None:
+                    auth.drop(self.session_token())
+                cleared = f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+                self.json({"ok": True}, cookies=(cleared,))
+                return
+
+            required_header = {
+                "/api/settings/llm": "X-KnowFlow-Settings",
+                "/api/chat": "X-KnowFlow-Chat",
+                "/api/feedback": "X-KnowFlow-Feedback",
+            }[path]
+            if self.headers.get(required_header) != "1":
+                self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
+                return
+
             if path == "/api/feedback":
+                event_type = payload.get("event_type")
+                if account.role == "student" and (
+                    event_type not in {"student_feedback", "supplemental_attempt"}
+                    or payload.get("student_id") != account.student_id
+                ):
+                    self.json({"error": "学生账号只能提交本人的学习反馈。"}, 403)
+                    return
                 try:
                     self.json(handle_feedback(payload))
                 except ValueError as exc:
@@ -323,7 +508,9 @@ def create_server(
                 return
 
             if path == "/api/settings/llm":
-                if length > MAX_SETTINGS_BODY:
+                if not self.require_teacher(account):
+                    return
+                if int(self.headers.get("Content-Length") or 0) > MAX_SETTINGS_BODY:
                     self.json({"error": "请求体过大。"}, 413)
                     return
                 try:
@@ -351,9 +538,14 @@ def create_server(
             if not isinstance(question, str) or not isinstance(context, dict):
                 self.json({"error": "message 必须是字符串，context 必须是对象。"}, 400)
                 return
+            if account.role == "student" and account.student_id:
+                context = {**context, "student_id": account.student_id}
             try:
                 result = answer_question(
-                    snapshot=snapshot, message=question, context=context, mode=mode
+                    snapshot=scope_snapshot(snapshot, account),
+                    message=question,
+                    context=context,
+                    mode=mode,
                 )
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)

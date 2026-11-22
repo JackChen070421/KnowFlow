@@ -629,3 +629,351 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
         server.server_close()
         worker.join(timeout=5)
 
+
+def test_profile_preferences_and_password_flow(dashboard_run, tmp_path):
+    from knowflow.web.auth import AuthStore
+
+    data = load_dashboard(dashboard_run)
+    student_id = data["students"][0]["student_id"]
+    auth = AuthStore(tmp_path / "users.json", student_id)
+    server = create_server(dashboard_run, data, port=0, auth=auth)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+
+    def call(method, path, payload=None, headers=None, cookie=None):
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        all_headers = dict(headers or {})
+        if cookie:
+            all_headers["Cookie"] = cookie
+        body = None
+        if payload is not None:
+            body = json.dumps(payload)
+            all_headers.setdefault("Content-Type", "application/json")
+        connection.request(method, path, body=body, headers=all_headers)
+        response = connection.getresponse()
+        raw = response.read()
+        result = (response.status, dict(response.getheaders()), raw)
+        connection.close()
+        return result
+
+    def login(username, password):
+        return call(
+            "POST",
+            "/api/login",
+            {"username": username, "password": password},
+            {"X-KnowFlow-Login": "1"},
+        )
+
+    try:
+        assert call("GET", "/api/profile")[0] == 401
+        status, headers, _ = login("teacher", "123456")
+        assert status == 200
+        cookie = headers["Set-Cookie"].split(";")[0]
+
+        status, _, raw = call("GET", "/api/profile", cookie=cookie)
+        assert status == 200
+        payload = json.loads(raw)
+        assert payload["account"]["role"] == "teacher"
+        assert payload["preferences"]["home_view"] == "overview"
+        assert payload["thresholds"] == {
+            "coverage_sufficient": 10,
+            "coverage_missing": 3,
+            "mastery_mastered": 85,
+            "mastery_weak": 60,
+        }
+
+        status, _, raw = call(
+            "POST",
+            "/api/profile",
+            {
+                "profile": {
+                    "display_name": "王老师",
+                    "term": "2026-2027春",
+                    "classes": "七年级 1 班",
+                    "subject": "数学",
+                }
+            },
+            {"X-KnowFlow-Profile": "1"},
+            cookie,
+        )
+        assert status == 200
+        updated = json.loads(raw)
+        assert updated["account"]["display_name"] == "王老师"
+        assert updated["profile"]["term"] == "2026-2027春"
+        assert updated["profile"]["classes"] == "七年级 1 班"
+
+        # invalid profile values are rejected
+        assert (
+            call(
+                "POST",
+                "/api/profile",
+                {"profile": {"display_name": "   "}},
+                {"X-KnowFlow-Profile": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        assert (
+            call(
+                "POST",
+                "/api/profile",
+                {"profile": {"term": "2026-2027夏"}},
+                {"X-KnowFlow-Profile": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+
+        # preferences + thresholds validation
+        assert (
+            call(
+                "POST",
+                "/api/preferences",
+                {"preferences": {"tone": "loud"}},
+                {"X-KnowFlow-Prefs": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        assert (
+            call(
+                "POST",
+                "/api/preferences",
+                {"thresholds": {"coverage_sufficient": 2, "coverage_missing": 5}},
+                {"X-KnowFlow-Prefs": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        status, _, raw = call(
+            "POST",
+            "/api/preferences",
+            {
+                "preferences": {
+                    "tone": "direct",
+                    "report_length": "brief",
+                    "insufficient": "probe",
+                    "home_view": "students",
+                },
+                "thresholds": {
+                    "coverage_sufficient": 12,
+                    "coverage_missing": 4,
+                    "mastery_mastered": 90,
+                    "mastery_weak": 55,
+                },
+            },
+            {"X-KnowFlow-Prefs": "1"},
+            cookie,
+        )
+        assert status == 200
+        saved = json.loads(raw)
+        assert saved["preferences"]["insufficient"] == "probe"
+        assert saved["thresholds"]["mastery_mastered"] == 90
+
+        # password change requires the current password and a long enough new one
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {"username": "teacher", "current_password": "wrong", "new_password": "new-pass-123"},
+                {"X-KnowFlow-Password": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {"username": "teacher", "current_password": "123456", "new_password": "short"},
+                {"X-KnowFlow-Password": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {"username": "teacher", "current_password": "123456", "new_password": "new-pass-123"},
+                {"X-KnowFlow-Password": "1"},
+                cookie,
+            )[0]
+            == 200
+        )
+        assert login("teacher", "123456")[0] == 401
+        assert login("teacher", "new-pass-123")[0] == 200
+
+        stored = (tmp_path / "users.json").read_text(encoding="utf-8")
+        assert "new-pass-123" not in stored
+        assert "123456" not in stored
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+def test_thresholds_drive_the_diagnosis_configuration():
+    from knowflow.web.data import diagnosis_config, threshold_config
+
+    config = diagnosis_config(
+        {
+            "coverage_sufficient": 12,
+            "coverage_missing": 5,
+            "mastery_mastered": 90,
+            "mastery_weak": 55,
+        }
+    )
+    assert config.min_evidence == 5
+    assert config.weak_threshold == 0.55
+    assert config.mastered_threshold == 0.9
+    assert threshold_config(None)["mastery_mastered"] == 85
+
+
+def test_thresholds_change_mastery_status():
+    from knowflow.diagnosis.mastery import DiagnosisConfig, estimate_mastery
+
+    default = estimate_mastery(8, 10, DiagnosisConfig())
+    strict = estimate_mastery(8, 10, DiagnosisConfig(weak_threshold=0.6, mastered_threshold=0.85))
+    assert default["status"] != strict["status"]
+    assert default["status"] in {"likely_mastered", "confirmed_mastered"}
+    assert strict["status"] == "mixed_performance"
+
+
+def test_policy_thresholds_are_read_from_the_teacher_account(tmp_path):
+    from knowflow.web.auth import DEFAULT_THRESHOLDS, AuthStore, read_policy_thresholds
+
+    users = tmp_path / "users.json"
+    auth = AuthStore(users, "S001")
+    assert auth.policy_thresholds() == DEFAULT_THRESHOLDS
+    auth.update_preferences(
+        "teacher",
+        thresholds={
+            "coverage_sufficient": 14,
+            "coverage_missing": 4,
+            "mastery_mastered": 88,
+            "mastery_weak": 52,
+        },
+    )
+    stored = read_policy_thresholds(users)
+    assert stored["coverage_sufficient"] == 14
+    assert stored["mastery_mastered"] == 88
+    assert read_policy_thresholds(tmp_path / "missing.json") is None
+
+
+def test_username_rename_and_password_requires_matching_username(dashboard_run, tmp_path):
+    from knowflow.web.auth import AuthStore
+
+    data = load_dashboard(dashboard_run)
+    student_id = data["students"][0]["student_id"]
+    auth = AuthStore(tmp_path / "users.json", student_id)
+    server = create_server(dashboard_run, data, port=0, auth=auth)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+
+    def call(method, path, payload=None, headers=None, cookie=None):
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        all_headers = dict(headers or {})
+        if cookie:
+            all_headers["Cookie"] = cookie
+        body = None
+        if payload is not None:
+            body = json.dumps(payload)
+            all_headers.setdefault("Content-Type", "application/json")
+        connection.request(method, path, body=body, headers=all_headers)
+        response = connection.getresponse()
+        raw = response.read()
+        result = (response.status, dict(response.getheaders()), raw)
+        connection.close()
+        return result
+
+    def login(username, password):
+        return call(
+            "POST",
+            "/api/login",
+            {"username": username, "password": password},
+            {"X-KnowFlow-Login": "1"},
+        )
+
+    try:
+        status, headers, _ = login("teacher", "123456")
+        assert status == 200
+        cookie = headers["Set-Cookie"].split(";")[0]
+
+        # the password form must type the current username
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {"current_password": "123456", "new_password": "new-pass-123"},
+                {"X-KnowFlow-Password": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {
+                    "username": "someone-else",
+                    "current_password": "123456",
+                    "new_password": "new-pass-123",
+                },
+                {"X-KnowFlow-Password": "1"},
+                cookie,
+            )[0]
+            == 400
+        )
+
+        # rename the account; the existing session follows the new name
+        status, _, raw = call(
+            "POST",
+            "/api/profile",
+            {"profile": {"username": "wang", "display_name": "王老师"}},
+            {"X-KnowFlow-Profile": "1"},
+            cookie,
+        )
+        assert status == 200
+        assert json.loads(raw)["account"]["username"] == "wang"
+        status, _, raw = call("GET", "/api/profile", cookie=cookie)
+        assert status == 200 and json.loads(raw)["account"]["username"] == "wang"
+
+        # the old name no longer logs in, the new one does
+        assert login("teacher", "123456")[0] == 401
+        status, headers, _ = login("wang", "123456")
+        assert status == 200
+        new_cookie = headers["Set-Cookie"].split(";")[0]
+
+        # a taken name is rejected
+        assert (
+            call(
+                "POST",
+                "/api/profile",
+                {"profile": {"username": "S001"}},
+                {"X-KnowFlow-Profile": "1"},
+                new_cookie,
+            )[0]
+            == 400
+        )
+
+        # password change with the renamed account
+        assert (
+            call(
+                "POST",
+                "/api/password",
+                {
+                    "username": "wang",
+                    "current_password": "123456",
+                    "new_password": "new-pass-123",
+                },
+                {"X-KnowFlow-Password": "1"},
+                new_cookie,
+            )[0]
+            == 200
+        )
+        assert login("wang", "new-pass-123")[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)

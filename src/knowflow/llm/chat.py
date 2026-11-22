@@ -524,6 +524,36 @@ MODE_PROMPTS = {
 }
 
 
+TONE_PROMPTS = {
+    "warm": "语气温和，先肯定已有进步，再给建议。",
+    "direct": "语气简洁直接，直接给结论与下一步。",
+    "rigorous": "语气严谨，先给依据再给判断，避免口语化。",
+}
+
+LENGTH_PROMPTS = {
+    "brief": "篇幅：不超过 120 字。",
+    "standard": "篇幅：不超过 200 字。",
+    "detailed": "篇幅：不超过 320 字，可分点说明。",
+}
+
+INSUFFICIENT_PROMPTS = {
+    "prompt": "若 FACTS 显示证据不足，直接说明信息不足，不要推测。",
+    "probe": "若 FACTS 显示证据不足，建议先做一次摸底测试来补充证据。",
+}
+
+
+def style_note(preferences: dict | None) -> str:
+    if not preferences:
+        return ""
+    parts = [
+        TONE_PROMPTS.get(preferences.get("tone")),
+        LENGTH_PROMPTS.get(preferences.get("report_length")),
+        INSUFFICIENT_PROMPTS.get(preferences.get("insufficient")),
+    ]
+    parts = [part for part in parts if part]
+    return ("\n\n附加要求：" + "；".join(parts)) if parts else ""
+
+
 def answer_question(
     *,
     snapshot: dict,
@@ -531,6 +561,7 @@ def answer_question(
     context: dict | None = None,
     client: ChatClient | None = None,
     mode: str = "concise",
+    preferences: dict | None = None,
 ) -> dict:
     """Return ``{answer, source, citations, model, note?, trace}`` for one question."""
 
@@ -551,6 +582,7 @@ def answer_question(
     if llm is not None:
         base_prompt = (
             MODE_PROMPTS[mode]
+            + style_note(preferences)
             + "\n\nFACTS（唯一可用信息）：\n"
             + json.dumps(facts, ensure_ascii=False)
             + "\n\n用户问题："

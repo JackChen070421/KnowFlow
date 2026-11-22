@@ -350,7 +350,6 @@
 }
 
 [data-theme="eye"] .settings-link {
-  border-color: #ffffff1f;
   color: #b9d6c6;
 }
 
@@ -800,4 +799,271 @@
     opacity: 1;
     transform: none;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Settings: sections, choice cards, thresholds
+   --------------------------------------------------------------------- */
+
+.settings-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+}
+
+.settings-sub:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-sub h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.settings-sub p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.choice input {
+  margin-top: 2px;
+  accent-color: var(--teal);
+}
+
+.choice span strong {
+  display: block;
+  font-size: 12.5px;
+}
+
+.choice span small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+  background: var(--surface);
+}
+
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.threshold-preview {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.settings-form input[readonly] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.field small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-result.is-error {
+  color: #c05a44;
+}
+
+[data-theme="dark"] .settings-result.is-error {
+  color: #e2907c;
+}
+
+/* ---------------------------------------------------------------------
+   Soft gradient reveal (theme switch)
+   --------------------------------------------------------------------- */
+
+html.kf-masking::view-transition-new(root) {
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 0%, #000 86%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, #000 0%, #000 86%, transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 0 0;
+  mask-size: 0 0;
+}
+
+/* Settled state: the reveal is over, so show the snapshot unmasked before the
+   class is dropped. Without this, the animation's final frame can fall back to
+   mask-size 0 for one paint and flash the page. */
+html.kf-masking-done::view-transition-new(root) {
+  -webkit-mask-image: none;
+  mask-image: none;
+  -webkit-mask-size: auto;
+  mask-size: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Threshold rows + password dialog
+   --------------------------------------------------------------------- */
+
+.threshold-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  cursor: text;
+}
+
+.threshold-row span {
+  white-space: nowrap;
+}
+
+.threshold-input {
+  width: 92px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  text-align: center;
+}
+
+.threshold-input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(92, 185, 166, .16);
+}
+
+dialog#password-dialog {
+  margin: auto;
+  width: min(420px, 92vw);
+  height: fit-content;
+  max-height: 86vh;
+  overflow: auto;
+  padding: 22px 24px 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 30px 70px -40px rgba(0, 0, 0, .6);
+}
+
+dialog#password-dialog::backdrop {
+  background: rgba(8, 20, 22, .45);
+  backdrop-filter: blur(2px);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dialog-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .threshold-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-hero {
+  margin-bottom: 12px;
+}
+
+.settings-hero h1 {
+  margin-bottom: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Account rules tooltip + animated LLM config
+   --------------------------------------------------------------------- */
+
+.info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: help;
+  vertical-align: 1px;
+}
+
+.info-dot:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.llm-config {
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height .42s cubic-bezier(.4, 0, .2, 1),
+    opacity .28s ease,
+    margin-top .3s ease;
+}
+
+.llm-config.open {
+  max-height: 640px;
+  margin-top: 14px;
+  opacity: 1;
+}
+
+.settings-hero .node-card {
+  margin-bottom: 0;
 }

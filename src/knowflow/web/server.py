@@ -98,6 +98,7 @@ def create_server(
     port: int = 8765,
     settings_path: Path | None = None,
     auth: AuthStore | None = None,
+    thresholds_provider=None,
 ) -> ThreadingHTTPServer:
     materials = {m["material_id"]: m for m in read_json(run / "knowledge_base.json")["materials"]}
     raw = (repo_root() / "data/raw" / snapshot["meta"]["dataset_id"]).resolve()
@@ -130,10 +131,14 @@ def create_server(
         from knowflow.web.data import load_dashboard, prepare
 
         scoped_cache.clear()
-        run = prepare(refresh=True)
+        thresholds = thresholds_provider() if thresholds_provider is not None else None
+        print(f"[rebuild] preparing {thresholds}", flush=True)
+        run = prepare(refresh=True, thresholds=thresholds)
+        print(f"[rebuild] validating {run.name}", flush=True)
         fresh = load_dashboard(run)
         snapshot.clear()
         snapshot.update(fresh)
+        print(f"[rebuild] snapshot updated {run.name}", flush=True)
         return run.name
 
     def handle_feedback(payload: dict) -> dict:
@@ -372,6 +377,14 @@ def create_server(
                 return
             if path == "/api/snapshot":
                 self.respond(snapshot_bytes(account), "application/json")
+            elif path == "/api/profile":
+                if auth is None:
+                    self.json({"error": "本机未启用账号，无法保存个人设置。"}, 400)
+                    return
+                try:
+                    self.json(auth.settings_payload(account.username))
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
             elif path == "/api/settings/llm":
                 if not self.require_teacher(account):
                     return
@@ -422,7 +435,17 @@ def create_server(
             body = self.read_body(limit)
             if body is None:
                 return
-            if path not in ("/api/login", "/api/logout", "/api/settings/llm", "/api/chat", "/api/feedback"):
+            if path not in (
+                "/api/login",
+                "/api/logout",
+                "/api/settings/llm",
+                "/api/chat",
+                "/api/feedback",
+                "/api/profile",
+                "/api/preferences",
+                "/api/password",
+                "/api/rebuild",
+            ):
                 self.json({"error": "没有找到该接口。"}, 404)
                 return
             content_type = (
@@ -488,6 +511,10 @@ def create_server(
                 "/api/settings/llm": "X-KnowFlow-Settings",
                 "/api/chat": "X-KnowFlow-Chat",
                 "/api/feedback": "X-KnowFlow-Feedback",
+                "/api/profile": "X-KnowFlow-Profile",
+                "/api/preferences": "X-KnowFlow-Prefs",
+                "/api/password": "X-KnowFlow-Password",
+                "/api/rebuild": "X-KnowFlow-Rebuild",
             }[path]
             if self.headers.get(required_header) != "1":
                 self.json({"error": "缺少本机请求头，已拒绝。"}, 403)
@@ -532,6 +559,71 @@ def create_server(
                 self.json(settings)
                 return
 
+            if path == "/api/profile":
+                if auth is None:
+                    self.json({"error": "本机未启用账号，无法保存个人设置。"}, 400)
+                    return
+                try:
+                    values = payload.get("profile") if isinstance(payload.get("profile"), dict) else payload
+                    self.json(auth.update_profile(account.username, values))
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                return
+
+            if path == "/api/preferences":
+                if auth is None:
+                    self.json({"error": "本机未启用账号，无法保存偏好。"}, 400)
+                    return
+                preferences = payload.get("preferences")
+                thresholds = payload.get("thresholds")
+                if preferences is not None and not isinstance(preferences, dict):
+                    self.json({"error": "偏好格式不正确。"}, 400)
+                    return
+                if thresholds is not None and not isinstance(thresholds, dict):
+                    self.json({"error": "阈值格式不正确。"}, 400)
+                    return
+                try:
+                    self.json(
+                        auth.update_preferences(
+                            account.username, preferences=preferences, thresholds=thresholds
+                        )
+                    )
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                return
+
+            if path == "/api/password":
+                if auth is None:
+                    self.json({"error": "本机未启用账号，无法修改密码。"}, 400)
+                    return
+                try:
+                    auth.change_password(
+                        account.username,
+                        str(payload.get("current_password") or ""),
+                        str(payload.get("new_password") or ""),
+                        str(payload.get("username") or ""),
+                    )
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                    return
+                self.json({"ok": True, "message": "密码已更新，下次登录请使用新密码。"})
+                return
+
+            if path == "/api/rebuild":
+                if not self.require_teacher(account):
+                    return
+                try:
+                    name = reload_snapshot()
+                except ValueError as exc:
+                    self.json({"error": str(exc)}, 400)
+                    return
+                except Exception as exc:  # rebuild errors stay in the connection
+                    traceback.print_exc()
+                    self.json({"error": f"重建失败（{type(exc).__name__}）。"}, 500)
+                    return
+                self.json({"ok": True, "snapshot": name})
+                return
+
             question = payload.get("message")
             context = payload.get("context") or {}
             mode = payload.get("mode") or "concise"
@@ -543,12 +635,19 @@ def create_server(
                 return
             if account.role == "student" and account.student_id:
                 context = {**context, "student_id": account.student_id}
+            preferences = None
+            if auth is not None:
+                try:
+                    preferences = auth.settings_payload(account.username)["preferences"]
+                except ValueError:
+                    preferences = None
             try:
                 result = answer_question(
                     snapshot=scope_snapshot(snapshot, account),
                     message=question,
                     context=context,
                     mode=mode,
+                    preferences=preferences,
                 )
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)

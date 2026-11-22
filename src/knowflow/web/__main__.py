@@ -4,7 +4,12 @@ import argparse
 import webbrowser
 from pathlib import Path
 
-from knowflow.web.auth import DEFAULT_PASSWORD, AuthStore, default_users_path
+from knowflow.web.auth import (
+    DEFAULT_PASSWORD,
+    AuthStore,
+    default_users_path,
+    read_policy_thresholds,
+)
 from knowflow.web.data import load_dashboard, prepare
 from knowflow.web.server import create_server
 
@@ -39,11 +44,13 @@ def main() -> int:
     args = parser.parse_args()
     auth = None
     try:
-        run = args.run or prepare(refresh=args.refresh, llm=args.llm)
+        users_path = args.users or default_users_path()
+        thresholds = None if args.no_auth else read_policy_thresholds(users_path)
+        run = args.run or prepare(refresh=args.refresh, llm=args.llm, thresholds=thresholds)
         snapshot = load_dashboard(run)
         if not args.no_auth:
             student_id = snapshot["students"][0]["student_id"] if snapshot["students"] else "S001"
-            auth = AuthStore(args.users or default_users_path(), student_id)
+            auth = AuthStore(users_path, student_id)
             if auth.created:
                 print(f"已生成本机账号文件：{auth.path}", flush=True)
                 print(
@@ -54,7 +61,13 @@ def main() -> int:
         print(f"Validated dashboard data: {run}", flush=True)
         if args.prepare_only:
             return 0
-        server = create_server(run, snapshot, args.port, auth=auth)
+        server = create_server(
+            run,
+            snapshot,
+            args.port,
+            auth=auth,
+            thresholds_provider=(auth.policy_thresholds if auth is not None else None),
+        )
     except OSError as exc:
         if getattr(exc, "winerror", None) == 10048 or getattr(exc, "errno", None) == 98:
             print(

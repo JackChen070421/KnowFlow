@@ -1,4 +1,4 @@
-"""Local-only accounts and in-memory sessions for the dashboard.
+"""Local-only accounts, sessions and per-account settings for the dashboard.
 
 The dashboard is a single-process demo on 127.0.0.1, so sessions live in memory
 and disappear when the window closes. Passwords are stored as salted scrypt
@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -21,12 +23,39 @@ from knowflow.contracts import repo_root
 COOKIE_NAME = "kf_session"
 DEFAULT_PASSWORD = "123456"
 DEFAULT_TTL_SECONDS = 8 * 3600
+MIN_PASSWORD_LENGTH = 8
 
 # scrypt parameters: ~16 MB of memory per hash, fast enough for a local login.
 _SCRYPT_N = 2**14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _DKLEN = 32
+
+TONE_CHOICES = ("warm", "direct", "rigorous")
+LENGTH_CHOICES = ("brief", "standard", "detailed")
+INSUFFICIENT_CHOICES = ("prompt", "probe")
+HOME_CHOICES = ("overview", "course", "students", "plan")
+SEMESTER_CHOICES = ("第一学期", "第二学期", "全年")
+
+DEFAULT_PROFILE = {
+    "term": "2026-2027秋",
+    "classes": "",
+    "subject": "数学",
+}
+TERM_PATTERN = re.compile(r"^\d{4}-\d{4}[春秋]$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,24}$")
+DEFAULT_PREFERENCES = {
+    "tone": "warm",
+    "report_length": "standard",
+    "insufficient": "prompt",
+    "home_view": "overview",
+}
+DEFAULT_THRESHOLDS = {
+    "coverage_sufficient": 10,
+    "coverage_missing": 3,
+    "mastery_mastered": 85,
+    "mastery_weak": 60,
+}
 
 
 def hash_password(
@@ -89,12 +118,18 @@ def write_default_users(path: Path, student_id: str, password: str = DEFAULT_PAS
             "role": "teacher",
             "student_id": None,
             "display_name": "教师",
+            "profile": dict(DEFAULT_PROFILE),
+            "preferences": dict(DEFAULT_PREFERENCES),
+            "thresholds": dict(DEFAULT_THRESHOLDS),
         },
         {
             "username": student_id,
             "role": "student",
             "student_id": student_id,
             "display_name": f"学生 {student_id}",
+            "profile": dict(DEFAULT_PROFILE),
+            "preferences": dict(DEFAULT_PREFERENCES),
+            "thresholds": dict(DEFAULT_THRESHOLDS),
         },
     ]
     for account in accounts:
@@ -109,6 +144,77 @@ def write_default_users(path: Path, student_id: str, password: str = DEFAULT_PAS
         json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     return document
+
+
+def _clean_text(value, limit: int, label: str) -> str:
+    text = str(value or "").strip()
+    if len(text) > limit:
+        raise ValueError(f"{label}不能超过 {limit} 个字。")
+    return text
+
+
+def _migrate_profile(profile: dict | None) -> dict:
+    """Accept the older ``year`` + ``semester`` pair and expose ``term``."""
+
+    source = dict(profile or {})
+    merged = {**DEFAULT_PROFILE, **source}
+    if not source.get("term"):
+        year = str(source.get("year") or "2026-2027")
+        semester = str(source.get("semester") or "第一学期")
+        merged["term"] = f"{year}{'秋' if '第一' in semester else '春'}"
+    merged.pop("year", None)
+    merged.pop("semester", None)
+    return merged
+
+
+def _validate_thresholds(values: dict) -> dict:
+    merged = {**DEFAULT_THRESHOLDS, **(values or {})}
+    try:
+        coverage_ok = int(merged["coverage_sufficient"])
+        coverage_missing = int(merged["coverage_missing"])
+        mastery_ok = int(merged["mastery_mastered"])
+        mastery_weak = int(merged["mastery_weak"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("阈值必须是整数。") from exc
+    if not 1 <= coverage_missing < coverage_ok <= 500:
+        raise ValueError("覆盖度阈值需满足：缺失线 ≥1，且小于充足线（最大 500）。")
+    if not 1 <= mastery_weak < mastery_ok <= 100:
+        raise ValueError("掌握度阈值需满足：需巩固线 ≥1%，且小于已掌握线（最大 100%）。")
+    return {
+        "coverage_sufficient": coverage_ok,
+        "coverage_missing": coverage_missing,
+        "mastery_mastered": mastery_ok,
+        "mastery_weak": mastery_weak,
+    }
+
+
+def _validate_preferences(values: dict) -> dict:
+    merged = {**DEFAULT_PREFERENCES, **(values or {})}
+    if merged["tone"] not in TONE_CHOICES:
+        raise ValueError("语气选项不合法。")
+    if merged["report_length"] not in LENGTH_CHOICES:
+        raise ValueError("报告长度选项不合法。")
+    if merged["insufficient"] not in INSUFFICIENT_CHOICES:
+        raise ValueError("数据不足时的默认行为不合法。")
+    if merged["home_view"] not in HOME_CHOICES:
+        raise ValueError("默认首页不合法。")
+    return {key: merged[key] for key in DEFAULT_PREFERENCES}
+
+
+def read_policy_thresholds(path: Path) -> dict | None:
+    """Read the teacher thresholds from disk without creating an account file."""
+
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for user in document.get("users", []):
+        if (user.get("role") or "student") == "teacher":
+            return {**DEFAULT_THRESHOLDS, **(user.get("thresholds") or {})}
+    return None
 
 
 class AuthStore:
@@ -127,9 +233,24 @@ class AuthStore:
         if not self.path.is_file():
             write_default_users(self.path, student_id, password)
             self.created = True
+        self._load()
+
+    def _load(self) -> None:
         document = json.loads(self.path.read_text(encoding="utf-8"))
+        self._document = document
         self._users = {str(u["username"]): u for u in document.get("users", [])}
         self._sessions: dict[str, tuple[Account, float]] = {}
+
+    def _save(self) -> None:
+        self._document["users"] = list(self._users.values())
+        target = self.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = target.with_name(target.name + ".tmp")
+        temp.write_text(
+            json.dumps(self._document, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temp, target)
 
     @property
     def usernames(self) -> list[str]:
@@ -173,3 +294,119 @@ class AuthStore:
     def drop(self, token: str | None) -> None:
         if token:
             self._sessions.pop(token, None)
+
+    # ---- per-account settings -------------------------------------------------
+
+    def _user(self, username: str) -> dict:
+        user = self._users.get(username)
+        if user is None:
+            raise ValueError("账号不存在。")
+        return user
+
+    def policy_thresholds(self) -> dict:
+        """Analysis thresholds that drive diagnosis: the teacher account wins."""
+
+        for user in self._users.values():
+            if (user.get("role") or "student") == "teacher":
+                return {**DEFAULT_THRESHOLDS, **(user.get("thresholds") or {})}
+        return dict(DEFAULT_THRESHOLDS)
+
+    def settings_payload(self, username: str) -> dict:
+        user = self._user(username)
+        account = Account(
+            username=str(user["username"]),
+            role=user.get("role") or "student",
+            student_id=user.get("student_id"),
+            display_name=str(user.get("display_name") or user["username"]),
+        )
+        return {
+            "account": account.as_dict(),
+            "profile": _migrate_profile(user.get("profile")),
+            "preferences": {**DEFAULT_PREFERENCES, **(user.get("preferences") or {})},
+            "thresholds": {**DEFAULT_THRESHOLDS, **(user.get("thresholds") or {})},
+        }
+
+    def update_profile(self, username: str, values: dict) -> dict:
+        user = self._user(username)
+        if not isinstance(values, dict):
+            raise ValueError("个人资料格式不正确。")
+        profile = _migrate_profile(user.get("profile"))
+        new_username = username
+        if "username" in values:
+            new_username = self.rename_user(username, str(values.get("username") or ""))
+            user = self._users[new_username]
+        if "display_name" in values:
+            name = _clean_text(values.get("display_name"), 24, "姓名")
+            if not name:
+                raise ValueError("姓名不能为空。")
+            user["display_name"] = name
+        if "term" in values:
+            term = _clean_text(values.get("term"), 11, "当前学期")
+            if not TERM_PATTERN.match(term):
+                raise ValueError("学期格式应为 2026-2027秋 或 2026-2027春。")
+            profile["term"] = term
+        if "classes" in values:
+            profile["classes"] = _clean_text(values.get("classes"), 40, "任教班级")
+        if "subject" in values:
+            profile["subject"] = _clean_text(values.get("subject"), 20, "科目")
+        user["profile"] = profile
+        self._save()
+        return self.settings_payload(new_username)
+
+    def update_preferences(
+        self,
+        username: str,
+        preferences: dict | None = None,
+        thresholds: dict | None = None,
+    ) -> dict:
+        user = self._user(username)
+        if preferences is not None:
+            current = {**DEFAULT_PREFERENCES, **(user.get("preferences") or {})}
+            user["preferences"] = _validate_preferences({**current, **preferences})
+        if thresholds is not None:
+            current = {**DEFAULT_THRESHOLDS, **(user.get("thresholds") or {})}
+            user["thresholds"] = _validate_thresholds({**current, **thresholds})
+        self._save()
+        return self.settings_payload(username)
+
+    def rename_user(self, username: str, new_username: str) -> str:
+        user = self._user(username)
+        cleaned = str(new_username or "").strip()
+        if cleaned == username:
+            return username
+        if not USERNAME_PATTERN.match(cleaned):
+            raise ValueError("用户名需为 3–24 位字母、数字或 _ . -。")
+        if cleaned in self._users:
+            raise ValueError("该用户名已被占用。")
+        del self._users[username]
+        user["username"] = cleaned
+        self._users[cleaned] = user
+        for token, (account, expires) in list(self._sessions.items()):
+            if account.username == username:
+                self._sessions[token] = (
+                    Account(cleaned, account.role, account.student_id, account.display_name),
+                    expires,
+                )
+        self._save()
+        return cleaned
+
+    def change_password(
+        self,
+        username: str,
+        current: str,
+        new: str,
+        typed_username: str | None = None,
+    ) -> None:
+        user = self._user(username)
+        if typed_username is not None and str(typed_username).strip() != username:
+            raise ValueError("用户名与当前登录账号不一致。")
+        if not verify_password(
+            current or "", user.get("salt", ""), user.get("password_hash", "")
+        ):
+            raise ValueError("当前密码不正确。")
+        if len(new or "") < MIN_PASSWORD_LENGTH:
+            raise ValueError(f"新密码至少 {MIN_PASSWORD_LENGTH} 位。")
+        if new == current:
+            raise ValueError("新密码不能与当前密码相同。")
+        user.update(hash_password(new))
+        self._save()

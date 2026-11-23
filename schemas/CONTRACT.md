@@ -1,5 +1,7 @@
 # 数据契约（contract v0.10；输入表 canonical 仍为 v0.4.0）
 
+本机变式训练新增独立存储契约，见 [training.md](training.md)。不改变 canonical 和正式诊断口径。
+
 > 机器定义以 `schemas/**/*.schema.json` 为准；本文只做速查。
 > 改字段/枚举/ID = 改合同：先改 schema + 本文，再改代码和 fixtures。
 > v0.5 扩展输出契约（个人/群体画像、质量报告）；v0.6 扩任务3建议；v0.7 加存疑评分审查；v0.8 加正式课程图谱；v0.9 加学习路径与补充观测；v0.10 加教学反馈与补充证据闭环。`records` 等输入表未变，`CANONICAL_VERSION` 仍为 `0.4.0`。

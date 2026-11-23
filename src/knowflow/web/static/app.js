@@ -1,6 +1,8 @@
 import {describe, distribution, aggregateRecords, topics} from './analytics.mjs';
 import { mountMap } from './knowledge-map.js';
+import { openTraining } from './training.js';
 let unmountMap;
+let trainingData=null;
 import {
   esc,
   pct,
@@ -153,7 +155,7 @@ function navItems() {
 
 function shell() {
   const active = navItems().find(n => n[0] === state.view) || (state.view === 'reviews' ? ['reviews', '存疑证据', 'shield'] : ['settings', '设置', 'settings']);
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools">${isStudentAccount()?'':`<button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button>`}</div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><span class="viewer-chip" title="${isStudentAccount()?'学生账号':'教师账号'}">${icon(SESSION?.role==='teacher'?'shield':'students',14)}<strong>${esc(SESSION?.display_name||'')}</strong><small>${SESSION?.role==='teacher'?'教师':'学生'}</small></span><button class="text-button logout-button" data-logout>${icon('close',13)}退出登录</button><div class="avatar" title="${esc(SESSION?.display_name||'')}">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools">${isStudentAccount()?'':`<button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button>`}</div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><span class="viewer-chip" title="${isStudentAccount()?'学生账号':'教师账号'}">${icon(SESSION?.role==='teacher'?'shield':'students',14)}<strong>${esc(SESSION?.display_name||'')}</strong><small>${SESSION?.role==='teacher'?'教师':'学生'}</small></span>${SESSION?.auth_enabled===false?'':`<button class="text-button logout-button" data-logout>${icon('close',13)}退出登录</button>`}<div class="avatar" title="${esc(SESSION?.display_name||'')}">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -346,8 +348,8 @@ function profileDetail(p, teacher=false) {
   </section>`;
   return `<section class="profile-banner"><div class="student-identity"><div class="student-avatar">${esc(p.student_id.slice(-3))}</div><div><h2>${esc(p.student_id)} <span class="pill">${esc(p.group_id)}</span></h2><p>${esc(state.node)} · ${p.coverage.scope_known?'范围已确认':'参与范围待确认'}</p></div></div><div class="profile-actions">${teacher?`<a class="button light" href="${routeURL('student')}">学生视角 ${icon('arrow',14)}</a>`:''}<button class="button" data-export>${icon('download',14)}导出摘要</button></div></section>
   ${teacher?metrics:''}
-  <div class="profile-tabs" aria-label="个人画像内容">${[['analysis','表现分析','overview'],['records','作答记录','book'],['plans','学习建议','target']].map(([id,label,ico])=>`<button data-profile-tab="${id}" aria-pressed="${state.profileTab===id}" class="${state.profileTab===id?'active':''}">${icon(ico,15)}${label}${id==='plans'?`<span>${D.recommendations[state.node][p.student_id].plan.length}</span>`:''}</button>`).join('')}</div>
-  <div class="profile-content">${state.profileTab==='records'?recordTable(p):state.profileTab==='plans'?`<section class="panel">${panelHead('学习建议',`${p.student_id} · ${state.node}`)}${plans(p.student_id,teacher)}</section>`:profileAnalysis(p)}</div>${teacher?feedbackPanel(p.student_id):''}`;
+  <div class="profile-tabs" aria-label="个人画像内容">${[['analysis','表现分析','overview'],['records','作答记录','book'],['knowledge','知识明细','map'],['plans',teacher?'建议与调整':'学习建议','target']].map(([id,label,ico])=>`<button data-profile-tab="${id}" aria-pressed="${state.profileTab===id}" class="${state.profileTab===id?'active':''}">${icon(ico,15)}${label}${id==='plans'?`<span>${D.recommendations[state.node][p.student_id].plan.length}</span>`:''}</button>`).join('')}</div>
+  <div class="profile-content">${state.profileTab==='records'?recordTable(p):state.profileTab==='knowledge'?`<div class="knowledge-only">${profileAnalysis(p)}</div>`:state.profileTab==='plans'?`<section class="panel">${panelHead('学习建议',`${p.student_id} · ${state.node}`)}${plans(p.student_id,teacher)}</section>`:profileAnalysis(p)}</div>${teacher&&state.profileTab==='plans'?feedbackPanel(p.student_id):''}`;
 }
 
 function profileAnalysis(p) {
@@ -391,13 +393,43 @@ function feedbackPanel(sid) {
 }
 
 function coursePage(personal) {
-  const p = personal ? currentProfile() : null;
-  const g = kb.curriculum_graph;
-  return `${hero('KNOWLEDGE ATLAS / 03',personal?'先看见全貌，再找到自己的方向。':'让课程结构、学习证据与材料连起来。','选取知识点，查看它的学习要求、教材出处与对应指标的学情证据。')}${filters(personal)}<section class="panel graph-panel"><div class="graph-toolbar"><div>${panelHead(personal?'我的课程地图':'课程知识地图','课程主题 → 知识指标 → 材料与学习证据')}</div><div class="tabs" aria-label="地图视图"><button class="${state.courseView==='map'?'active':''}" data-course-view="map">知识地图</button><button class="${state.courseView==='list'?'active':''}" data-course-view="list">课程要求清单</button></div></div>${state.courseView==='map'?knowledgeMap(p):requirements()}${D.meta.dataset_id==='official-v1'?'':personal?legend():note('色条表示本班知识状态构成。')}</section><div class="course-foot"><section class="panel">${panelHead('材料出处，随时可查','每个知识点的题目与学习材料由 Q-matrix 对应。')}<div class="source-row"><div class="source-icon">${icon('book',19)}</div><div><h3>课程要求与课程标准</h3><p>目标、章节与课标页码 · 逐字校对状态保留</p></div><button class="text-button" data-course-view="list">查看 ${icon('arrow',13)}</button></div>${kb.materials.filter(m=>m.material_type==='reference'&&kb.objectives.some(o=>o.objective_id===m.objective_id)).map(m=>`<div class="source-row"><div class="source-icon">${icon('link',18)}</div><div><h3>${esc(m.title)}</h3><p>${esc(m.material_id)} · 原始资料出处</p></div><button class="text-button" data-material="${esc(m.material_id)}">查看 ${icon('arrow',13)}</button></div>`).join('')}</section><section class="panel">${panelHead('关系有类型，连线有依据','保留课程的必要联系，也保留尚未确认的边界。')}<div class="mini-metrics">${g?[['先修',g.counts.prerequisite_count,'已入库关系'],['易混',g.counts.confusable_count,'已入库关系'],['相关',g.counts.related_count,'已入库关系'],['待核验',g.counts.draft_count,'未人工核对']].map(([label,value,note])=>`<div class="mini-metric">${label}关系<strong>${value}</strong><small>${note}</small></div>`).join(''):'<div class="mini-metric">课程图谱<strong>未载入</strong><small>请重新生成展示数据</small></div>'}</div><p class="panel-sub">此处统计正式课程图谱（教材细目层）。仅有 reviewed 的先修关系参与建议排序；draft 关系只展示并标“待核验”。</p><div class="notice">跨域实验放在学生页“跨域探索”中，明确标为自编拓展，方便在保留证据边界的同时展示交互学习。</div></section></div>`;
+  const p=personal?currentProfile():null,g=kb.curriculum_graph;
+  const sections=[['map','知识地图'],['list','课程要求'],['sources','材料出处'],['relations','关系说明']];
+  let body;
+  if(state.courseView==='map')body=knowledgeMap(p);
+  else if(state.courseView==='list')body=requirements();
+  else if(state.courseView==='sources')body=sourceLibrary();
+  else body=`<section>${panelHead('关系说明','正式关系与本地演示连接分开保存')}<div class="mini-metrics">${g?[['先修',g.counts.prerequisite_count],['易混',g.counts.confusable_count],['相关',g.counts.related_count],['待核验',g.counts.draft_count]].map(([label,n])=>`<div class="mini-metric">${label}<strong>${n}</strong></div>`).join(''):'未载入课程图谱'}</div><p>实线箭头从基础指向应用，虚线表示相关方法或易混对照。只有已审核的先修关系参与建议排序。</p><p>拖动节点可调整布局；点击节点后在右侧调整演示连接。演示关系只保存在当前浏览器，可一键重置。</p><p>个人地图颜色来自当前测验的诊断；未覆盖与证据不足不代表未掌握。跨域实验可从学生侧栏进入。</p></section>`;
+  return `<section class="course-workspace"><div class="course-heading"><h1>${personal?'我的知识地图':'课程知识地图'}</h1>${filters(personal)}</div><nav class="tabs course-tabs" aria-label="课程副板块">${sections.map(([id,label])=>`<button data-course-view="${id}" class="${state.courseView===id?'active':''}" aria-pressed="${state.courseView===id}">${label}</button>`).join('')}</nav><div class="course-content ${state.courseView==='map'?'is-map':state.courseView==='sources'?'aux-panel sources-panel':'aux-panel'}">${body}</div></section>`;
+}
+
+let sourceQuery='',sourceScope='all',sourceLoading=null;
+const sourceBodies=new Map();
+function sourceLibrary(){
+  const materials=kb.materials.filter(m=>m.material_type==='reference').sort((a,b)=>Number(!!b.objective_id)-Number(!!a.objective_id)||a.material_id.localeCompare(b.material_id));
+  const nodes=kb.curriculum_graph?.nodes||[];
+  const linked=materials.filter(m=>m.objective_id).length;
+  return `<section class="source-library"><header class="source-library-heading"><div><h2>课程资料库</h2><p>按课程主题查教材，直接回看原文与知识点出处。</p></div><div class="source-counts"><span><strong>${materials.length}</strong> 份资料</span><span><strong>${linked}</strong> 份课程关联</span></div></header>
+  <div class="source-toolbar"><nav aria-label="资料范围">${[['all','全部资料'],['linked','课程关联'],['extra','拓展资料']].map(([id,label])=>`<button class="source-scope ${sourceScope===id?'active':''}" data-source-scope="${id}" aria-pressed="${sourceScope===id}">${label}</button>`).join('')}</nav><label class="search-field">${icon('search',15)}<input id="source-query" aria-label="搜索课程资料" placeholder="搜索主题、教材编号或章节" value="${esc(sourceQuery)}"></label><span id="source-result" role="status"></span></div>
+  <div class="source-card-grid">${materials.map(m=>{
+    const objective=kb.objectives.find(o=>o.objective_id===m.objective_id);
+    const related=nodes.filter(n=>n.material_id===m.material_id);
+    const code=m.title.match(/B\d+/)?.[0]||m.material_id;
+    const filename=(m.source||'').split(/[\\/]/).pop();
+    const synopsis=sourceBodies.get(m.material_id)||m.body||'';
+    const title=objective?.theme||synopsis||m.title;
+    return `<article class="source-card ${objective?'is-linked':''}" data-source-kind="${objective?'linked':'extra'}" data-source-text="${esc([m.title,synopsis,m.material_id,m.source,objective?.theme,...related.map(n=>n.title)].join(' ').toLowerCase())}"><div class="source-card-top"><span class="source-book">${icon('book',18)}<b>${esc(code)}</b></span><span class="source-category">${objective?'课程关联':'拓展资料'}</span></div><h3>${esc(title)}</h3><p class="source-description">${esc(objective?synopsis:m.title)}</p><div class="source-links">${related.length?`<span>${related.length} 个知识节点</span><p>${esc(related.slice(0,2).map(n=>n.title).join(' · '))}${related.length>2?' 等':''}</p>`:'<span>补充阅读材料</span><p>可打开教材查看章节原文。</p>'}</div><div class="source-file" title="${esc(m.source)}">${esc(filename||m.title)}</div><footer><span>${esc(m.material_id)}</span><button class="button light" data-material="${esc(m.material_id)}">查看原文</button></footer></article>`;
+  }).join('')}</div><p id="source-empty" class="empty" hidden>没有匹配的资料，请换一个关键词或资料范围。</p></section>`;
+}
+function bindSourceLibrary(){
+  const input=$('#source-query');if(!input)return;
+  if(!sourceLoading){sourceLoading=Promise.allSettled(kb.materials.filter(m=>m.material_type==='reference').map(async m=>{const full=await getJSON('/api/material/'+encodeURIComponent(m.material_id));sourceBodies.set(m.material_id,full.body||'')})).then(()=>{if(state.view==='course'&&state.courseView==='sources')render()})}
+  function filter(){let count=0;document.querySelectorAll('.source-card').forEach(card=>{card.hidden=!(sourceScope==='all'||card.dataset.sourceKind===sourceScope)||!card.dataset.sourceText.includes(sourceQuery.toLowerCase().trim());if(!card.hidden)count++});$('#source-result').textContent=`显示 ${count} 份`;$('#source-empty').hidden=count!==0;document.querySelectorAll('[data-source-scope]').forEach(b=>{const active=b.dataset.sourceScope===sourceScope;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))})}
+  input.oninput=()=>{sourceQuery=input.value;filter()};document.querySelectorAll('[data-source-scope]').forEach(b=>b.onclick=()=>{sourceScope=b.dataset.sourceScope;filter()});filter();
 }
 
 function knowledgeMap(p) {
-  if(D.meta.dataset_id==='official-v1')return '<div data-interactive-map></div>';
+  if(kb.curriculum_graph?.nodes?.length)return `<div data-interactive-map ${p?'data-personal="true"':''}></div>`;
   return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
@@ -413,8 +445,8 @@ function studentHome() {
     ${stat('评分覆盖',p.coverage.scope_known?pct(p.coverage.ratio):'—','',p.coverage.scope_known?`${p.coverage.observed_items} / ${p.coverage.applicable_items} 道可测题目`:'测验参与范围待确认','map','#9a9a6c','#f2f3e9')}
     ${stat('作答完成率',pct(s.completion),'',`${s.attempted} / ${s.assigned} 条已布置记录`,'check','#c89160','#fbf1e8')}
     ${stat('新练习提交',progress.done?`${progress.done} / ${progress.total}`:'未记录','',progress.done?'已提交，等待评阅':progress.total?`当前有 ${progress.total} 项学习活动`:'当前没有新计划','book','#9a87ae','#f2eef6')}
-  </section>${profileDetail(p)}
-  <section class="panel section-gap">${panelHead('课程知识地图','选择知识点，查看学习要求与材料',`<button class="text-button" data-view="course">课程要求 ${icon('arrow',14)}</button>`)}${knowledgeMap(p)}${D.meta.dataset_id==='official-v1'?'':legend()}</section>`;
+  </section><div id="student-detail">${profileDetail(p)}</div>
+  <section class="panel section-gap student-map-entry">${panelHead('课程知识地图','选择知识点，查看学习要求与材料',`<button class="text-button" data-view="course">课程要求 ${icon('arrow',14)}</button>`)}${knowledgeMap(p)}${D.meta.dataset_id==='official-v1'?'':legend()}</section>`;
 }
 
 function studentPlans() {
@@ -654,14 +686,145 @@ async function openEvidence(id) {
   }
 }
 
+const moduleSelection = new Map();
+function moduleTabs(host, nodes, key, labels=[]) {
+  if(nodes.length<2)return;
+  const nav=document.createElement('nav');nav.className='tabs module-tabs';nav.setAttribute('aria-label','内容分模块');
+  const body=document.createElement('div');body.className='module-body';
+  nodes[0].before(nav,body);
+  let selected=Math.min(moduleSelection.get(key)||0,nodes.length-1);
+  nodes.forEach((node,i)=>{
+    body.append(node);
+    if(node.matches('details'))node.open=true;
+    const b=document.createElement('button');b.type='button';
+    b.textContent=labels[i]||node.dataset.moduleLabel||(node.querySelector('h2,h3')||node.querySelector('summary'))?.textContent.trim()||(node.matches('.stats-grid')?'数据概览':`概览 ${i+1}`);
+    b.onclick=()=>{moduleSelection.set(key,i);show(i);fitTrend()};nav.append(b);
+  });
+  function show(index){nodes.forEach((node,i)=>{node.hidden=i!==index;nav.children[i].classList.toggle('active',i===index);nav.children[i].setAttribute('aria-pressed',String(i===index))})}
+  show(selected);
+}
+function groupClassOverview(main) {
+  const heading=document.createElement('div');heading.className='hero class-overview-heading';
+  const title=main.querySelector(':scope > .hero'),filters=main.querySelector(':scope > .toolbar');
+  title.before(heading);heading.append(title,filters);
+  const stats=main.querySelector(':scope > .stats-grid');
+  const primary=main.querySelector(':scope > .overview-primary');
+  const grids=[...main.querySelectorAll(':scope > .grid-main,:scope > .grid-half')];
+  const knowledge=grids[1], coverage=grids[2], comparisons=grids[3];
+  const heatmap=main.querySelector(':scope > .heatmap-panel');
+  const [issues,groups]=[...comparisons.children];
+  const [trend,distribution]=[...coverage.children];
+  const make=(name,cls)=>{const section=document.createElement('section');section.className=`class-overview-group ${cls}`;section.dataset.moduleLabel=name;return section};
+  const summary=make('整体概况','class-summary');stats.before(summary);summary.append(stats,primary);
+  const learning=make('知识与薄弱项','class-learning');knowledge.before(learning);
+  const side=document.createElement('div');side.className='class-side';
+  side.append(knowledge.lastElementChild,issues);knowledge.append(side);learning.append(knowledge);
+  const evidence=make('覆盖与班级对照','class-evidence');coverage.before(evidence);
+  const comparisonSide=document.createElement('div');comparisonSide.className='class-side';
+  comparisonSide.append(trend,groups);coverage.append(distribution,comparisonSide);evidence.append(coverage);
+  comparisons.remove();
+  const students=make('学生分布','class-students');heatmap.before(students);students.append(heatmap);
+  main.classList.add('class-overview');
+}
+function compactWorkspaceHeading(main){
+  if(main.querySelector('.class-overview-heading'))return;
+  const hero=main.querySelector(':scope > .hero,:scope > .student-hero');
+  if(!hero)return;
+  const filters=main.querySelector(':scope > .toolbar');
+  if(!filters){hero.classList.add('compact-hero');return}
+  const heading=document.createElement('div');heading.className='hero compact-heading';
+  hero.before(heading);heading.append(hero,filters);
+}
+function groupQuality(main){
+  const panels=[...main.querySelectorAll(':scope > details,:scope > .grid-half > details')].map(old=>{
+    const section=document.createElement('section');section.className='panel quality-card';
+    const header=document.createElement('header');header.className='panel-header';header.append(old.querySelector('h2'));
+    section.append(header,...old.querySelector('.collapse-body').childNodes);old.replaceWith(section);return section;
+  });
+  const [audit,states,boundaries,sources,findings]=panels;
+  const entry=main.querySelector('#review-entry');
+  const groups=[['质量总览',[audit,states]],['来源与规则',[sources,boundaries]],['异常与复核',[findings,entry]]];
+  for(const [label,children] of groups){const section=document.createElement('section');section.className='quality-workspace';section.dataset.moduleLabel=label;main.insertBefore(section,main.querySelector('.page-footer'));section.append(...children)}
+  main.querySelectorAll(':scope > .grid-half').forEach(n=>n.remove());
+}
+function arrangeWorkspace(){
+  const main=$('#main');
+  if(state.view==='course')return;
+  document.body.classList.add('module-mode');
+  const detail=$('#student-detail');
+  if(detail){
+    detail.classList.add('person-workspace');
+    detail.dataset.moduleLabel=state.role==='teacher'?'个人画像与教学':'学习画像';
+    const metrics=detail.querySelector('.profile-metrics')||main.querySelector(':scope > .stats-grid');
+    const content=detail.querySelector('.profile-content');
+    if(metrics){const header=document.createElement('div');header.className='person-heading';const banner=detail.querySelector('.profile-banner');banner.before(header);header.append(banner,metrics)}
+    if(state.profileTab==='analysis'){
+      content.lastElementChild?.remove();
+      content.classList.add('person-analysis');
+    }else if(state.profileTab==='knowledge'){
+      const wrapper=content.querySelector('.knowledge-only');
+      const table=wrapper.lastElementChild;wrapper.replaceWith(table);
+    }else if(state.profileTab==='records'){
+      content.classList.add('person-records');
+    }else if(state.profileTab==='plans'){
+      content.classList.add('person-plans');
+      const feedback=detail.querySelector('#teacher-feedback');
+      if(feedback)content.append(feedback);
+    }
+    if(state.role==='student'){
+      const map=main.querySelector('.student-map-entry');
+      if(map){map.dataset.moduleLabel='课程知识地图';map.classList.add('student-map-panel')}
+    }
+  }
+  if(state.role==='teacher'&&state.view==='overview')groupClassOverview(main);
+  if(state.view==='quality')groupQuality(main);
+  if(state.view==='settings'){const grid=main.querySelector('.settings-grid');if(grid){const panels=[...grid.children];panels[1]?.querySelectorAll('.notice').forEach(n=>panels[0].append(n))}}
+  compactWorkspaceHeading(main);
+  const nodes=[...main.children].filter(n=>!n.matches('.hero,.toolbar,.page-footer'));
+  // Split paired charts into independently readable panels.
+  // Preserve related charts and controls as one working surface.
+  const groupable=state.view==='plan'||state.view==='explore'||state.view==='reviews';
+  if(groupable&&nodes.length>1){const section=document.createElement('section');section.className='combined-workspace';nodes[0].before(section);section.append(...nodes)}
+  const panels=[...main.children].filter(n=>!n.matches('.hero,.toolbar,.page-footer'));
+  moduleTabs(main,panels,state.view,detail&&state.role==='teacher'?['学生列表','个人画像与教学']:[]);
+  main.querySelectorAll('.plan-list').forEach(list=>{
+    const cards=[...list.querySelectorAll(':scope > .plan-card')];if(cards.length<2)return;
+    let page=0;const pager=document.createElement('div');pager.className='table-pager';
+    const prev=document.createElement('button'),next=document.createElement('button'),label=document.createElement('span');
+    prev.textContent='上一项';next.textContent='下一项';prev.className=next.className='button light';pager.append(prev,label,next);list.before(pager);
+    function show(){cards.forEach((c,i)=>c.hidden=i!==page);label.textContent=`学习安排 ${page+1} / ${cards.length}`;prev.disabled=page===0;next.disabled=page===cards.length-1}
+    prev.onclick=()=>{page--;show()};next.onclick=()=>{page++;show()};show();
+  });
+  main.querySelectorAll('.data-table').forEach(table=>{
+    const rows=[...table.tBodies[0]?.rows||[]];const pageSize=state.view==='students'&&state.profileTab==='records'?5:8;if(rows.length<=pageSize)return;
+    const pager=document.createElement('div');pager.className='table-pager';
+    const prev=document.createElement('button'),next=document.createElement('button'),label=document.createElement('span');
+    prev.className=next.className='button light';prev.textContent='上一页';next.textContent='下一页';
+    pager.append(prev,label,next);table.parentElement.after(pager);let page=0;
+    function show(){rows.forEach((r,i)=>r.hidden=Math.floor(i/pageSize)!==page);label.textContent=`${page+1} / ${Math.ceil(rows.length/pageSize)} 页 · ${rows.length} 条`;prev.disabled=page===0;next.disabled=(page+1)*pageSize>=rows.length}
+    prev.onclick=()=>{page--;show()};next.onclick=()=>{page++;show()};show();
+  });
+}
+
 function render() {
   normalize();
   saveURL();
   unmountMap?.();
+  document.body.classList.toggle('course-mode',state.view==='course');
+  document.body.classList.remove('module-mode');
   $('#app').innerHTML = shell();
+  arrangeWorkspace();
+  bindSourceLibrary();
+  const trainingButton = document.createElement('button');
+  trainingButton.className='button light';trainingButton.textContent='变式训练 · PDF 与扫描回录';
+  trainingButton.style.cssText='position:fixed;right:24px;bottom:24px;z-index:40;box-shadow:0 4px 20px #25364b22';
+  trainingButton.onclick=()=>openTraining({student:state.student,node:state.node,teacher:!isStudentAccount(),students:D.students,onClose:async()=>{try{trainingData=await getJSON('/api/training');render()}catch(e){toast(e.message)}}});
+  $('#app .top-actions').append(trainingButton);
+  trainingButton.style.cssText='position:static;font-size:13px;padding:8px 12px';
   fitTrend();
   const map = $('#app [data-interactive-map]');
-  unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
+  if(map&&state.view==='course')map.setAttribute('workspace','');
+  unmountMap = map ? mountMap(map, kb, openKnowledge, map.dataset.personal ? currentProfile() : null, trainingData) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
   if (chatOpen) bindChatChrome();
   if (state.view === 'settings' && !llmSettings && !settingsError) {
@@ -1074,13 +1237,11 @@ document.addEventListener('click', event => {
   }
   if (b.dataset.student) {
     state.profileTab='analysis';
+    moduleSelection.set('students',1);
     state.student = b.dataset.student;
     state.view = 'students';
     render();
-    $('#student-detail').scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
+    $('#student-detail')?.focus();
     return;
   }
   if (b.dataset.personKnowledge) {
@@ -1330,6 +1491,7 @@ async function init() {
       return;
     }
     D = await getJSON('/api/snapshot');
+    try { trainingData = await getJSON('/api/training'); } catch { trainingData = null; }
     kb = D.knowledge_base;
     if (isStudentAccount()) {
       state.role = 'student';

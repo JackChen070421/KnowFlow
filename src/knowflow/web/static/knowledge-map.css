@@ -20,3 +20,31 @@ button,input,select{font:inherit}button,select{cursor:pointer}.tools{display:fle
 .canvas{padding:16px;border-radius:12px;background:#173c37 radial-gradient(#396057 1px,transparent 1px) 0 0/20px 20px;color:#eff9e9}.canvas>h2{font-size:18px}.hint,.meta{font-size:13px}.pdf{color:#145c4a}
 .tablebox{overflow:auto}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #dbe3db;padding:10px;text-align:left}td button{color:#165844;border:0;background:transparent}tbody td:last-child{min-width:155px}
 [hidden]{display:none!important}.none{padding:20px}.point{cursor:grab}.point text{font:15px "Microsoft YaHei",sans-serif;fill:#f6fbef;stroke:#173c37;stroke-width:4;paint-order:stroke}.point circle{stroke:#e4efe3;stroke-width:1.2}.point.selected circle,.point:focus-visible circle{stroke:#f6da93;stroke-width:4}.legend{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+
+/* Light canvas keeps knowledge colors readable and motion unobtrusive. */
+.canvas{background:#fff;color:#243449;border:1px solid #e3e9f0;box-shadow:0 8px 28px #263c5310}
+.legend{color:#536579;font-size:14px}.hint{color:#63758b;line-height:1.7}
+.point text{fill:#334155;stroke:#fff;stroke-width:5}
+.point circle{stroke:#fff;transition:stroke .25s,stroke-width .25s,fill .25s}
+.point.selected circle,.point:focus-visible circle,.point:hover circle{stroke:#527ace;stroke-width:3}
+.point.selected text{font-size:15px;font-weight:700}
+#atlas .point,.edge{transition:opacity .35s ease}.point.dim{opacity:.32}.edge.dim{opacity:.18}
+.maptools button{background:#fff;color:#334155;border:1px solid #d9e2ef;padding:6px 12px;border-radius:8px}
+#detail{background:#f6f8fc;color:#334155;border:1px solid #e4eaf3;padding:20px}
+#detail button{padding:7px 9px;border-color:#d9e2ef;color:#365887;font-size:14px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+:host([workspace]){height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+:host([workspace]) .tools{margin:8px 0;flex-shrink:0;gap:6px}
+:host([workspace]) .tools>*{padding:5px 8px}
+:host([workspace]) .canvas{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px;border:0;box-shadow:none;overflow:hidden}
+:host([workspace]) .canvas>h2,:host([workspace]) .canvas>.hint{display:none}
+:host([workspace]) .legend{margin:0 0 8px;font-size:13px;flex-shrink:0}
+:host([workspace]) .explorer{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 260px;overflow:hidden}
+:host([workspace]) .stage{height:100%;min-height:0}
+:host([workspace]) #atlas{height:100%;min-height:0}
+:host([workspace]) #detail{height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;align-self:stretch;padding:14px}
+:host([workspace]) #detail select{max-width:100%;padding:6px;margin:4px 0}
+:host([workspace]) .tablebox{min-height:0;overflow:auto}
+@media(max-width:850px){:host([workspace]) .explorer{grid-template-columns:minmax(0,1fr) 210px}}
+@media(max-width:600px){:host([workspace]) .explorer{grid-template-columns:minmax(0,1fr);position:relative}:host([workspace]) #detail{position:absolute;right:0;top:0;bottom:0;width:190px;z-index:2;box-shadow:-3px 0 14px #23364c16}:host([workspace]) #detail.empty{display:none}:host([workspace]) .tools{flex-wrap:nowrap;overflow-x:auto}:host([workspace]) .tools>*{flex-shrink:0}:host([workspace]) .tools input{width:130px;min-width:130px}}

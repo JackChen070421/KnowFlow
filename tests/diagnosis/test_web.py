@@ -117,6 +117,9 @@ def test_local_server_routes_and_explicit_evidence(dashboard_run):
             assert status == 200 and body
         status, headers, body = request("/api/snapshot")
         assert status == 200
+        status, _, session_body = request("/api/session")
+        assert status == 200
+        assert json.loads(session_body)["auth_enabled"] is False
         assert headers["Cache-Control"] == "no-store"
         assert b"synthetic-private-answer" not in body
         assert "Access-Control-Allow-Origin" not in headers
@@ -565,6 +568,8 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
 
         status, _, raw = call("GET", "/api/snapshot", cookie=cookie)
         assert status == 200
+        status, _, session_body = call("GET", "/api/session", cookie=cookie)
+        assert status == 200 and json.loads(session_body)["auth_enabled"] is True
         scoped = json.loads(raw)
         assert scoped["meta"]["viewer"]["role"] == "student"
         assert [s["student_id"] for s in scoped["students"]] == [student_id]
@@ -583,6 +588,12 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
 
         # Teacher-only surfaces stay closed.
         assert call("GET", "/api/settings/llm", cookie=cookie)[0] == 403
+        for action in ('generate', 'approve', 'review', 'delete'):
+            assert call('POST', '/api/training/' + action, {},
+                        {'X-KnowFlow-Training': '1'}, cookie=cookie)[0] == 403
+        assert call('POST', '/api/training/scan', {'student_id': 'OTHER'},
+                    {'X-KnowFlow-Training': '1'}, cookie=cookie)[0] == 403
+        assert call('POST', '/api/training/scan', {}, cookie=cookie)[0] == 403
         adjustment = {
             "event_type": "teacher_adjustment",
             "student_id": student_id,
@@ -629,3 +640,52 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
         server.server_close()
         worker.join(timeout=5)
 
+
+
+def test_pdf_preview_download_and_answer_permissions(dashboard_run, tmp_path, monkeypatch):
+    pytest.importorskip('reportlab')
+    pytest.importorskip('fitz')
+    import uuid
+
+    from knowflow.web.auth import AuthStore
+    from knowflow.web.training import TrainingStore
+    data = load_dashboard(dashboard_run)
+    sid = data['students'][0]['student_id']
+    store = TrainingStore(tmp_path / 'training', data)
+    identifier = str(uuid.uuid4())
+    paper = {'id': identifier, 'status': 'approved', 'student_id': sid, 'questions': [
+        {'question_id': 'Q01', 'knowledge_id': 'K-01', 'prompt': '计算 2+3。', 'answer': '5', 'explanation': '加法。'}]}
+    store.save('papers', paper)
+    monkeypatch.setattr('knowflow.web.server.TrainingStore', lambda *args: store)
+    auth = AuthStore(tmp_path / 'users.json', sid)
+    token = auth.new_session(auth.authenticate(sid, '123456'))
+    server = create_server(dashboard_run, data, port=0, auth=auth)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    def get(path, login=True):
+        conn = HTTPConnection('127.0.0.1', server.server_port, timeout=10)
+        conn.request('GET', path, headers={'Cookie': f'kf_session={token}'} if login else {})
+        response = conn.getresponse()
+        result = response.status, response.read()
+        conn.close()
+        return result
+    try:
+        prefix = '/api/training/'
+        assert get(prefix+'pdf-preview/'+identifier, False)[0] == 401
+        assert get('/training-print?paper='+identifier)[0] == 200
+        status, body = get(prefix+'pdf-preview/'+identifier)
+        assert status == 200 and json.loads(body)['pages'] == 1
+        status, body = get(prefix+'pdf-page/'+identifier+'?page=0')
+        assert status == 200 and body.startswith(b'\x89PNG')
+        status, body = get(prefix+'pdf/'+identifier)
+        assert status == 200 and body.startswith(b'%PDF')
+        assert get(prefix+'pdf-page/'+identifier+'?page=99')[0] == 400
+        for route in ('pdf', 'pdf-preview', 'pdf-page'):
+            assert get(prefix+route+'/'+identifier+'?answers=1&page=0')[0] == 403
+        paper['student_id'] = 'OTHER'
+        store.save('papers', paper)
+        assert get(prefix+'pdf-preview/'+identifier)[0] == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)

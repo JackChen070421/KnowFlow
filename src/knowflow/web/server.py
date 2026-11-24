@@ -31,6 +31,7 @@ ASSETS = {
     "/knowledge-map.js": "text/javascript",
     "/analytics.mjs": "text/javascript",
     "/styles.css": "text/css",
+    "/workspace.css": "text/css",
     "/login.css": "text/css",
     "/knowledge-map.css": "text/css",
     "/favicon.svg": "image/svg+xml",

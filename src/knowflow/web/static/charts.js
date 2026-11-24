@@ -123,8 +123,8 @@ export function stateBars(rows, nameFor) {
   };
   return `<div class="state-bars">${rows.map(r=>`<button class="state-bar-row" data-knowledge="${esc(r.knowledge_id)}"><span class="bar-label"><b>${esc(r.knowledge_id)}</b>${esc(nameFor(r.knowledge_id))}</span><span class="bar-track" aria-label="${esc(Object.entries(fields).map(([k,f])=>states[k].label+' '+r[f]+'人').join('；'))}">${Object.entries(fields).map(([s,f])=>r[f]?`<span class="segment-${s}" style="width:${r[f]/Math.max(1,r.student_count)*100}%;background:${states[s].color}" title="${states[s].label} ${r[f]} 人">${r[f]>=3?r[f]:''}</span>`:'').join('')}</span><span class="bar-end">${r.student_count} 人</span></button>`).join('')}</div>`;
 }
-export function lineChart(series, width = 480) {
-  const height = 256, left = 46, right = 50, top = 30, bottom = 62;
+export function lineChart(series, width = 480, height = 256) {
+  const left = 52, right = 56, top = 30, bottom = 62;
   const max = Math.max(1, ...series.flatMap(s => s.points.map(p => p.value)));
   const magnitude = 10 ** Math.floor(Math.log10(max / 4));
   const step = Math.max(1, [1, 2, 5, 10].map(n => n * magnitude).find(n => n >= max / 4) || 1);

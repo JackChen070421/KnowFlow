@@ -42,10 +42,13 @@ const state = {
   studentFilter: 'all',
   courseView: 'map',
   lab: 'axis',
-  profileTab: 'analysis',
+  profileTab: params.get('profile') || 'analysis',
+  report: params.get('report') || 'scores',
+  studentPanel: params.get('panel') || 'list',
+  pages: {},
+  chartPage: 0,
   chatMode: 'concise',
-  studentSort: 'id',
-  allHeatmap: false
+  studentSort: 'id'
 };
 const $ = s => document.querySelector(s);
 const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'reviews' ? '存疑证据' : id === 'settings' ? '设置' : '工作台');
@@ -114,7 +117,10 @@ function saveURL() {
     view: state.view,
     node: state.node,
     group: state.group,
-    student: state.student
+    student: state.student,
+    report: state.report,
+    profile: state.profileTab,
+    panel: state.studentPanel
   });
   history.replaceState(null, '', `/${state.role}?${q}`);
 }
@@ -135,6 +141,10 @@ function normalize() {
   const allowedViews = [...navItems().map(x => x[0]), ...(isStudentAccount() ? [] : ['settings'])];
   if (state.role === 'teacher') allowedViews.push('reviews');
   if (!allowedViews.includes(state.view)) state.view = 'overview';
+  if (!REPORTS.some(r => r.id === state.report)) state.report = 'scores';
+  if (!['analysis', 'knowledge', 'records', 'history', 'plans', 'feedback'].includes(state.profileTab)) state.profileTab = 'analysis';
+  if (!['list', 'profile'].includes(state.studentPanel)) state.studentPanel = 'list';
+  if (state.role === 'student' && state.profileTab === 'feedback') state.profileTab = 'analysis';
 }
 
 function navItems() {
@@ -235,71 +245,113 @@ function trend() {
 
 function fitTrend() {
   const chart=$('.trend-block');
-  if(chart)chart.innerHTML=lineChart(trendSeries(),Math.max(220,Math.round(chart.clientWidth)));
+  if(chart && !chart.closest('[hidden]')) chart.innerHTML=lineChart(trendSeries(), Math.max(220, Math.round(chart.clientWidth)), Math.max(190, Math.round(chart.clientHeight) - 34));
 }
 let chartResizeTimer;
+let reportSizeKey = '';
+const reportSize = () => `${rowLimit()}|${rowLimit('knowledge')}|${window.innerHeight < 760 ? 3 : window.innerHeight < 850 ? 4 : window.innerHeight < 950 ? 5 : 7}|${window.innerWidth < 700}`;
 window.addEventListener('resize',()=>{
   clearTimeout(chartResizeTimer);
-  chartResizeTimer=setTimeout(fitTrend,80);
+  chartResizeTimer=setTimeout(() => {
+    if (D && $('.report-main') && reportSizeKey !== reportSize()) {
+      const draft = $('#chat-input')?.value;
+      const focusId = document.activeElement?.id;
+      render();
+      if (draft !== undefined && $('#chat-input')) $('#chat-input').value = draft;
+      if (focusId) document.getElementById(focusId)?.focus({preventScroll:true});
+    } else fitReport();
+  }, 100);
 });
 
-function commonIssues() {
-  const rows = currentClass().rubric_patterns.slice(0, 4);
-  return rows.length ? `<div class="issue-list">${rows.map((r,i)=>`<div class="issue-row"><div class="issue-number">0${i+1}</div><div class="issue-body"><h3><button class="text-button" data-knowledge="${esc(r.knowledge_id)}">${esc(r.knowledge_id)} · ${esc(r.criterion)}</button></h3><p>${esc(nameFor(r.knowledge_id))}</p><div class="issue-meter"><i style="width:${r.prevalence*100}%"></i></div></div><div class="issue-rate">${pct(r.prevalence)}<small>${r.affected_student_count} / ${r.observed_student_count} 人</small></div></div>`).join('')}</div>` : empty('当前范围没有可汇总的评分点失分证据。');
+const REPORTS = [
+  {id:'scores', label:'成绩分布', icon:'trend'},
+  {id:'participation', label:'作答与覆盖', icon:'check'},
+  {id:'knowledge', label:'知识诊断', icon:'map'},
+  {id:'comparison', label:'主题与班级', icon:'students'},
+  {id:'history', label:'测验记录', icon:'clock'},
+  {id:'heatmap', label:'学生热力图', icon:'overview'},
+];
+
+function pageSlice(items, key, size = 6) {
+  const count = Math.max(1, Math.ceil(items.length / size));
+  const page = Math.min(count - 1, Math.max(0, Number(state.pages[key]) || 0));
+  state.pages[key] = page;
+  return {items:items.slice(page * size, (page + 1) * size), page, count, total:items.length, start:page * size};
+}
+
+function rowLimit(kind = 'table') {
+  const height = window.innerHeight;
+  if (kind === 'knowledge') return height < 800 ? 3 : height < 950 ? 4 : 6;
+  return height < 760 ? 4 : height < 900 ? 6 : 8;
+}
+
+function pagination(key, data, unit = '项') {
+  return `<div class="pagination" aria-label="分页"><span>${data.total ? data.start + 1 : 0}–${data.start + data.items.length} / ${data.total} ${unit}</span><div><button class="button" data-page-key="${key}" data-page="${data.page - 1}" ${data.page === 0 ? 'disabled' : ''}>上一页</button><span aria-live="polite">${data.page + 1} / ${data.count}</span><button class="button" data-page-key="${key}" data-page="${data.page + 1}" ${data.page + 1 === data.count ? 'disabled' : ''}>下一页</button></div></div>`;
+}
+
+function pageHeading(title, subtitle, extra = '') {
+  return `<header class="report-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="report-heading-actions">${extra}${filters()}</div></header>`;
+}
+
+function chartCard(title, subtitle, body, help = '', extra = '') {
+  const actions = `<div class="chart-actions">${extra}${help ? `<button class="text-button" data-help="${esc(encodeURIComponent(help))}">统计说明</button>` : ''}</div>`;
+  return `<section class="panel report-card" data-chart-card="${esc(title)}">${panelHead(title, subtitle, actions)}<div class="report-card-content">${body}</div></section>`;
+}
+
+function chartDeck(cards, layout = '') {
+  return `<div class="chart-switcher" hidden></div><div class="report-body ${layout}">${cards}</div>`;
 }
 
 function overview() {
-  const c=currentClass(), s=cohortStats(), list=profiles();
-  const scores=list.map(p=>D.stats[state.node][p.student_id].score_ratio);
-  const scoreStats=describe(scores), scoreBins=distribution(scores);
-  const coverageBins=distribution(list.map(p=>p.coverage.scope_known?p.coverage.ratio:null));
-  return `${hero('', '班级学情', `${groupName(state.group)} · 七年级数学`)}${filters()}
-  <section class="stats-grid">
-    ${stat('班级人数',s.students,'人',`${scoreStats.count} 人有评分 · ${s.students-scoreStats.count} 人暂无评分`,'students')}
-    ${stat('平均得分率',pct(scoreStats.mean),'',`按 ${scoreStats.count} 名有评分学生计算`,'trend')}
-    ${stat('平均评分覆盖',pct(c.coverage_summary.mean_ratio),'',`${s.known} 人的测验范围已确认`,'target','#9a9a6c','#f2f3e9')}
-    ${stat('建议巩固',s.needs,'人',`至少一个知识点需要巩固`,'book','#c89160','#fbf1e8')}
-  </section>
-  <div class="grid-main overview-primary">
-    <section class="panel">${panelHead('学生得分率分布','每人按已评分题目计算','<span class="pill">直方图 · 人数</span>')}
-      ${histogram(scoreBins)}
-      <div class="distribution-summary"><span>最低<strong>${pct(scoreStats.min)}</strong></span><span>中位数<strong>${pct(scoreStats.median)}</strong></span><span>最高<strong>${pct(scoreStats.max)}</strong></span><span>暂无评分<strong>${scoreBins.missing} 人</strong></span></div>
-      ${note('得分率 = 已得分 / 已评分题目满分。平均值按学生等权计算。区间左闭右开，最后一组含 100%；没有评分的学生不计为零分。不同学生的作答题目可能不同，分布不等于统一试卷成绩排名。')}
+  const c = currentClass(), totals = cohortStats(), list = profiles();
+  const scoreStats = describe(list.map(p => D.stats[state.node][p.student_id].score_ratio));
+  const tabs = REPORTS.map(r => `<button data-report="${r.id}" class="${state.report === r.id ? 'active' : ''}" ${state.report === r.id ? 'aria-current="page"' : ''}>${icon(r.icon, 18)}<span>${r.label}</span></button>`).join('');
+  return `<div class="report-workspace">
+    ${pageHeading('班级学情', `${groupName(state.group)} · 七年级数学`)}
+    <section class="stats-grid report-metrics">
+      ${stat('班级人数', totals.students, '人', `${scoreStats.count} 人有评分`, 'students')}
+      ${stat('平均得分率', pct(scoreStats.mean), '', '有评分学生等权平均', 'trend')}
+      ${stat('平均评分覆盖', pct(c.coverage_summary.mean_ratio), '', `${totals.known} 人范围已确认`, 'target')}
+      ${stat('建议巩固', totals.needs, '人', '至少一项知识需要巩固', 'book', '#ad6536', '#fff1e6')}
     </section>
-    <section class="panel">${panelHead('作答情况','已布置记录，不含没有记录的题目')}${donut(historicalItems(),s.assigned,'条已布置记录')}
-      <div class="inline-stat"><span>作答完成率</span><strong>${pct(s.assigned?s.attempted/s.assigned:null)}</strong><small>${s.attempted} / ${s.assigned}</small></div>
-      ${note('完成率 = 有作答记录 / 已布置记录。待评分表示已经作答，不等于零分。')}
-    </section>
-  </div>
-  <div class="grid-main">
-    <section class="panel">${panelHead('知识点状态','点击知识点查看学生差异','<span class="pill">人数</span>')}${stateBars(c.knowledge_distribution,nameFor)}${legend()}
-      ${note('每行分母是所选班级全体学生。“掌握倾向”和“偏弱倾向”汇总较可能与已确认状态，个人详情保留原判断。待观察表示证据不足，不适用表示此节点没有对应可测内容。')}
-    </section>
-    <section class="panel">${panelHead('主题表现','按主题汇总已评分题目')}${topicComparison()}
-      ${note('主题得分率 = 本主题已得分总和 / 已评分题目满分总和。同一道题不会因关联多个知识点而重复计分。暂无评分显示“—”。')}
-    </section>
-  </div>
-  <div class="grid-half">
-    <section class="panel">${panelHead('各次测验的评分记录','不同班级的已评分记录数量','<span class="pill">折线图 · 条数</span>')}${trend()}
-      ${note('两次测验的教学范围和题目不同。连线用于对照已评分记录量，不表示成绩或能力增长。')}
-    </section>
-    <section class="panel">${panelHead('评分覆盖率分布','已评分题目占本节点可测题目的比例','<span class="pill">直方图 · 人数</span>')}${histogram(coverageBins,'#a69ac2')}
-      <div class="distribution-summary"><span>范围已确认<strong>${coverageBins.count} 人</strong></span><span>范围待确认<strong>${coverageBins.missing} 人</strong></span><span>覆盖不足一半<strong>${c.coverage_summary.students_below_0_5} 人</strong></span></div>
-      ${note('仅统计范围已确认的学生。0% 表示范围已知但暂无评分；范围未知的学生单独列出，不按 0% 处理。')}
-    </section>
-  </div>
-  <div class="grid-half">
-    <section class="panel">${panelHead('常见失分点','依据评分点统计','<span class="pill warm">TOP 4</span>')}${commonIssues()}${note('失分比例 = 出现该评分点失分的学生 / 该知识点有观测的学生。评分点只能提供线索，具体原因需核对原始作答。')}</section>
-    <section class="panel">${panelHead('班级对照',`本次测验 · 全部 ${groups().length} 个班级`)}${groupComparison()}${note('班级得分率按已评分题目总分汇总；覆盖率按范围已确认的学生平均计算。不同班级材料覆盖可能不同，不据此推断能力高低。')}</section>
-  </div>${heatmap()}`;
+    <nav class="report-nav" aria-label="班级统计子页面">${tabs}</nav>
+    ${reportContent(c, totals, list, scoreStats)}
+  </div>`;
+}
+
+function reportContent(c, totals, list, summary) {
+  if (state.report === 'scores') {
+    const bins = distribution(list.map(p => D.stats[state.node][p.student_id].score_ratio));
+    const facts = `<div class="score-facts"><div class="score-lead"><span>平均得分率</span><strong>${pct(summary.mean)}</strong><p>${summary.count} 名学生有评分</p></div><dl><div><dt>最低得分率</dt><dd>${pct(summary.min)}</dd></div><div><dt>中位数</dt><dd>${pct(summary.median)}</dd></div><div><dt>最高得分率</dt><dd>${pct(summary.max)}</dd></div><div><dt>暂无评分</dt><dd>${bins.missing} 人</dd></div></dl><p class="quiet-note">暂无评分单独列出，不计为零分。</p></div>`;
+    return chartDeck(chartCard('学生得分率直方图', '横轴：得分率区间 · 纵轴：学生人数', histogram(bins), '得分率 = 已得分 / 已评分题目满分。平均值按学生等权计算。区间左闭右开，最后一组含 100%。无评分学生不计为零分。学生作答题目可能不同，分布不等于统一试卷排名。', '<span class="pill">直方图</span>') + chartCard('分布摘要', '与左侧直方图使用相同范围', facts), 'report-wide');
+  }
+  if (state.report === 'participation') {
+    const bins = distribution(list.map(p => p.coverage.scope_known ? p.coverage.ratio : null));
+    return chartDeck(chartCard('作答情况', '本次测验 · 已布置记录', donut(historicalItems(), totals.assigned, '条已布置记录') + `<div class="inline-stat"><span>作答完成率</span><strong>${pct(totals.assigned ? totals.attempted / totals.assigned : null)}</strong><small>${totals.attempted} / ${totals.assigned}</small></div>`, '完成率 = 已作答记录 / 已布置记录。待评分表示已经作答，不等于零分；没有记录的题目不计入本图。') + chartCard('评分覆盖率分布', '已评分题目 / 本节点可测题目', histogram(bins, '#8173b5') + `<div class="distribution-summary"><span>范围已确认<strong>${bins.count} 人</strong></span><span>范围待确认<strong>${bins.missing} 人</strong></span><span>覆盖不足一半<strong>${c.coverage_summary.students_below_0_5} 人</strong></span></div>`, '仅统计测验范围已确认的学生。0% 表示范围已知但暂无评分。范围未知单独列出，不计为 0%。区间左闭右开，最后一组含 100%。'));
+  }
+  if (state.report === 'knowledge') {
+    const page = pageSlice(c.knowledge_distribution, 'classKnowledge', rowLimit('knowledge'));
+    const issues = pageSlice(c.rubric_patterns.slice(0, 4), 'issues', 2);
+    const issueCards = issues.items.length ? `<div class="issue-list">${issues.items.map(r => `<article class="issue-row"><div class="issue-body"><button class="knowledge-link" data-knowledge="${esc(r.knowledge_id)}">${esc(r.criterion)}</button><p>${esc(nameFor(r.knowledge_id))}</p><div class="issue-meter"><i style="width:${r.prevalence * 100}%"></i></div></div><div class="issue-rate">${pct(r.prevalence)}<small>${r.affected_student_count} / ${r.observed_student_count} 人</small></div></article>`).join('')}</div>${pagination('issues', issues, '个失分点')}` : empty('当前范围没有可汇总的评分点失分证据。');
+    return chartDeck(chartCard('知识点状态', '点击知识点，查看学生差异', stateBars(page.items, nameFor) + legend() + pagination('classKnowledge', page, '个知识点'), '每行分母是所选班级全体学生。掌握倾向和偏弱倾向汇总较可能与已确认状态，个人详情保留原判断。待观察表示证据不足，不适用表示本节点没有对应可测内容。') + chartCard('常见失分点', '按评分点线索查看共性问题', issueCards, '失分比例 = 出现该评分点失分的学生 / 该知识点有观测的学生。最多展示原汇总中的前 4 项。评分点只提供线索，原因需核对原始作答。'), 'report-wide');
+  }
+  if (state.report === 'comparison') {
+    return chartDeck(chartCard('主题表现', '所选班级 · 已评分题目', topicComparison(), '主题得分率 = 主题已得分总和 / 已评分题目满分总和。同一道题不因关联多个知识点而重复计分，暂无评分显示“—”。') + chartCard('班级对照', `本次测验 · 全部 ${groups().length} 个班级`, groupComparison(), '班级得分率按已评分题目总分汇总；评分覆盖按范围已确认的学生平均。各班材料覆盖可能不同，不据此推断能力高低。'));
+  }
+  if (state.report === 'history') {
+    const series = trendSeries();
+    return chartDeck(chartCard('各次测验的评分记录', '横轴：测验节点 · 纵轴：已评分记录数', trend(), '测验的教学范围和题目不同。连线用于对照已评分记录量，不表示成绩或能力增长。', '<span class="pill">折线图</span>') + chartCard('节点记录', '与折线图一一对应', `<div class="history-cards">${D.nodes.map((n, i) => `<article><header><strong>${esc(n.node_id)}</strong><span>${esc(n.date)}</span></header>${series.map(g => `<div><span><i style="background:${g.color}"></i>${esc(g.label)}</span><strong>${g.points[i].value}<small> 条</small></strong></div>`).join('')}</article>`).join('')}</div><p class="quiet-note">比较记录数量，保留每次测验的范围差异。</p>`), 'report-wide');
+  }
+  return chartDeck(heatmap(), 'report-single');
 }
 
 function topicComparison(owner=null) {
+  const compare = owner && !isStudentAccount();
   const ids=owner?[owner]:profiles().map(p=>p.student_id);
   const rows=topics(D,state.node,ids);
-  const peerIds=owner?D.students.filter(s=>s.group_id===D.profiles[state.node][owner].group_id).map(s=>s.student_id):[];
-  const peers=owner?topics(D,state.node,peerIds):[];
-  return comparisonBars(rows.map((row,i)=>({label:row.theme,detail:owner?`个人 ${row.graded} 条 / 班级 ${peers[i].graded} 条评分`:`${row.observedStudents} 人 · ${row.graded} 条评分`,values:{own:row.rate,peers:peers[i]?.rate}})),owner?[{key:'own',label:'个人得分率',color:'#3e8c78'},{key:'peers',label:'本班得分率',color:'#c9b691'}]:[{key:'own',label:'已评分得分率',color:'#4f9680'}]);
+  const peerIds=compare?D.students.filter(s=>s.group_id===D.profiles[state.node][owner].group_id).map(s=>s.student_id):[];
+  const peers=compare?topics(D,state.node,peerIds):[];
+  return comparisonBars(rows.map((row,i)=>({label:row.theme,detail:compare?`个人 ${row.graded} 条 / 班级 ${peers[i].graded} 条评分`:`${row.observedStudents} 人 · ${row.graded} 条评分`,values:{own:row.rate,peers:peers[i]?.rate}})),compare?[{key:'own',label:'个人得分率',color:'#3e8c78'},{key:'peers',label:'本班得分率',color:'#b29462'}]:[{key:'own',label:'已评分得分率',color:'#4f9680'}]);
 }
 
 function groupComparison() {
@@ -311,65 +363,83 @@ function groupComparison() {
 }
 
 function heatmap() {
-  const list = profiles(),
-    visible = state.allHeatmap ? list : list.slice(0, 12);
-  return `<section class="panel heatmap-panel">${panelHead('学生知识热力图','点击色块查看个人证据',`<button class="text-button" data-view="students">查看学生明细 ${icon('arrow',14)}</button>`)}<div class="table-scroll"><table class="data-table heatmap"><thead><tr><th>学生 / 知识点</th>${kb.knowledge.map(k=>`<th><button data-knowledge="${esc(k.knowledge_id)}" title="${esc(k.name)}">${esc(k.knowledge_id)}</button></th>`).join('')}</tr></thead><tbody>${visible.map(p=>`<tr><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td>${kb.knowledge.map(k=>{const s=p.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id);return `<td><button class="cell cell-${statusGroup(s.status)}" data-person-knowledge="${esc(k.knowledge_id)}" data-person="${esc(p.student_id)}" style="background:${states[s.status].color}" aria-label="${esc(p.student_id+' '+k.name+' '+states[s.status].label+'，'+s.evidence_count+'条有效评分')}" title="${esc(states[s.status].label+' · '+s.evidence_count+'条有效评分')}">${states[s.status].short}</button></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><div class="table-footer"><span>显示 ${visible.length} / ${list.length} 人 · ${kb.knowledge.length} 个知识点</span><button class="text-button" data-toggle-heatmap>${state.allHeatmap?'收起列表':'展开全部学生'} ${icon('arrow',14)}</button></div>${legend()}</section>`;
+  const height = window.innerHeight;
+  const page = pageSlice(profiles(), 'heatmap', height < 760 ? 3 : height < 850 ? 4 : height < 950 ? 5 : 7);
+  const columns = pageSlice(kb.knowledge, 'heatColumns', window.innerWidth < 700 ? 3 : 9);
+  return chartCard('学生知识热力图', '点击色块查看证据；点击学生查看完整画像', `<div class="table-scroll heatmap-scroll"><table class="data-table heatmap"><thead><tr><th>学生 / 知识点</th>${columns.items.map(k => `<th><button data-knowledge="${esc(k.knowledge_id)}" title="${esc(k.name)}">${esc(k.knowledge_id)}</button></th>`).join('')}</tr></thead><tbody>${page.items.map(p => `<tr><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td>${columns.items.map(k => { const v = p.knowledge_states.find(x => x.knowledge_id === k.knowledge_id); return `<td><button class="cell cell-${statusGroup(v.status)}" data-person-knowledge="${esc(k.knowledge_id)}" data-person="${esc(p.student_id)}" style="background:${states[v.status].color}" aria-label="${esc(p.student_id + ' ' + k.name + ' ' + states[v.status].label + '，' + v.evidence_count + '条有效评分')}" title="${esc(k.name + ' · ' + states[v.status].label)}">${states[v.status].short}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${legend()}${pagination('heatmap', page, '人')}${columns.count > 1 ? pagination('heatColumns', columns, '个知识点') : ''}`, '每个色块对应一个学生与一个知识点。颜色代表当前证据支持的状态；证据不足不等于未掌握。使用分页查看全部学生，避免长表滚动。');
 }
 
 function studentsPage() {
+  if (state.studentPanel === 'profile') return personalPage(true);
   let list=profiles().filter(p=>p.student_id.toLowerCase().includes(state.search.toLowerCase()));
   if(state.studentFilter==='needs')list=list.filter(p=>p.lists.needs_consolidation.length);
   if(state.studentFilter==='unknown')list=list.filter(p=>!p.coverage.scope_known);
   if(state.studentFilter==='submitted')list=list.filter(p=>planProgress(p.student_id).done);
   if(state.studentSort==='score')list.sort((a,b)=>(D.stats[state.node][b.student_id].score_ratio??-1)-(D.stats[state.node][a.student_id].score_ratio??-1));
   if(state.studentSort==='coverage')list.sort((a,b)=>(a.coverage.scope_known?a.coverage.ratio:2)-(b.coverage.scope_known?b.coverage.ratio:2));
-  return `${hero('','学生明细','选择学生，查看个人画像、作答与学习建议。')}${filters()}
-  <section class="panel roster-panel">${panelHead('学生列表','',`<span class="pill">${list.length} 人</span>`)}
+  const page = pageSlice(list, 'roster', rowLimit());
+  return `<div class="report-workspace directory-workspace">${pageHeading('学生明细', '查找学生，查看画像、作答与建议')}
+  <section class="panel roster-panel report-card">${panelHead('学生列表','',`<span class="pill">${list.length} 人</span>`)}
     <div class="toolbar"><label class="search-field">${icon('search',15)}<input id="student-search" placeholder="搜索学生 ID" aria-label="搜索学生 ID" value="${esc(state.search)}"></label><div class="filters">
     <label class="filter">筛选<select id="student-filter"><option value="all" ${state.studentFilter==='all'?'selected':''}>全部学生</option><option value="needs" ${state.studentFilter==='needs'?'selected':''}>建议巩固</option><option value="unknown" ${state.studentFilter==='unknown'?'selected':''}>范围待确认</option><option value="submitted" ${state.studentFilter==='submitted'?'selected':''}>有练习提交</option></select></label>
     <label class="filter">排序<select id="student-sort"><option value="id" ${state.studentSort==='id'?'selected':''}>学生 ID</option><option value="score" ${state.studentSort==='score'?'selected':''}>得分率从高到低</option><option value="coverage" ${state.studentSort==='coverage'?'selected':''}>覆盖率从低到高</option></select></label></div></div>
-    <div class="table-scroll roster-scroll" tabindex="0" aria-label="学生列表，可滚动"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观察</th><th>新练习提交</th><th></th></tr></thead><tbody>${list.map(p=>{
+    <div class="table-scroll roster-scroll" aria-label="学生列表"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观察</th><th>新练习提交</th><th></th></tr></thead><tbody>${page.items.map(p=>{
       const s=D.stats[state.node][p.student_id],pr=planProgress(p.student_id);
       return `<tr class="${p.student_id===state.student?'selected':''}"><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td><td><span class="table-score">${pct(s.score_ratio)}</span><small class="muted"> · ${s.graded} 条评分</small></td><td>${p.coverage.scope_known?pct(p.coverage.ratio):'范围待确认'}</td><td>${s.assigned?`${s.attempted} / ${s.assigned}`:'未记录'}</td><td>${p.lists.needs_consolidation.length} / ${p.lists.needs_observation.length}</td><td>${pr.done?`${pr.done} / ${pr.total} · 待评阅`:pr.total?'未记录':'无新计划'}</td><td><button class="text-button" data-student="${esc(p.student_id)}" aria-label="查看 ${esc(p.student_id)} 详情">查看 ${icon('arrow',13)}</button></td></tr>`;
     }).join('')}</tbody></table>${!list.length?empty('没有符合筛选条件的学生。'):''}</div>
-    ${note('得分率仅反映已评分题目，不是统一试卷排名。新练习提交仅统计此浏览器的记录，等待评阅后才可更新画像。')}
-  </section><div id="student-detail">${profileDetail(currentProfile(),true)}</div>`;
+    ${pagination('roster', page, '人')}<p class="quiet-note">得分率仅反映已评分题目。新练习提交等待评阅，不自动更新画像。</p>
+  </section></div>`;
 }
 
-function profileDetail(p, teacher=false) {
-  const s=D.stats[state.node][p.student_id];
-  const metrics=`<section class="stats-grid profile-metrics">
-    ${stat('已评分得分率',pct(s.score_ratio),'',`${s.earned_score} / ${s.possible_score} 分`,'trend')}
-    ${stat('评分覆盖',p.coverage.scope_known?pct(p.coverage.ratio):'—','',p.coverage.scope_known?`${p.coverage.observed_items} / ${p.coverage.applicable_items} 道可测题目`:'测验参与范围待确认','target','#9a9a6c','#f2f3e9')}
-    ${stat('已评分记录',s.graded,'条',`${s.pending} 条待评分`,'book','#c89160','#fbf1e8')}
-    ${stat('作答完成率',pct(s.completion),'',`${s.attempted} / ${s.assigned} 条已布置记录`,'check','#9a87ae','#f2eef6')}
-  </section>`;
-  return `<section class="profile-banner"><div class="student-identity"><div class="student-avatar">${esc(p.student_id.slice(-3))}</div><div><h2>${esc(p.student_id)} <span class="pill">${esc(p.group_id)}</span></h2><p>${esc(state.node)} · ${p.coverage.scope_known?'范围已确认':'参与范围待确认'}</p></div></div><div class="profile-actions">${teacher?`<a class="button light" href="${routeURL('student')}">学生视角 ${icon('arrow',14)}</a>`:''}<button class="button" data-export>${icon('download',14)}导出摘要</button></div></section>
-  ${teacher?metrics:''}
-  <div class="profile-tabs" aria-label="个人画像内容">${[['analysis','表现分析','overview'],['records','作答记录','book'],['plans','学习建议','target']].map(([id,label,ico])=>`<button data-profile-tab="${id}" aria-pressed="${state.profileTab===id}" class="${state.profileTab===id?'active':''}">${icon(ico,15)}${label}${id==='plans'?`<span>${D.recommendations[state.node][p.student_id].plan.length}</span>`:''}</button>`).join('')}</div>
-  <div class="profile-content">${state.profileTab==='records'?recordTable(p):state.profileTab==='plans'?`<section class="panel">${panelHead('学习建议',`${p.student_id} · ${state.node}`)}${plans(p.student_id,teacher)}</section>`:profileAnalysis(p)}</div>${teacher?feedbackPanel(p.student_id):''}`;
+function personalPage(teacher = false) {
+  const p = currentProfile(), v = D.stats[state.node][p.student_id];
+  const progress = planProgress(p.student_id);
+  const profileTabs = [['analysis','表现分析'],['knowledge','知识明细'],['records','作答明细'],['history','作答与历史'],['plans','学习建议'], ...(teacher ? [['feedback','教学反馈']] : [])];
+  const sections = {
+    analysis: () => profileAnalysis(p),
+    knowledge: () => profileKnowledge(p),
+    records: () => recordTable(p),
+    history: () => personalHistory(p),
+    plans: () => chartDeck(chartCard('学习建议', `${p.student_id} · ${state.node}`, plans(p.student_id, teacher)), 'report-single'),
+    feedback: () => `<div class="report-body report-single">${feedbackPanel(p.student_id) || empty('此节点没有可调整的学习计划。')}</div>`
+  };
+  return `<div id="student-detail" class="report-workspace personal-workspace ${['plans','feedback'].includes(state.profileTab) ? 'flow-workspace' : ''}">
+    ${pageHeading(`${esc(p.student_id)} 的学习画像`, `${esc(p.group_id)} · ${p.coverage.scope_known ? '测验范围已确认' : '参与范围待确认'}${teacher ? ` · <a href="${routeURL('student')}">学生视角</a>` : ''}`, `${teacher ? '<button class="button" data-student-list>返回学生列表</button>' : ''}<button class="button" data-export>导出摘要</button>`)}
+    <section class="stats-grid report-metrics">
+      ${stat('已评分得分率', pct(v.score_ratio), '', `${v.earned_score} / ${v.possible_score} 分`, 'trend')}
+      ${stat('评分覆盖', p.coverage.scope_known ? pct(p.coverage.ratio) : '—', '', p.coverage.scope_known ? `${p.coverage.observed_items} / ${p.coverage.applicable_items} 道可测题目` : '参与范围待确认', 'target')}
+      ${teacher ? stat('已评分记录', v.graded, '条', `${v.pending} 条待评分`, 'book') : stat('新练习提交', progress.done ? `${progress.done} / ${progress.total}` : '未记录', '', progress.done ? '已提交，等待评阅' : `当前有 ${progress.total} 项学习活动`, 'book')}
+      ${stat('作答完成率', pct(v.completion), '', `${v.attempted} / ${v.assigned} 条已布置记录`, 'check')}
+    </section>
+    <nav class="report-nav profile-tabs" aria-label="个人画像子页面">${profileTabs.map(([id, label]) => `<button data-profile-tab="${id}" class="${state.profileTab === id ? 'active' : ''}" ${state.profileTab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>
+    ${sections[state.profileTab]()}
+  </div>`;
 }
 
 function profileAnalysis(p) {
-  const needs=p.lists.needs_consolidation, strengths=p.lists.strengths, watching=p.lists.needs_observation;
-  const focusCard=(title,list,color,emptyText)=>`<article class="focus-summary" style="--focus-color:${color}"><div><span>${title}</span><strong>${list.length}<small> 个</small></strong></div>${list.length?`<button class="text-button" data-knowledge="${esc(listIds(list)[0])}">${esc(nameFor(listIds(list)[0]))}${list.length>1?` <small>等 ${list.length} 项</small>`:''}${icon('arrow',12)}</button>`:`<p>${emptyText}</p>`}</article>`;
-  return `<div class="focus-summary-grid">${focusCard('建议巩固',needs,'#c99365','当前没有巩固项')}${focusCard('掌握较好',strengths,'#579883','暂未确认优势知识点')}${focusCard('需要更多观察',watching,'#a596b9','当前没有待观察项')}</div>
-  <div class="grid-main personal-charts"><section class="panel">${panelHead('主题表现对比','个人与所在班级的已评分题目')}${topicComparison(p.student_id)}${note('个人与班级均按已评分题目总分计算。本人包含在班级统计中；作答材料和数量可能不同，因此只作描述性对照。')}</section>
-  <section class="panel">${panelHead('知识状态','每个知识点归入一种状态')}${donut(statusCount(p),p.knowledge_states.length,'个知识点')}${note('较可能与已确认状态在图中合并，明细表保留原判断。证据不足不等于未掌握。')}</section></div>
-  <section class="panel">${panelHead('知识点明细','点击名称查看评分依据、课程要求和练习')}
-    <div class="table-scroll"><table class="data-table knowledge-detail-table"><thead><tr><th>知识点</th><th>状态</th><th>平均得分率</th><th>满分 / 部分分 / 零分</th><th>有效评分 / 可测题</th></tr></thead><tbody>${p.knowledge_states.map(k=>`<tr><td><button class="knowledge-link" data-knowledge="${esc(k.knowledge_id)}"><small>${esc(k.knowledge_id)}</small><span>${esc(nameFor(k.knowledge_id))}</span></button></td><td>${badge(k.status)}</td><td>${pct(k.performance.mean_score_ratio)}</td><td><span class="score-breakdown"><i>${k.performance.full_credit}</i><i>${k.performance.partial_credit}</i><i>${k.performance.zero_credit}</i></span></td><td>${k.evidence_count} / ${k.applicable_items??'—'}</td></tr>`).join('')}</tbody></table></div>
-    ${note('本表得分率是该知识点各条已评分记录得分比例的平均值。题目可关联多个知识点，跨知识点相加可能重复；主题与班级总分不会重复计入。')}
-    <details class="method-details model-details"><summary>查看模型估计与置信区间</summary>${masteryBars(p.knowledge_states,nameFor)}</details>
-  </section>`;
+  const focus = `<div class="personal-focus">${[['建议巩固',p.lists.needs_consolidation],['掌握较好',p.lists.strengths],['待观察',p.lists.needs_observation]].map(([label, list]) => `<button data-profile-tab="knowledge"><span>${label}</span><strong>${list.length}<small> 项</small></strong></button>`).join('')}</div>`;
+  return chartDeck(chartCard(isStudentAccount() ? '我的主题表现' : '主题表现对比', isStudentAccount() ? '本人已评分题目 · 按主题汇总' : '个人与所在班级的已评分题目', topicComparison(p.student_id), isStudentAccount() ? '按本人已评分题目总分计算。学生账号只接收本人明细，不用个人数据冒充班级得分率。' : '均按已评分题目总分计算。本人包含在班级统计中；作答材料和数量可能不同，仅作描述性对照。') + chartCard('知识状态', '每个知识点归入一种状态', donut(statusCount(p), p.knowledge_states.length, '个知识点') + focus, '较可能与已确认状态在图中合并，知识明细保留原判断。证据不足不等于未掌握。'));
+}
+
+function profileKnowledge(p) {
+  const page = pageSlice(p.knowledge_states, 'personalKnowledge', rowLimit('knowledge'));
+  return `<div class="report-body report-single"><section class="panel report-card knowledge-records">${panelHead('知识点明细','点击名称查看评分依据、课程要求和练习')}
+    <div class="table-scroll"><table class="data-table knowledge-detail-table"><thead><tr><th>知识点</th><th>状态</th><th>平均得分率</th><th>满分 / 部分分 / 零分</th><th>有效评分 / 可测题</th></tr></thead><tbody>${page.items.map(k=>`<tr><td><button class="knowledge-link" data-knowledge="${esc(k.knowledge_id)}"><small>${esc(k.knowledge_id)}</small><span>${esc(nameFor(k.knowledge_id))}</span></button></td><td>${badge(k.status)}</td><td>${pct(k.performance.mean_score_ratio)}</td><td><span class="score-breakdown"><i>${k.performance.full_credit}</i><i>${k.performance.partial_credit}</i><i>${k.performance.zero_credit}</i></span></td><td>${k.evidence_count} / ${k.applicable_items??'—'}</td></tr>`).join('')}</tbody></table></div>
+    ${pagination('personalKnowledge', page, '个知识点')}
+<div class="report-card-foot"><span>每条评分记录的得分比例取平均</span><button class="text-button" data-model-estimates>模型估计与置信区间</button></div></section></div>`;
 }
 
 function recordTable(p) {
   const records=D.records.filter(r=>r.student_id===p.student_id&&r.node_id===state.node);
+  const page = pageSlice(records, 'records', rowLimit());
+  return `<div class="report-body report-single">  <section class="panel report-card record-panel">${panelHead('作答明细',`${records.length} 条记录`)}<div class="table-scroll"><table class="data-table"><thead><tr><th>题目</th><th>状态</th><th>得分 / 满分</th><th>记录</th><th></th></tr></thead><tbody>${page.items.map(r=>`<tr><td><button class="text-button" data-material="${esc(r.material_id)}">${esc(materialFor(r.material_id)?.title||r.material_id)}</button></td><td>${!r.assigned?'未布置':!r.attempted?'未作答':r.score==null?'待评分':r.score===r.max_score?'满分':r.score===0?'零分':'部分得分'}</td><td>${r.score??'—'} / ${r.max_score}</td><td class="mono">${esc(r.record_id)}</td><td><button class="text-button" data-evidence="${esc(r.record_id)}">查看作答 ${icon('arrow',12)}</button></td></tr>`).join('')}</tbody></table>${records.length?'':empty('本次测验没有作答记录。')}</div>${pagination('records', page, '条记录')}</section></div>`;
+}
+
+function personalHistory(p) {
+  const records=D.records.filter(r=>r.student_id===p.student_id&&r.node_id===state.node);
   const totals=aggregateRecords(records);
-  return `<div class="grid-main"><section class="panel">${panelHead('本次作答','按已布置记录统计')}${donut(historicalItems(p.student_id),totals.assigned,'条已布置记录')}</section>
-  <section class="panel">${panelHead('各次测验记录','保留不同测验的范围与评分状态')}
-    <div class="node-history">${D.nodes.map(n=>{const s=D.stats[n.node_id][p.student_id],coverage=D.profiles[n.node_id][p.student_id].coverage;return `<div><span class="node-history-dot"></span><header><strong>${esc(n.node_id)}</strong><span>${esc(n.date)}</span></header><dl><div><dt>得分率</dt><dd>${pct(s.score_ratio)}</dd></div><div><dt>已评分</dt><dd>${s.graded} 条</dd></div><div><dt>覆盖率</dt><dd>${coverage.scope_known?pct(coverage.ratio):'—'}</dd></div><div><dt>待评分</dt><dd>${s.pending} 条</dd></div></dl></div>`;}).join('')}</div>${note('测验的教学与材料范围不同，这些记录不直接代表成绩增长。')}</section></div>
-  <section class="panel">${panelHead('作答明细',`${records.length} 条记录`)}<div class="table-scroll"><table class="data-table"><thead><tr><th>题目</th><th>状态</th><th>得分 / 满分</th><th>记录</th><th></th></tr></thead><tbody>${records.map(r=>`<tr><td><button class="text-button" data-material="${esc(r.material_id)}">${esc(materialFor(r.material_id)?.title||r.material_id)}</button></td><td>${!r.assigned?'未布置':!r.attempted?'未作答':r.score==null?'待评分':r.score===r.max_score?'满分':r.score===0?'零分':'部分得分'}</td><td>${r.score??'—'} / ${r.max_score}</td><td class="mono">${esc(r.record_id)}</td><td><button class="text-button" data-evidence="${esc(r.record_id)}">查看作答 ${icon('arrow',12)}</button></td></tr>`).join('')}</tbody></table>${records.length?'':empty('本次测验没有作答记录。')}</div></section>`;
+  const history = `    <div class="node-history">${D.nodes.map(n=>{const s=D.stats[n.node_id][p.student_id],coverage=D.profiles[n.node_id][p.student_id].coverage;return `<div><span class="node-history-dot"></span><header><strong>${esc(n.node_id)}</strong><span>${esc(n.date)}</span></header><dl><div><dt>得分率</dt><dd>${pct(s.score_ratio)}</dd></div><div><dt>已评分</dt><dd>${s.graded} 条</dd></div><div><dt>覆盖率</dt><dd>${coverage.scope_known?pct(coverage.ratio):'—'}</dd></div><div><dt>待评分</dt><dd>${s.pending} 条</dd></div></dl></div>`;}).join('')}</div>`;
+  return chartDeck(chartCard('本次作答', '已布置记录的状态构成', donut(historicalItems(p.student_id), totals.assigned, '条已布置记录'), '已作答待评分不等于零分，未布置记录不计入本图。') + chartCard('各次测验记录', '保留每次测验的范围与评分状态', history, '不同测验的教学与材料范围不同，这些记录不直接代表成绩增长。'));
 }
 
 function knowledgeList(list, fallback) {
@@ -405,17 +475,7 @@ function requirements() {
   return `<div class="requirement-grid">${kb.objectives.map(o=>`<article class="requirement-card"><span class="pill">${esc(o.objective_id)}</span><h3>${esc(o.theme)}</h3><p>${esc(o.objective_text)}</p><div class="material-buttons">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>`<button class="material-chip" data-knowledge="${esc(k.knowledge_id)}">${esc(k.knowledge_id)}</button>`).join('')}</div><div class="source"><strong>${esc(o.unit)}</strong><br>出处：${esc(o.source_locator)}<br>${esc(o.notes||'')}</div></article>`).join('')}</div>`;
 }
 
-function studentHome() {
-  const p=currentProfile(), s=D.stats[state.node][state.student], progress=planProgress(state.student);
-  return `<section class="student-hero">${hero('',`${esc(state.student)} 的学习概览`,`${esc(p.group_id)} · 七年级数学`)}</section>${filters(true)}
-  <section class="stats-grid">
-    ${stat('已评分得分率',pct(s.score_ratio),'',`${s.earned_score} / ${s.possible_score} 分 · ${s.graded} 条评分`,'trend')}
-    ${stat('评分覆盖',p.coverage.scope_known?pct(p.coverage.ratio):'—','',p.coverage.scope_known?`${p.coverage.observed_items} / ${p.coverage.applicable_items} 道可测题目`:'测验参与范围待确认','map','#9a9a6c','#f2f3e9')}
-    ${stat('作答完成率',pct(s.completion),'',`${s.attempted} / ${s.assigned} 条已布置记录`,'check','#c89160','#fbf1e8')}
-    ${stat('新练习提交',progress.done?`${progress.done} / ${progress.total}`:'未记录','',progress.done?'已提交，等待评阅':progress.total?`当前有 ${progress.total} 项学习活动`:'当前没有新计划','book','#9a87ae','#f2eef6')}
-  </section>${profileDetail(p)}
-  <section class="panel section-gap">${panelHead('课程知识地图','选择知识点，查看学习要求与材料',`<button class="text-button" data-view="course">课程要求 ${icon('arrow',14)}</button>`)}${knowledgeMap(p)}${D.meta.dataset_id==='official-v1'?'':legend()}</section>`;
-}
+function studentHome() { return personalPage(false); }
 
 function studentPlans() {
   return `${hero('LEARNING INTO ACTION / 04','练习与建议','查看练习、完成标准与提交情况。')}${filters(true)}<section class="panel">${panelHead(`${esc(state.student)} 的学习建议`,`${esc(state.node)} · 预计用时供参考`,'<span class="pill">学习计划</span>')}${plans(state.student)}</section><section class="panel section-gap">${panelHead('想把学会的知识用起来？','试试自编互动实验，把抽象关系变成可观察的变化。')}<p class="panel-sub">先用数轴理解负数乘法的方向变化，再用预算方案练习建立数量关系。探索结果不计入正式评分。</p><button class="button light section-gap" data-view="explore">进入跨域探索 ${icon('arrow',15)}</button></section>`;
@@ -654,12 +714,44 @@ async function openEvidence(id) {
   }
 }
 
+
+function navigate(values) {
+  history.pushState(null, '', location.href);
+  Object.assign(state, values);
+  state.chartPage = 0;
+  render();
+  window.scrollTo(0, 0);
+  $('#main').focus({preventScroll:true});
+}
+
+window.addEventListener('popstate', () => {
+  const q = new URLSearchParams(location.search);
+  Object.assign(state, {role:location.pathname === '/student' ? 'student' : 'teacher', view:q.get('view') || 'overview', node:q.get('node'), group:q.get('group') || 'ALL', student:q.get('student'), report:q.get('report') || 'scores', profileTab:q.get('profile') || 'analysis', studentPanel:q.get('panel') || 'list', chartPage:0});
+  render();
+});
+
+function fitReport() {
+  const cards = [...document.querySelectorAll('.report-body > [data-chart-card]')];
+  const switcher = $('.chart-switcher');
+  const narrow = window.innerWidth < 1050;
+  const index = Math.min(state.chartPage, Math.max(0, cards.length - 1));
+  cards.forEach((card, i) => {card.hidden = narrow && cards.length > 1 && i !== index;});
+  if (switcher) {
+    switcher.hidden = !narrow || cards.length < 2;
+    switcher.innerHTML = cards.map((card, i) => `<button class="button ${i === index ? 'primary' : ''}" data-chart-page="${i}" aria-pressed="${i === index}">${esc(card.dataset.chartCard)}</button>`).join('');
+  }
+  fitTrend();
+}
+
 function render() {
+  reportSizeKey = reportSize();
   normalize();
   saveURL();
   unmountMap?.();
   $('#app').innerHTML = shell();
-  fitTrend();
+  const compact = !!$('.report-workspace') && !$('.flow-workspace');
+  $('#main').classList.toggle('report-main', compact);
+  fitReport();
   const map = $('#app [data-interactive-map]');
   unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
@@ -1055,8 +1147,33 @@ document.addEventListener('click', event => {
     window.scrollTo(0, 0);
     return;
   }
+
+  if (b.hasAttribute('data-help')) {
+    showDrawer('统计说明', `<p class="plain-text">${esc(decodeURIComponent(b.dataset.help))}</p>`, '数据口径');
+    return;
+  }
+  if (b.hasAttribute('data-model-estimates')) {
+    showDrawer('模型估计与置信区间', masteryBars(currentProfile().knowledge_states, nameFor) + '<p class="plain-text">知识明细的得分率是各条已评分记录得分比例的平均值。题目可关联多个知识点，跨知识点相加可能重复；主题与班级总分不会重复计入。</p>', '个人画像');
+    return;
+  }
+  if (b.dataset.report) { navigate({report:b.dataset.report}); return; }
+  if (b.hasAttribute('data-chart-page')) {
+    state.chartPage=Number(b.dataset.chartPage);
+    fitReport();
+    return;
+  }
+  if (b.hasAttribute('data-page-key')) {
+    state.pages[b.dataset.pageKey] = Number(b.dataset.page);
+    render();
+    document.querySelector(`[data-page-key="${b.dataset.pageKey}"]:not(:disabled)`)?.focus({preventScroll:true});
+    return;
+  }
+  if (b.hasAttribute('data-student-list')) { navigate({studentPanel:'list'}); return; }
   if (b.dataset.view) {
+    history.pushState(null, '', location.href);
+    state.chartPage = 0;
     state.view = b.dataset.view;
+    if (state.view === 'students') state.studentPanel = 'list';
     if (state.view === 'settings') {
       llmSettings = null;
       settingsError = null;
@@ -1066,21 +1183,11 @@ document.addEventListener('click', event => {
     return;
   }
   if (b.dataset.profileTab) {
-    const y=window.scrollY;
-    state.profileTab=b.dataset.profileTab;
-    render();
-    window.scrollTo(0,y);
+    navigate({profileTab:b.dataset.profileTab});
     return;
   }
   if (b.dataset.student) {
-    state.profileTab='analysis';
-    state.student = b.dataset.student;
-    state.view = 'students';
-    render();
-    $('#student-detail').scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
+    navigate({profileTab:'analysis', student:b.dataset.student, view:'students', studentPanel:'profile'});
     return;
   }
   if (b.dataset.personKnowledge) {
@@ -1113,13 +1220,6 @@ document.addEventListener('click', event => {
     $('#quiz-feedback').textContent = b.dataset.quiz === 'correct' ? '正确。两边除以 −2，不等号反向，得到 x ＞ −3。这次自编检验不会改动历史画像。' : '再想一想：两边除以负数时，数轴左右顺序会反转。试着把乘数拖到负数区域再观察。';
     return;
   }
-  if (b.hasAttribute('data-toggle-heatmap')) {
-    const top = window.scrollY;
-    state.allHeatmap = !state.allHeatmap;
-    render();
-    window.scrollTo(0, top);
-    return;
-  }
   if (b.hasAttribute('data-export-reviews')) {
     exportReviews();
     return;
@@ -1146,19 +1246,23 @@ document.addEventListener('change', event => {
   }
   if (event.target.id === 'node-select') {
     state.node = event.target.value;
+    state.pages = {};
     render();
   }
   if (event.target.id === 'group-select') {
     state.group = event.target.value;
+    state.pages = {};
     if (state.group !== 'ALL' && !profiles().some(p => p.student_id === state.student)) state.student = profiles()[0].student_id;
     render();
   }
   if (event.target.id === 'student-sort') {
     state.studentSort=event.target.value;
+    state.pages = {};
     render();
   }
   if (event.target.id === 'student-filter') {
     state.studentFilter = event.target.value;
+    state.pages = {};
     render();
   }
 });
@@ -1166,6 +1270,7 @@ document.addEventListener('input', event => {
   if (event.target.id === 'student-search') {
     const position = event.target.selectionStart;
     state.search = event.target.value;
+    state.pages = {};
     render();
     const el = $('#student-search');
     el.focus();
@@ -1252,6 +1357,7 @@ document.addEventListener('submit', async event => {
       return;
     }
     state.student = id;
+    state.pages = {};
     render();
   }
   if (event.target.id === 'practice-form') {

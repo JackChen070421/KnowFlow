@@ -4137,3 +4137,227 @@ details[open] .collapse-toggle svg { transform: rotate(90deg); }
 @media (max-width: 720px) {
   .viewer-chip small { display: none }
 }
+
+/* Map workspace: the page stays still; auxiliary panels scroll independently. */
+body.course-mode{height:100dvh;overflow:hidden}
+.course-mode #app,.course-mode .app-shell{height:100dvh;min-height:0;overflow:hidden}
+.course-mode .workspace{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.course-mode .topbar{min-height:60px;padding:10px 24px;flex-shrink:0}
+.course-mode main{flex:1;min-height:0;width:100%;max-width:none;margin:0;padding:16px 24px;overflow:hidden;display:flex;flex-direction:column}
+.course-mode .page-footer{display:none}
+.course-workspace{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+.course-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.course-heading h1{font-size:22px;margin:0}.course-heading .filters{margin:0;padding:0;border:0}
+.course-tabs{align-self:flex-start;flex-shrink:0}
+.course-content{flex:1;min-height:0;border:1px solid #e3e9ef;border-radius:14px;background:#fff;overflow:hidden}
+.course-content.is-map{display:flex;flex-direction:column;padding:0 14px 12px}
+.course-content.is-map>[data-interactive-map]{flex:1;min-height:0}
+.course-content.aux-panel{overflow:auto;padding:24px;overscroll-behavior:contain}
+.course-content.aux-panel p{margin:18px 0;line-height:1.8}
+@media(max-width:700px){.course-mode main{padding:8px}.course-mode .topbar{padding:8px;min-height:48px}.course-heading h1{font-size:18px}.course-workspace{gap:6px}.course-mode .breadcrumb,.course-mode .avatar{display:none}.course-mode .top-actions{gap:6px}.course-content.is-map{padding:0 6px 6px}.course-tabs{max-width:100%;overflow-x:auto;white-space:nowrap}}
+.pdf-dialog{width:min(1180px,96vw);height:94dvh;max-height:94dvh;padding:0;border:1px solid #dbe3ef;border-radius:14px;color:#26364b}
+.pdf-dialog[open]{display:flex;flex-direction:column}.pdf-toolbar{padding:14px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #dbe3ef;background:white;flex-shrink:0}.pdf-toolbar h2{font-size:18px;margin:0 auto 0 0}.pdf-pages{flex:1;min-height:0;overflow:auto;background:#e9edf2;padding:24px;overscroll-behavior:contain}.pdf-pages img{display:block;width:min(100%,794px);height:auto;margin:0 auto 24px;box-shadow:0 3px 16px #24354925}.pdf-pages p{max-width:794px;margin:12px auto}
+
+/* Fixed workspace, independent modules and paged lists. */
+[hidden]{display:none!important}
+body.module-mode{height:100dvh;overflow:hidden}
+.module-mode #app,.module-mode .app-shell{height:100dvh;min-height:0;overflow:hidden}
+.module-mode .workspace{height:100dvh;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.module-mode .topbar{flex-shrink:0;min-height:56px;padding:10px 24px}
+.module-mode main{flex:1;min-height:0;max-width:none;margin:0;padding:14px 24px;display:flex;flex-direction:column;overflow:hidden;gap:10px}
+.module-mode .hero{margin:0;padding:0;flex-shrink:0}.module-mode .hero h1{font-size:24px}.module-mode .hero p{margin:4px 0}.module-mode .hero .node-card,.module-mode .hero .eyebrow{display:none}
+.module-mode main>.toolbar{margin:0;flex-shrink:0}.module-mode .page-footer{display:none}
+.module-tabs{display:flex;gap:6px;flex-shrink:0;overflow-x:auto;white-space:nowrap;margin:0!important;padding:4px!important}
+.module-tabs button{padding:9px 14px;border:0;border-radius:8px;background:transparent;color:#526079;cursor:pointer;font-size:14px}
+.module-tabs button.active{background:#e5f1ee;color:#216451;font-weight:700}
+.module-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:2px}
+.module-body>.panel,.module-body>.section-gap{margin:0}.module-mode .profile-banner{margin:0;padding:12px}.module-mode .profile-tabs{margin:8px 0}.module-mode .profile-content{min-height:0}
+.module-mode .roster-scroll{max-height:none}.module-mode .data-table td,.module-mode .data-table th{padding:10px 12px}
+.table-pager{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:8px}.table-pager span{font-size:13px;color:#526079}
+.training-workspace[open]{display:flex;flex-direction:column;height:88dvh;overflow:hidden}.training-workspace>h2{margin:8px 0}.training-workspace>p{margin:6px 0}.training-body{flex:1;min-height:0;overflow:auto}.danger{color:#ac3636!important}
+@media(max-width:720px){.module-mode main{padding:8px}.module-mode .topbar{padding:8px}.module-mode .breadcrumb,.module-mode .viewer-chip{display:none}.module-mode .hero h1{font-size:20px}.module-tabs button{padding:8px}.module-mode .top-actions{flex-wrap:wrap}}
+
+.paper-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.paper-questions article{padding:12px;background:#f5f8fa;border-radius:10px}
+
+/* Class overview groups related evidence instead of one tab per chart. */
+.class-overview-group{min-height:100%;display:flex;flex-direction:column;gap:14px}
+.class-overview-group .stats-grid{margin:0;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.class-overview-group .stat-card{padding:14px 16px;min-height:108px}
+.class-overview-group .stat-value{font-size:29px;margin:6px 0}
+.class-overview-group .grid-main,.class-overview-group .grid-half{margin:0;gap:14px;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);flex:1}
+.class-overview-group .panel{padding:18px;display:flex;flex-direction:column}
+.class-overview-group .panel-header{margin-bottom:12px;gap:8px}
+.class-overview-group .panel-header h2{font-size:16px}
+.class-overview-group .panel-sub{font-size:12px}
+.class-overview-group .method-details{margin-top:auto;padding-top:8px}
+.class-side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.class-side>.panel{flex:1}
+.class-overview-group .comparison-row{margin-bottom:14px;gap:10px}
+.class-overview-group .comparison-label small{margin-top:2px}
+.class-overview-group .state-bars{gap:12px}
+.class-overview-group .state-bar-row{grid-template-columns:minmax(110px,1fr) minmax(90px,1fr) 24px;gap:8px}
+.class-overview-group .issue-list{gap:6px}
+.class-overview-group .issue-row{padding:8px 0;gap:8px}
+.class-overview-group .issue-body p{margin:3px 0;font-size:11px}
+.class-overview-group .issue-number{display:none}
+.class-overview-group .issue-body h3{font-size:12px}
+.class-overview-group .issue-rate{font-size:18px}
+.class-overview-group .issue-meter{margin-top:5px}
+.class-evidence .line-chart{max-height:175px}
+.class-evidence .histogram{margin-top:32px}
+.class-summary .overview-primary{min-height:380px}
+.class-summary .histogram{flex:1;min-height:210px;max-height:330px}
+.class-students>.panel{flex:1}
+@media(min-width:1400px){.class-overview-group .panel{padding:22px}.class-overview-group .state-bars{gap:18px}.class-overview-group .issue-row{padding:12px 0}}
+@media(max-width:760px){.class-overview-group .grid-main,.class-overview-group .grid-half{grid-template-columns:1fr}.class-overview-group .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.class-summary .overview-primary{min-height:0}}
+
+.class-overview-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.class-overview-heading>.toolbar{margin:0;flex-shrink:0}.class-overview-heading .filters{margin:0}
+.class-overview-group .donut-wrap{flex-direction:row;gap:12px;align-items:center;margin:12px 0}
+.class-overview-group .donut{width:145px;flex:0 0 145px}
+.class-overview-group .donut-legend{min-width:0;flex:1;width:auto}
+.class-summary .histogram{flex:none;height:210px;min-height:0;margin:8px 0 0}
+.class-summary .overview-primary{min-height:340px}
+.class-overview-group .distribution-summary{padding:10px 0;margin:8px 0}
+.class-overview-group .stat-card{min-height:100px}
+.class-overview-group .inline-stat{margin:8px 0}
+@media(max-width:1100px){.class-overview-heading{align-items:flex-start}.class-overview-heading .filter{font-size:11px}.class-overview-heading select{max-width:150px}.class-overview-group .donut-wrap{flex-direction:column;gap:6px}.class-overview-group .donut{width:120px;flex-basis:120px}.class-overview-group .donut-legend{width:100%}}
+@media(max-width:760px){.class-overview-heading{flex-direction:column;gap:6px}.class-overview-heading>.toolbar{width:100%}}
+
+.class-learning .class-side>.panel:first-child{flex:0 0 auto}
+.class-learning .comparison-row{margin-bottom:8px}
+.class-learning .comparison-label small{font-size:10px}
+.class-learning .comparison-chart{margin-bottom:0}
+.class-learning .issue-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+.class-learning .issue-row{display:flex;align-items:flex-start;flex-wrap:wrap;position:relative;padding:6px 0}
+.class-learning .issue-body{width:100%}
+.class-learning .issue-body p{line-height:1.45}
+.class-learning .issue-rate{font-size:15px;display:flex;gap:6px;align-items:baseline}
+.class-learning .issue-rate small{font-size:10px;display:inline}
+.class-learning .panel-header{margin-bottom:8px}
+.class-learning .legend{margin:6px 0!important}
+.class-overview-group .stat-icon{width:24px;height:24px}
+.class-overview-group .stat-value{font-size:27px;margin:4px 0}
+.class-overview-group .stat-card{padding:10px 14px}
+@media(max-height:800px) and (min-width:761px){
+ .class-overview-group .panel{padding:14px}
+ .class-summary .histogram{height:160px}
+ .class-summary .hist-well,.class-summary .hist-grid{height:116px}
+ .class-summary .overview-primary{min-height:300px}
+ .class-overview-group .distribution-summary strong{font-size:17px;margin-top:3px}
+ .class-learning .comparison-label small{display:none}
+ .class-learning .state-bars{gap:8px}
+ .class-learning .issue-body p{font-size:10px}
+ .class-learning .panel-sub{line-height:1.4}
+ .class-overview-group .panel-header{margin-bottom:8px}
+ .class-evidence .line-chart{max-height:140px}
+}
+
+/* Group each workspace by the user's task; retain contextual controls. */
+.compact-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.compact-heading>.toolbar{margin:0}.compact-heading .student-hero{margin:0}.compact-heading .filters{margin:0;flex-wrap:wrap}
+.module-mode .compact-hero{margin:0}.module-mode .compact-hero h1{font-size:22px}
+.person-workspace{display:flex;flex-direction:column;gap:10px;min-height:100%}
+.person-workspace .profile-banner{padding:8px 12px;margin:0!important}
+.person-workspace .student-avatar{width:32px;height:32px;font-size:13px}
+.person-workspace .profile-banner h2{font-size:18px}.person-workspace .profile-banner p{margin:2px 0}
+.person-workspace .profile-metrics,.person-workspace>.stats-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}
+.person-workspace .stat-card{padding:8px 12px;min-height:80px}
+.person-workspace .stat-value{font-size:24px;margin:3px 0}.person-workspace .stat-icon{width:22px;height:22px}
+.person-workspace .profile-tabs{margin:0;flex-shrink:0}
+.person-workspace .profile-tabs button{padding:9px 14px}
+.person-workspace .profile-content{flex:1;margin:0}
+.person-workspace:has(.person-records) .profile-metrics,.person-workspace:has(.person-plans) .profile-metrics,.person-workspace:has(.knowledge-detail-table) .profile-metrics{display:none}
+.person-analysis{display:flex;flex-direction:column;gap:10px}
+.person-analysis .focus-summary-grid{margin:0;gap:10px}
+.person-analysis .focus-summary{padding:8px 12px}
+.person-analysis .focus-summary>div>strong{font-size:22px}
+.person-analysis .personal-charts{margin:0;gap:12px;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);flex:1}
+.person-workspace .panel{padding:14px}.person-workspace .panel-header{margin-bottom:10px}
+.person-workspace .panel-header h2{font-size:16px}
+.person-workspace .comparison-row{margin-bottom:10px}
+.person-workspace .donut-wrap{flex-direction:row;gap:8px;margin:0}
+.person-workspace .donut{width:130px;flex:0 0 130px}
+.person-workspace .donut-legend{min-width:0;flex:1}
+.person-records{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr);gap:12px;align-items:start}
+.person-records>.grid-main{display:flex;flex-direction:column;gap:12px;margin:0}
+.person-records .node-history{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.person-records .node-history>div{padding:0 8px}.person-records .node-history-dot{display:none}
+.person-plans{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,1fr);gap:12px;align-items:start}
+.person-plans #teacher-feedback{margin:0}.person-plans .feedback-form{display:flex;flex-direction:column;align-items:stretch}
+.person-plans .feedback-form input,.person-plans .feedback-form select{width:100%}
+.person-plans:not(:has(#teacher-feedback)){display:block}
+.quality-workspace{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;min-height:100%;align-items:start}
+.quality-workspace>.panel{margin:0;padding:18px;min-width:0}
+.quality-workspace .audit-flow{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.quality-workspace .audit-step{padding:12px}.quality-workspace .audit-step strong{font-size:26px}
+.quality-workspace .audit-status{flex-wrap:wrap}.quality-workspace .donut-wrap{flex-direction:column}
+.quality-workspace .panel-header h2{font-size:17px}.quality-workspace .rule-list li{margin-bottom:12px}
+.quality-workspace #review-entry{display:flex;flex-direction:column;align-items:start;gap:16px}
+.combined-workspace{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;flex:1}
+.combined-workspace>.panel{margin:0}.combined-workspace>.lab-tabs{margin:0;flex-shrink:0}
+.module-mode main:has(.settings-grid)>.settings-grid{flex:1;min-height:0;overflow:auto;margin:0;align-items:start}
+.module-mode .settings-grid>.panel{padding:18px}.module-mode .settings-grid .notice{margin-top:12px}
+.student-map-panel{height:100%;display:flex;flex-direction:column}.student-map-panel [data-interactive-map]{flex:1;min-height:420px}
+@media(max-width:1000px){.compact-heading{flex-wrap:wrap}.person-workspace .donut-wrap{flex-direction:column}.person-workspace .donut-legend{width:100%}.person-plans,.person-records{grid-template-columns:1fr}.quality-workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media(max-width:760px){.quality-workspace,.person-analysis .personal-charts{grid-template-columns:1fr}.person-workspace .profile-metrics,.person-workspace>.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.compact-heading{align-items:stretch}.person-workspace .profile-tabs{overflow-x:auto;white-space:nowrap}}
+
+.training-columns{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(0,1.35fr);gap:16px;align-items:start}
+.training-columns>section{min-width:0}.training-columns>section:only-child{grid-column:1/-1}
+.training-columns form>label{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.training-columns #tr-generate{padding:16px}.training-columns input[type=file]{max-width:100%}
+.training-columns .panel{margin-top:8px!important}.training-columns h3{margin:10px 0}
+.training-workspace #tr-close{align-self:flex-end;flex-shrink:0}
+@media(max-width:760px){.training-columns{grid-template-columns:1fr}}
+
+.person-heading{display:grid;grid-template-columns:minmax(210px,.85fr) minmax(0,2fr);gap:10px;align-items:stretch}
+.person-heading .profile-banner{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;gap:6px}
+.person-heading .profile-actions{display:flex;gap:6px}.person-heading .profile-actions .button{padding:5px 8px;font-size:11px}
+.person-heading .student-identity{gap:8px}.person-heading .student-identity>div:last-child{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.person-heading .profile-metrics,.person-heading>.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;gap:8px}
+.person-workspace:has(.person-records) .person-heading,.person-workspace:has(.person-plans) .person-heading,.person-workspace:has(.knowledge-detail-table) .person-heading{display:block}
+.person-workspace:has(.person-records) .profile-banner,.person-workspace:has(.person-plans) .profile-banner,.person-workspace:has(.knowledge-detail-table) .profile-banner{flex-direction:row}
+.quality-workspace .audit-flow{grid-template-columns:repeat(4,minmax(0,1fr))}
+.quality-workspace .audit-step{padding:10px 8px}.quality-workspace .audit-step strong{margin:8px 0}.quality-workspace .audit-step span{font-size:11px}
+.quality-workspace .panel-header{margin-bottom:10px}.quality-workspace .notice{margin-top:12px;padding:12px}
+@media(max-height:800px) and (min-width:1001px){.person-workspace .comparison-label small{display:none}.person-workspace .focus-summary>div{margin-bottom:2px}.person-workspace .personal-charts .method-details{margin-top:auto}.person-workspace .comparison-row{margin-bottom:8px}.person-workspace .panel-sub{margin-bottom:6px}.person-heading .stat-value{font-size:22px}.person-workspace .focus-summary .text-button{line-height:1.5}}
+@media(max-width:1000px){.person-heading{grid-template-columns:1fr}.person-heading .profile-banner{flex-direction:row}.quality-workspace .audit-flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.combined-workspace:has(.plan-list){display:grid;grid-template-columns:minmax(0,1.6fr) minmax(230px,1fr);align-items:start}
+.person-plans .table-pager{padding:0 0 8px}.person-plans .plan-card{padding:14px}.person-plans .plan-heading h3{font-size:15px}
+@media(max-width:760px){.combined-workspace:has(.plan-list){grid-template-columns:1fr}}
+
+.compact-heading .student-hero{padding:0;background:none;border:0;box-shadow:none}.compact-heading .student-hero:before,.compact-heading .student-hero:after{display:none}
+
+/* Source library: compact reference cards with real chapter context. */
+.course-content.sources-panel{background:#f5f8f7;padding:18px}
+.source-library-heading{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}
+.source-library-heading h2{font-size:20px;margin:0}.course-content .source-library-heading p{font-size:13px;margin:4px 0;color:#73827d;line-height:1.5}
+.source-counts{display:flex;gap:20px;color:#687c74;font-size:13px;white-space:nowrap}.source-counts strong{font-size:24px;color:#284e43;margin-right:4px}
+.source-toolbar{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.source-toolbar nav{display:flex;gap:4px}.source-scope{border:0;background:transparent;color:#61776d;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13px}.source-scope.active{background:#deeee7;color:#28654f;font-weight:600}
+.source-toolbar .search-field{margin-left:auto;min-width:250px;background:white}.source-toolbar #source-result{font-size:12px;color:#73827d}
+.source-card-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.source-card{display:flex;flex-direction:column;min-width:0;border:1px solid #e0e8e3;border-radius:12px;background:white;padding:14px;box-shadow:0 2px 5px #23412d04}
+.source-card.is-linked{border-top:3px solid #70a995;padding-top:12px}
+.source-card-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.source-book{display:flex;align-items:center;gap:7px;color:#39785f;font-size:14px}.source-category{font-size:11px;color:#6c8176;background:#f1f5f2;border-radius:5px;padding:3px 6px}
+.source-card h3{font-size:15px;line-height:1.5;margin:0 0 6px;color:#29463b;overflow-wrap:anywhere}
+.course-content .source-card p{font-size:12px;line-height:1.6;margin:0;color:#708278}
+.source-description{min-height:38px}.source-links{margin:10px 0;padding:8px 0;border-top:1px solid #edf1ee}.source-links>span{font-size:11px;color:#45816c;font-weight:600}.source-links p{margin-top:3px!important}
+.source-file{font-size:11px;color:#86958c;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin-top:auto;padding-top:4px}
+.source-card footer{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #edf1ee;margin-top:10px;padding-top:10px;gap:8px}.source-card footer>span{font-size:11px;color:#8b9b91}.source-card footer .button{font-size:12px;padding:6px 10px}
+@media(max-width:1150px){.source-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.source-counts{gap:12px}}
+@media(max-width:800px){.source-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.source-library-heading{align-items:start}.source-counts{display:none}.source-toolbar .search-field{margin-left:0;flex:1}.course-content.sources-panel{padding:12px}}
+@media(max-width:500px){.source-card-grid{grid-template-columns:1fr}.source-toolbar{gap:8px}}
+
+.source-card .source-description{min-height:0}.source-card .source-links{margin:7px 0;padding:6px 0}
+@media(max-height:800px) and (min-width:1151px){
+ .course-content.sources-panel{padding:12px 16px}
+ .source-library-heading{margin-bottom:8px}.source-toolbar{margin-bottom:10px}
+ .source-card{padding:10px 12px}.source-card.is-linked{padding-top:8px}
+ .source-card-top{margin-bottom:6px}.source-card h3{font-size:14px;margin-bottom:4px}
+ .source-card .source-links p{display:none}
+ .source-card .source-file{padding-top:0}.source-card footer{margin-top:6px;padding-top:6px}
+ .source-card-grid{gap:10px}
+}

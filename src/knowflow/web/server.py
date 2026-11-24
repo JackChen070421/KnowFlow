@@ -14,7 +14,7 @@ import traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import export_evidence
@@ -22,6 +22,7 @@ from knowflow.llm.chat import answer_question
 from knowflow.llm.settings_store import read_llm_settings, save_llm_settings
 from knowflow.web.auth import COOKIE_NAME, Account, AuthStore
 from knowflow.web.data import read_json
+from knowflow.web.training import TrainingStore
 
 STATIC = Path(__file__).with_name("static")
 ASSETS = {
@@ -31,16 +32,21 @@ ASSETS = {
     "/knowledge-map.js": "text/javascript",
     "/analytics.mjs": "text/javascript",
     "/theme-boot.js": "text/javascript",
+    "/map-layout.mjs": "text/javascript",
     "/styles.css": "text/css",
     "/workspace.css": "text/css",
     "/theme.css": "text/css",
     "/motion.css": "text/css",
     "/login.css": "text/css",
     "/knowledge-map.css": "text/css",
+    "/training.js": "text/javascript",
+    "/pdf-viewer.js": "text/javascript",
+    "/pdf-print.js": "text/javascript",
+    "/pdf-print.css": "text/css",
     "/favicon.svg": "image/svg+xml",
 }
 PUBLIC_PAGES = {"/login"}
-SESSION_PAGES = {"/", "/teacher", "/student"}
+SESSION_PAGES = {"/", "/teacher", "/student", "/training-print"}
 MAX_SETTINGS_BODY = 8192
 MAX_CHAT_BODY = 16384
 MAX_LOGIN_BODY = 4096
@@ -101,6 +107,7 @@ def create_server(
     auth: AuthStore | None = None,
     thresholds_provider=None,
 ) -> ThreadingHTTPServer:
+    training = TrainingStore(repo_root() / 'data/training' / snapshot['meta']['dataset_id'], snapshot)
     materials = {m["material_id"]: m for m in read_json(run / "knowledge_base.json")["materials"]}
     raw = (repo_root() / "data/raw" / snapshot["meta"]["dataset_id"]).resolve()
     documents = {}
@@ -355,7 +362,7 @@ def create_server(
                 return
             if path == "/api/session":
                 account = self.account()
-                self.json(account.as_dict() if account else {"authenticated": False})
+                self.json({**account.as_dict(), "auth_enabled": auth is not None} if account else {"authenticated": False, "auth_enabled": auth is not None})
                 return
             if path in SESSION_PAGES:
                 account = self.account()
@@ -369,7 +376,7 @@ def create_server(
                 if path == "/teacher" and account.role != "teacher":
                     self.redirect(home)
                     return
-                self.respond((STATIC / "index.html").read_bytes(), "text/html")
+                self.respond((STATIC / ("pdf-print.html" if path == '/training-print' else "index.html")).read_bytes(), "text/html")
                 return
 
             account = self.account()
@@ -386,6 +393,46 @@ def create_server(
                     self.json(auth.settings_payload(account.username))
                 except ValueError as exc:
                     self.json({"error": str(exc)}, 400)
+            elif path == '/api/training':
+                self.json(training.list_for(account))
+            elif any(path.startswith('/api/training/' + route + '/') for route in ('pdf', 'pdf-preview', 'pdf-page')):
+                try:
+                    identifier = path.rsplit('/', 1)[-1]
+                    paper = training.get('papers', identifier)
+                    query = parse_qs(urlsplit(self.path).query)
+                    answers = query.get('answers', ['0'])[0] == '1'
+                    if account.role == 'student' and (answers or paper['status'] != 'approved' or paper['student_id'] not in (None, account.student_id)):
+                        self.json({'error': '无权访问该试卷。'}, 403)
+                        return
+                    pdf = training.pdf(identifier, answers)
+                    if path.startswith('/api/training/pdf/'):
+                        self.respond(pdf, 'application/pdf', extra_headers={'Content-Disposition': f'attachment; filename="training-{identifier}{"-answers" if answers else ""}.pdf"'})
+                    else:
+                        import fitz
+                        with fitz.open(stream=pdf, filetype='pdf') as doc:
+                            if path.startswith('/api/training/pdf-preview/'):
+                                self.json({'pages': len(doc), 'title': paper.get('title', '变式训练') + (' · 答案' if answers else ' · 题卷')})
+                            else:
+                                page = int(query.get('page', ['0'])[0])
+                                if not 0 <= page < len(doc):
+                                    raise ValueError('PDF 页码超出范围。')
+                                self.respond(doc[page].get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png'), 'image/png')
+                except ValueError as exc:
+                    self.json({'error': str(exc)}, 400)
+                except Exception:
+                    self.json({'error': 'PDF 生成失败，请确认已安装 training 依赖。'}, 500)
+            elif path.startswith('/api/training/scan/'):
+                try:
+                    scan = training.get('scans', path.rsplit('/', 1)[-1])
+                    if account.role == 'student' and scan['student_id'] != account.student_id:
+                        self.json({'error': '无权访问该扫描。'}, 403)
+                        return
+                    page = int(parse_qs(urlsplit(self.path).query).get('page', ['0'])[0])
+                    if not 0 <= page < scan['pages']:
+                        raise ValueError('扫描页码超出范围。')
+                    self.respond((training.root / 'uploads' / (scan['id'] + f'-{page}.png')).read_bytes(), 'image/png')
+                except ValueError as exc:
+                    self.json({'error': str(exc)}, 400)
             elif path == "/api/settings/llm":
                 if not self.require_teacher(account):
                     return
@@ -432,7 +479,7 @@ def create_server(
                 self.json({"error": "仅允许本机访问。"}, 403)
                 return
             path = unquote(urlsplit(self.path).path)
-            limit = MAX_LOGIN_BODY if path == "/api/login" else MAX_CHAT_BODY
+            limit = 17 * 1024 * 1024 if path == '/api/training/scan' else MAX_LOGIN_BODY if path == "/api/login" else MAX_CHAT_BODY
             body = self.read_body(limit)
             if body is None:
                 return
@@ -446,6 +493,11 @@ def create_server(
                 "/api/preferences",
                 "/api/password",
                 "/api/rebuild",
+                "/api/training/delete",
+                "/api/training/generate",
+                "/api/training/approve",
+                "/api/training/scan",
+                "/api/training/review",
             ):
                 self.json({"error": "没有找到该接口。"}, 404)
                 return
@@ -506,6 +558,34 @@ def create_server(
                     auth.drop(self.session_token())
                 cleared = f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
                 self.json({"ok": True}, cookies=(cleared,))
+                return
+
+            if path.startswith('/api/training/'):
+                if self.headers.get('X-KnowFlow-Training') != '1':
+                    self.json({'error': '缺少本机请求头。'}, 403)
+                    return
+                action = path.rsplit('/', 1)[-1]
+                if action != 'scan' and not self.require_teacher(account):
+                    return
+                if account.role == 'student' and payload.get('student_id') != account.student_id:
+                    self.json({'error': '只能上传本人作答。'}, 403)
+                    return
+                try:
+                    if action == 'generate':
+                        result = training.generate(payload)
+                    elif action == 'delete':
+                        result = training.delete(payload.get('paper_id'))
+                    elif action == 'approve':
+                        result = training.approve(payload.get('paper_id'))
+                    elif action == 'scan':
+                        result = training.scan(payload)
+                    else:
+                        result = training.review(payload, account.username)
+                    self.json(result)
+                except ValueError as exc:
+                    self.json({'error': str(exc)}, 400)
+                except Exception:
+                    self.json({'error': '训练操作失败，请检查 API 配置和 training 依赖后重试。'}, 500)
                 return
 
             required_header = {

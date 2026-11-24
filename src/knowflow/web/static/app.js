@@ -1,6 +1,8 @@
 import {describe, distribution, aggregateRecords, topics} from './analytics.mjs';
 import { mountMap } from './knowledge-map.js';
+import { openTraining } from './training.js';
 let unmountMap;
+let trainingData=null;
 import {
   esc,
   pct,
@@ -688,13 +690,43 @@ function feedbackPanel(sid) {
 }
 
 function coursePage(personal) {
-  const p = personal ? currentProfile() : null;
-  const g = kb.curriculum_graph;
-  return `${hero('KNOWLEDGE ATLAS / 03',personal?'先看见全貌，再找到自己的方向。':'让课程结构、学习证据与材料连起来。','选取知识点，查看它的学习要求、教材出处与对应指标的学情证据。')}${filters(personal)}<section class="panel graph-panel"><div class="graph-toolbar"><div>${panelHead(personal?'我的课程地图':'课程知识地图','课程主题 → 知识指标 → 材料与学习证据')}</div><div class="tabs" aria-label="地图视图"><button class="${state.courseView==='map'?'active':''}" data-course-view="map">知识地图</button><button class="${state.courseView==='list'?'active':''}" data-course-view="list">课程要求清单</button></div></div>${state.courseView==='map'?knowledgeMap(p):requirements()}${D.meta.dataset_id==='official-v1'?'':personal?legend():note('色条表示本班知识状态构成。')}</section><div class="course-foot"><section class="panel">${panelHead('材料出处，随时可查','每个知识点的题目与学习材料由 Q-matrix 对应。')}<div class="source-row"><div class="source-icon">${icon('book',19)}</div><div><h3>课程要求与课程标准</h3><p>目标、章节与课标页码 · 逐字校对状态保留</p></div><button class="text-button" data-course-view="list">查看 ${icon('arrow',13)}</button></div>${kb.materials.filter(m=>m.material_type==='reference'&&kb.objectives.some(o=>o.objective_id===m.objective_id)).map(m=>`<div class="source-row"><div class="source-icon">${icon('link',18)}</div><div><h3>${esc(m.title)}</h3><p>${esc(m.material_id)} · 原始资料出处</p></div><button class="text-button" data-material="${esc(m.material_id)}">查看 ${icon('arrow',13)}</button></div>`).join('')}</section><section class="panel">${panelHead('关系有类型，连线有依据','保留课程的必要联系，也保留尚未确认的边界。')}<div class="mini-metrics">${g?[['先修',g.counts.prerequisite_count,'已入库关系'],['易混',g.counts.confusable_count,'已入库关系'],['相关',g.counts.related_count,'已入库关系'],['待核验',g.counts.draft_count,'未人工核对']].map(([label,value,note])=>`<div class="mini-metric">${label}关系<strong>${value}</strong><small>${note}</small></div>`).join(''):'<div class="mini-metric">课程图谱<strong>未载入</strong><small>请重新生成展示数据</small></div>'}</div><p class="panel-sub">此处统计正式课程图谱（教材细目层）。仅有 reviewed 的先修关系参与建议排序；draft 关系只展示并标“待核验”。</p><div class="notice">跨域实验放在学生页“跨域探索”中，明确标为自编拓展，方便在保留证据边界的同时展示交互学习。</div></section></div>`;
+  const p=personal?currentProfile():null,g=kb.curriculum_graph;
+  const sections=[['map','知识地图'],['list','课程要求'],['sources','材料出处'],['relations','关系说明']];
+  let body;
+  if(state.courseView==='map')body=knowledgeMap(p);
+  else if(state.courseView==='list')body=requirements();
+  else if(state.courseView==='sources')body=sourceLibrary();
+  else body=`<section>${panelHead('关系说明','正式关系与本地演示连接分开保存')}<div class="mini-metrics">${g?[['先修',g.counts.prerequisite_count],['易混',g.counts.confusable_count],['相关',g.counts.related_count],['待核验',g.counts.draft_count]].map(([label,n])=>`<div class="mini-metric">${label}<strong>${n}</strong></div>`).join(''):'未载入课程图谱'}</div><p>实线箭头从基础指向应用，虚线表示相关方法或易混对照。只有已审核的先修关系参与建议排序。</p><p>拖动节点可调整布局；点击节点后在右侧调整演示连接。演示关系只保存在当前浏览器，可一键重置。</p><p>个人地图颜色来自当前测验的诊断；未覆盖与证据不足不代表未掌握。跨域实验可从学生侧栏进入。</p></section>`;
+  return `<section class="course-workspace"><div class="course-heading"><h1>${personal?'我的知识地图':'课程知识地图'}</h1>${filters(personal)}</div><nav class="tabs course-tabs" aria-label="课程副板块">${sections.map(([id,label])=>`<button data-course-view="${id}" class="${state.courseView===id?'active':''}" aria-pressed="${state.courseView===id}">${label}</button>`).join('')}</nav><div class="course-content ${state.courseView==='map'?'is-map':state.courseView==='sources'?'aux-panel sources-panel':'aux-panel'}">${body}</div></section>`;
+}
+
+let sourceQuery='',sourceScope='all',sourceLoading=null;
+const sourceBodies=new Map();
+function sourceLibrary(){
+  const materials=kb.materials.filter(m=>m.material_type==='reference').sort((a,b)=>Number(!!b.objective_id)-Number(!!a.objective_id)||a.material_id.localeCompare(b.material_id));
+  const nodes=kb.curriculum_graph?.nodes||[];
+  const linked=materials.filter(m=>m.objective_id).length;
+  return `<section class="source-library"><header class="source-library-heading"><div><h2>课程资料库</h2><p>按课程主题查教材，直接回看原文与知识点出处。</p></div><div class="source-counts"><span><strong>${materials.length}</strong> 份资料</span><span><strong>${linked}</strong> 份课程关联</span></div></header>
+  <div class="source-toolbar"><nav aria-label="资料范围">${[['all','全部资料'],['linked','课程关联'],['extra','拓展资料']].map(([id,label])=>`<button class="source-scope ${sourceScope===id?'active':''}" data-source-scope="${id}" aria-pressed="${sourceScope===id}">${label}</button>`).join('')}</nav><label class="search-field">${icon('search',15)}<input id="source-query" aria-label="搜索课程资料" placeholder="搜索主题、教材编号或章节" value="${esc(sourceQuery)}"></label><span id="source-result" role="status"></span></div>
+  <div class="source-card-grid">${materials.map(m=>{
+    const objective=kb.objectives.find(o=>o.objective_id===m.objective_id);
+    const related=nodes.filter(n=>n.material_id===m.material_id);
+    const code=m.title.match(/B\d+/)?.[0]||m.material_id;
+    const filename=(m.source||'').split(/[\\/]/).pop();
+    const synopsis=sourceBodies.get(m.material_id)||m.body||'';
+    const title=objective?.theme||synopsis||m.title;
+    return `<article class="source-card ${objective?'is-linked':''}" data-source-kind="${objective?'linked':'extra'}" data-source-text="${esc([m.title,synopsis,m.material_id,m.source,objective?.theme,...related.map(n=>n.title)].join(' ').toLowerCase())}"><div class="source-card-top"><span class="source-book">${icon('book',18)}<b>${esc(code)}</b></span><span class="source-category">${objective?'课程关联':'拓展资料'}</span></div><h3>${esc(title)}</h3><p class="source-description">${esc(objective?synopsis:m.title)}</p><div class="source-links">${related.length?`<span>${related.length} 个知识节点</span><p>${esc(related.slice(0,2).map(n=>n.title).join(' · '))}${related.length>2?' 等':''}</p>`:'<span>补充阅读材料</span><p>可打开教材查看章节原文。</p>'}</div><div class="source-file" title="${esc(m.source)}">${esc(filename||m.title)}</div><footer><span>${esc(m.material_id)}</span><button class="button light" data-material="${esc(m.material_id)}">查看原文</button></footer></article>`;
+  }).join('')}</div><p id="source-empty" class="empty" hidden>没有匹配的资料，请换一个关键词或资料范围。</p></section>`;
+}
+function bindSourceLibrary(){
+  const input=$('#source-query');if(!input)return;
+  if(!sourceLoading){sourceLoading=Promise.allSettled(kb.materials.filter(m=>m.material_type==='reference').map(async m=>{const full=await getJSON('/api/material/'+encodeURIComponent(m.material_id));sourceBodies.set(m.material_id,full.body||'')})).then(()=>{if(state.view==='course'&&state.courseView==='sources')render()})}
+  function filter(){let count=0;document.querySelectorAll('.source-card').forEach(card=>{card.hidden=!(sourceScope==='all'||card.dataset.sourceKind===sourceScope)||!card.dataset.sourceText.includes(sourceQuery.toLowerCase().trim());if(!card.hidden)count++});$('#source-result').textContent=`显示 ${count} 份`;$('#source-empty').hidden=count!==0;document.querySelectorAll('[data-source-scope]').forEach(b=>{const active=b.dataset.sourceScope===sourceScope;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))})}
+  input.oninput=()=>{sourceQuery=input.value;filter()};document.querySelectorAll('[data-source-scope]').forEach(b=>b.onclick=()=>{sourceScope=b.dataset.sourceScope;filter()});filter();
 }
 
 function knowledgeMap(p) {
-  if(D.meta.dataset_id==='official-v1')return '<div data-interactive-map></div>';
+  if(kb.curriculum_graph?.nodes?.length)return `<div data-interactive-map ${p?'data-personal="true"':''}></div>`;
   return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
@@ -975,12 +1007,21 @@ function render() {
   normalize();
   saveURL();
   unmountMap?.();
+  document.body.classList.toggle('course-mode',state.view==='course');
+  document.body.classList.remove('module-mode');
   $('#app').innerHTML = shell();
   const compact = !!$('.report-workspace') && !$('.flow-workspace');
   $('#main').classList.toggle('report-main', compact);
   fitReport();
+  bindSourceLibrary();
+  const trainingButton = document.createElement('button');
+  trainingButton.className = 'button light training-entry';
+  trainingButton.textContent = '变式训练 · PDF 与扫描回录';
+  trainingButton.onclick = () => openTraining({student: state.student, node: state.node, teacher: !isStudentAccount(), students: D.students, onClose: async () => { try { trainingData = await getJSON('/api/training'); render(); } catch (e) { toast(e.message); } }});
+  $('#app .top-actions')?.append(trainingButton);
   const map = $('#app [data-interactive-map]');
-  unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
+  if(map&&state.view==='course')map.setAttribute('workspace','');
+  unmountMap = map ? mountMap(map, kb, openKnowledge, map.dataset.personal ? currentProfile() : null, trainingData) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
   if (chatOpen) bindChatChrome();
   if (state.view === 'settings' && !profileData && !profileError) {
@@ -2126,6 +2167,7 @@ async function init() {
       return;
     }
     D = await getJSON('/api/snapshot');
+    try { trainingData = await getJSON('/api/training'); } catch { trainingData = null; }
     kb = D.knowledge_base;
     if (isStudentAccount()) {
       state.role = 'student';

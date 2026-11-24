@@ -985,3 +985,52 @@ def test_username_rename_and_password_requires_matching_username(dashboard_run, 
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_pdf_preview_download_and_answer_permissions(dashboard_run, tmp_path, monkeypatch):
+    pytest.importorskip('reportlab')
+    pytest.importorskip('fitz')
+    import uuid
+
+    from knowflow.web.auth import AuthStore
+    from knowflow.web.training import TrainingStore
+    data = load_dashboard(dashboard_run)
+    sid = data['students'][0]['student_id']
+    store = TrainingStore(tmp_path / 'training', data)
+    identifier = str(uuid.uuid4())
+    paper = {'id': identifier, 'status': 'approved', 'student_id': sid, 'questions': [
+        {'question_id': 'Q01', 'knowledge_id': 'K-01', 'prompt': '计算 2+3。', 'answer': '5', 'explanation': '加法。'}]}
+    store.save('papers', paper)
+    monkeypatch.setattr('knowflow.web.server.TrainingStore', lambda *args: store)
+    auth = AuthStore(tmp_path / 'users.json', sid)
+    token = auth.new_session(auth.authenticate(sid, '123456'))
+    server = create_server(dashboard_run, data, port=0, auth=auth)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    def get(path, login=True):
+        conn = HTTPConnection('127.0.0.1', server.server_port, timeout=10)
+        conn.request('GET', path, headers={'Cookie': f'kf_session={token}'} if login else {})
+        response = conn.getresponse()
+        result = response.status, response.read()
+        conn.close()
+        return result
+    try:
+        prefix = '/api/training/'
+        assert get(prefix+'pdf-preview/'+identifier, False)[0] == 401
+        assert get('/training-print?paper='+identifier)[0] == 200
+        status, body = get(prefix+'pdf-preview/'+identifier)
+        assert status == 200 and json.loads(body)['pages'] == 1
+        status, body = get(prefix+'pdf-page/'+identifier+'?page=0')
+        assert status == 200 and body.startswith(b'\x89PNG')
+        status, body = get(prefix+'pdf/'+identifier)
+        assert status == 200 and body.startswith(b'%PDF')
+        assert get(prefix+'pdf-page/'+identifier+'?page=99')[0] == 400
+        for route in ('pdf', 'pdf-preview', 'pdf-page'):
+            assert get(prefix+route+'/'+identifier+'?answers=1&page=0')[0] == 403
+        paper['student_id'] = 'OTHER'
+        store.save('papers', paper)
+        assert get(prefix+'pdf-preview/'+identifier)[0] == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)

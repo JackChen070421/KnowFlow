@@ -377,6 +377,16 @@
 
 ---
 
+## 2026-11-14 — 七年级数学交互知识图谱（离线示例）
+
+**示例** · `feat/interactive-knowledge-map`
+
+- 新增 [离线知识一查表](examples/knowledge-map/README.md)：单文件页面，21 个知识点，支持节点拖动、同画布聚焦、主题筛选与教材页码查阅。
+- 与主程序零耦合：教材切片由使用者本机放入 `examples/knowledge-map/教材/`；移除该示例目录即可回退。
+- 未验证：真实设备上的拖拽手感；作为演示备用的离线页面未纳入自动化检查。
+
+---
+
 ## 2026-11-14 — 任务3规则版：issue → 材料 → reason/check
 
 **待合并** · `feat/r3-recommend` → `main`

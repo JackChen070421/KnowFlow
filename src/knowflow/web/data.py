@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from knowflow.contracts import repo_root
+from knowflow.diagnosis.mastery import DiagnosisConfig
 from knowflow.diagnosis.pipeline import build_bundle, run_diagnosis
 from knowflow.diagnosis.validation import validate_saved_run
 from knowflow.io.pipeline import run_adapt
@@ -24,6 +25,7 @@ from knowflow.knowledge.pipeline import (
 from knowflow.recommend.pipeline import recommend_run, verify_recommend
 from knowflow.review.pipeline import build_context, load_report, scan_dataset
 from knowflow.review.validation import validate_report
+from knowflow.web.auth import DEFAULT_THRESHOLDS
 
 
 def read_json(path: Path) -> dict:
@@ -74,18 +76,55 @@ def source_fingerprint(root: Path, raw: Path) -> str:
     return digest.hexdigest()
 
 
-def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
+def threshold_config(thresholds: dict | None = None) -> dict:
+    """Merge stored thresholds with defaults and keep them JSON-friendly."""
+
+    merged = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    return {
+        "coverage_sufficient": int(merged["coverage_sufficient"]),
+        "coverage_missing": int(merged["coverage_missing"]),
+        "mastery_mastered": int(merged["mastery_mastered"]),
+        "mastery_weak": int(merged["mastery_weak"]),
+    }
+
+
+def diagnosis_config(thresholds: dict | None = None) -> DiagnosisConfig:
+    """Translate the analysis thresholds into the diagnosis configuration.
+
+    ``coverage_missing`` becomes the minimum evidence count, while the mastery
+    percentages become the Beta decision thresholds.
+    """
+
+    merged = threshold_config(thresholds)
+    return DiagnosisConfig(
+        min_evidence=max(1, merged["coverage_missing"]),
+        weak_threshold=merged["mastery_weak"] / 100,
+        mastered_threshold=merged["mastery_mastered"] / 100,
+    )
+
+
+def prepare(
+    refresh: bool = False,
+    llm: bool | None = None,
+    thresholds: dict | None = None,
+) -> Path:
     """Build a private, isolated snapshot from official raw data, or reuse its cache.
 
     ``llm=None`` keeps whichever mode the cached snapshot used, so starting the
     dashboard after one ``--llm`` build does not silently rebuild with templates.
+    ``thresholds`` participate in the cache key: a new analysis policy rebuilds
+    the diagnosis instead of reusing statuses computed under the old one.
     """
 
+    thresholds = threshold_config(thresholds)
+    config = diagnosis_config(thresholds)
     root = repo_root()
     raw = root / "data/raw/official-v1"
     if not raw.is_dir():
         raise ValueError("请先把赛事资料按 README 放入 data/raw/official-v1。Git 不包含官方数据。")
-    fingerprint = source_fingerprint(root, raw)
+    fingerprint = source_fingerprint(root, raw) + "|thresholds:" + json.dumps(
+        thresholds, sort_keys=True
+    )
     cache = root / "artifacts/web/latest.json"
     cached = read_json(cache) if cache.is_file() else {}
     effective_llm = llm if llm is not None else bool(cached.get("llm", False))
@@ -94,6 +133,7 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
         if (
             cached.get("fingerprint") == fingerprint
             and bool(cached.get("llm", False)) == effective_llm
+            and cached.get("thresholds") == thresholds
             and (run / "knowledge_base.json").is_file()
         ):
             return run
@@ -122,6 +162,7 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
     run_diagnosis(
         bundle,
         run / "diagnosis",
+        config=config,
         node_id="all",
         review=review,
         supplemental=supplemental,
@@ -143,6 +184,7 @@ def prepare(refresh: bool = False, llm: bool | None = None) -> Path:
             "run": run.relative_to(root).as_posix(),
             "fingerprint": fingerprint,
             "llm": effective_llm,
+            "thresholds": thresholds,
         },
     )
     return run
@@ -232,6 +274,8 @@ def load_dashboard(run: Path) -> dict:
     view_knowledge["materials"] = [
         {k: m.get(k) for k in material_fields} for m in knowledge["materials"]
     ]
+    diagnosis_manifest = read_json(run / "diagnosis" / "run_manifest.json")
+    analysis = diagnosis_manifest.get("configuration") or {}
     recommendation_manifest = read_json(run / "recommendations" / "run_manifest.json")
     llm_items = int((recommendation_manifest.get("llm") or {}).get("items_used") or 0)
     return {
@@ -244,6 +288,11 @@ def load_dashboard(run: Path) -> dict:
             "grade": knowledge["grade"],
             "local_only": True,
             "recommendation_mode": "规则推荐 + LLM 润色" if llm_items else "规则推荐",
+            "analysis": {
+                "min_evidence": analysis.get("min_evidence"),
+                "weak_threshold": analysis.get("weak_threshold"),
+                "mastered_threshold": analysis.get("mastered_threshold"),
+            },
             "validation": {"knowledge": "pass", "diagnosis": "pass", "recommendation": "pass"},
         },
         "students": [

@@ -3,18 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <meta name="description" content="KnowFlow 智慧学伴：从课程要求、学情证据到可验证的学习行动。">
   <title>KnowFlow · 智慧学伴</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/theme-boot.js"></script>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/workspace.css">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/motion.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
   <div id="app"><div class="loading"><span class="brand-symbol">K</span><h1>KnowFlow 智慧学伴</h1><p>正在连接本机课程与学情成果…</p></div></div>
   <dialog id="drawer" aria-labelledby="drawer-title"><div id="drawer-content"></div></dialog>
+  <dialog id="password-dialog" aria-labelledby="password-dialog-title">
+    <div class="dialog-head"><h2 id="password-dialog-title">修改密码</h2><button type="button" class="icon-button" data-close-password aria-label="关闭">×</button></div>
+    <form id="password-form" class="settings-form" autocomplete="off">
+      <div class="field"><label for="pw-username">用户名</label><input id="pw-username" type="text" autocomplete="username"></div>
+      <div class="field"><label for="pw-current">当前密码</label><input id="pw-current" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="pw-new">新密码</label><input id="pw-new" type="password" autocomplete="new-password" minlength="8"></div>
+      <div class="field"><label for="pw-confirm">确认新密码</label><input id="pw-confirm" type="password" autocomplete="new-password" minlength="8"></div>
+      <div class="settings-actions"><button class="button primary" type="submit">更新密码</button><span id="password-result" class="settings-result" role="status"></span></div>
+    </form>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <noscript>请开启浏览器的 JavaScript 后使用本机工作台。</noscript>
 </body>

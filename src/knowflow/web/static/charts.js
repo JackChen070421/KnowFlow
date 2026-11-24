@@ -111,7 +111,7 @@ export function donut(items, center, caption) {
     offset += length;
     return part;
   }).join('');
-  return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 180 180" role="img" aria-label="${esc(items.map(x=>`${x.label} ${x.value}`).join('，'))}"><circle cx="90" cy="90" r="${radius}" fill="none" stroke="#eef2f1" stroke-width="18"/>${arcs}<text class="donut-value" x="90" y="88" text-anchor="middle">${esc(center)}</text><text class="donut-caption" x="90" y="110" text-anchor="middle">${esc(caption)}</text></svg><div class="donut-legend">${items.map(x=>`<div><span><i style="background:${x.color}"></i>${esc(x.label)}</span><strong>${x.value}<small> ${sum?pct(x.value/sum):'—'}</small></strong></div>`).join('')}</div></div>`;
+  return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 180 180" role="img" aria-label="${esc(items.map(x=>`${x.label} ${x.value}`).join('，'))}"><circle cx="90" cy="90" r="${radius}" fill="none" style="stroke:var(--chart-track,#eef2f1)" stroke-width="18"/>${arcs}<text class="donut-value" x="90" y="88" text-anchor="middle">${esc(center)}</text><text class="donut-caption" x="90" y="110" text-anchor="middle">${esc(caption)}</text></svg><div class="donut-legend">${items.map(x=>`<div><span><i style="background:${x.color}"></i>${esc(x.label)}</span><strong>${x.value}<small> ${sum?pct(x.value/sum):'—'}</small></strong></div>`).join('')}</div></div>`;
 }
 export function stateBars(rows, nameFor) {
   const fields = {
@@ -138,12 +138,12 @@ export function lineChart(series, width = 480, height = 256) {
     const positions = placeLabels(present.map(s => y(s.point.value) - 16), 14, height - bottom - 12, 24);
     return new Map(present.map((s, i) => [s.i, positions[i]]));
   });
-  const grid = ticks.map(t => `<line x1="${left}" x2="${width-right}" y1="${y(t)}" y2="${y(t)}" stroke="#e5ebe9" stroke-dasharray="3 5"/><text x="${left-12}" y="${y(t)+4}" text-anchor="end" class="axis-label">${Number(t.toFixed(2))}</text>`).join('');
+  const grid = ticks.map(t => `<line x1="${left}" x2="${width-right}" y1="${y(t)}" y2="${y(t)}" stroke-dasharray="3 5" style="stroke:var(--chart-grid,#e5ebe9)"/><text x="${left-12}" y="${y(t)+4}" text-anchor="end" class="axis-label">${Number(t.toFixed(2))}</text>`).join('');
   const lines = series.map(s => `<polyline points="${s.points.map((p,i)=>`${x(i)},${y(p.value)}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`).join('');
   const points = series.map((s, si) => s.points.map((p, i) => {
     const ly = labels[i].get(si), boxWidth = Math.max(30, String(p.value).length * 8 + 12);
     const labelX = x(i) + (i === 0 ? 22 : 0);
-    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="4.5" stroke="white" stroke-width="2" fill="${s.color}"><title>${esc(s.label+' '+p.label)}：${p.value} 条</title></circle><path d="M${x(i)} ${y(p.value)}L${labelX} ${ly}" stroke="${s.color}" stroke-opacity=".3"/><g class="value-label" data-series="${si}" data-point="${i}"><rect x="${labelX-boxWidth/2}" y="${ly-10}" width="${boxWidth}" height="20" rx="5" fill="white"/><text x="${labelX}" y="${ly+4}" text-anchor="middle" fill="${s.color}" class="point-label">${p.value}</text></g>`;
+    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="4.5" stroke="white" stroke-width="2" fill="${s.color}"><title>${esc(s.label+' '+p.label)}：${p.value} 条</title></circle><path d="M${x(i)} ${y(p.value)}L${labelX} ${ly}" stroke="${s.color}" stroke-opacity=".3"/><g class="value-label" data-series="${si}" data-point="${i}"><rect x="${labelX-boxWidth/2}" y="${ly-10}" width="${boxWidth}" height="20" rx="5" style="fill:var(--chart-label-bg,#fff)"/><text x="${labelX}" y="${ly+4}" text-anchor="middle" fill="${s.color}" class="point-label">${p.value}</text></g>`;
   }).join('')).join('');
   const axis = (series[0]?.points || []).map((p, i) => `<text x="${x(i)}" y="${height-36}" text-anchor="middle" class="axis-label">${esc(p.label)}</text><text x="${x(i)}" y="${height-15}" text-anchor="middle" class="axis-label axis-date">${esc(p.date||'')}</text>`).join('');
   return `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(series.map(s=>s.label+': '+s.points.map(p=>p.label+' '+p.value+'条').join(', ')).join('; '))}">${grid}${lines}${points}${axis}</svg><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join('')}</div>`;

@@ -10,14 +10,14 @@
 #atlas .point{cursor:grab}#atlas.dragging,#atlas.dragging .point{cursor:grabbing}
 .edge{pointer-events:none}#atlas .point,.edge{transition:opacity .18s}.point.dim{opacity:.13}.edge.dim{opacity:.10}
 .maptools{position:absolute;bottom:5px;left:6px;display:flex;gap:4px}.maptools button{background:#214b42;color:#fff;border:1px solid #698579;border-radius:5px;padding:3px 10px}
-#detail{background:#f4f5ec;border-radius:9px;padding:16px;color:#253f36;align-self:start;overflow-wrap:anywhere}
+#detail{background:var(--surface,#f4f5ec);border-radius:9px;padding:16px;color:var(--ink,#253f36);align-self:start;overflow-wrap:anywhere}
 #detail h2{font-size:21px;margin:5px 0}#detail h3{font-size:14px;color:#4b695c;margin:14px 0 3px}#detail p{font-size:14px}#detail button{color:#174d40;background:#fff;border:1px solid #b5cbbd;border-radius:5px;margin:2px;padding:3px 7px;font-size:13px}
 @media(max-width:830px){.explorer{grid-template-columns:1fr}#detail{min-height:0}#atlas{height:clamp(350px,68vw,490px)}}
 
 :host{display:block;color:#283b35;font:14px/1.55 "Microsoft YaHei",sans-serif}*{box-sizing:border-box}h2,h3,p{margin:0}
 button,input,select{font:inherit}button,select{cursor:pointer}.tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tools input{flex:1;min-width:160px}
-.tools>*{padding:7px 10px;border:1px solid #b8c5bc;border-radius:7px;background:white}.mode[aria-pressed=true]{background:#174b42;color:white}
+.tools>*{padding:7px 10px;border:1px solid var(--line,#b8c5bc);border-radius:7px;background:var(--surface,#fff);color:var(--ink,#283b35)}.mode[aria-pressed=true]{background:#174b42;color:white}
 .canvas{padding:16px;border-radius:12px;background:#173c37 radial-gradient(#396057 1px,transparent 1px) 0 0/20px 20px;color:#eff9e9}.canvas>h2{font-size:18px}.hint,.meta{font-size:13px}.pdf{color:#145c4a}
-.tablebox{overflow:auto}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #dbe3db;padding:10px;text-align:left}td button{color:#165844;border:0;background:transparent}tbody td:last-child{min-width:155px}
+.tablebox{overflow:auto}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line,#dbe3db);padding:10px;text-align:left}td button{color:#165844;border:0;background:transparent}tbody td:last-child{min-width:155px}
 :host{font-size:16px;color:#203a35}.hint,.meta,.legend,#detail button{font-size:14px}#detail p{font-size:16px;line-height:1.7}.tools>*{border-radius:10px}.canvas{border-radius:16px}#detail{background:#f3f7f4;border:1px solid #d4e3d8;border-radius:14px}#detail h3{font-size:16px;color:#385946}
 [hidden]{display:none!important}.none{padding:20px}.point{cursor:grab}.point text{font:15px "Microsoft YaHei",sans-serif;fill:#f6fbef;stroke:#173c37;stroke-width:4;paint-order:stroke}.point circle{stroke:#e4efe3;stroke-width:1.2}.point.selected circle,.point:focus-visible circle{stroke:#f6da93;stroke-width:4}.legend{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}

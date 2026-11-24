@@ -162,3 +162,48 @@ input, button { font: inherit; }
   .login-card { padding: 26px 22px 20px; }
   .login-card h1 { font-size: 23px; }
 }
+
+/* ---- dark / eye-care variants (tokens come from theme.css) ---- */
+[data-theme="dark"] body,
+[data-theme="eye"] body {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(92, 185, 166, .10), transparent 42%),
+    radial-gradient(circle at 82% 88%, rgba(169, 154, 201, .10), transparent 46%),
+    var(--paper);
+}
+
+[data-theme="dark"] .login-card,
+[data-theme="eye"] .login-card {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 28px 64px -34px rgba(0, 0, 0, .7);
+}
+
+[data-theme="dark"] .login-card h1,
+[data-theme="eye"] .login-card h1,
+[data-theme="dark"] .login-brand strong,
+[data-theme="eye"] .login-brand strong {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .login-field input,
+[data-theme="eye"] .login-field input {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .login-field input::placeholder,
+[data-theme="eye"] .login-field input::placeholder {
+  color: #7f9298;
+}
+
+[data-theme="dark"] .login-foot code,
+[data-theme="eye"] .login-foot code {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .login-button {
+  color: #08171a;
+}

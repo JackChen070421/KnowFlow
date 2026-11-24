@@ -48,9 +48,111 @@ const state = {
   pages: {},
   chartPage: 0,
   chatMode: 'concise',
-  studentSort: 'id'
+  studentSort: 'id',
+  allHeatmap: false,
+  settingsTab: params.get('settingsTab') || 'profile'
 };
 const $ = s => document.querySelector(s);
+
+const THEME_KEY = 'knowflow.theme';
+const THEMES = [
+  {id: 'light', label: '白天', desc: '浅色纸面，日常光照下的默认配色。'},
+  {id: 'dark', label: '黑夜', desc: '深色背景与柔和高光，弱光环境更省眼。'},
+  {id: 'eye', label: '护眼', desc: '低对比绿纸与更暖的文字，适合长时间阅读。'}
+];
+const SETTINGS_TABS = [
+  ['profile', '个人信息', 'students'],
+  ['teaching', '教学与 AI', 'spark'],
+  ['display', '显示', 'overview'],
+  ['thresholds', '数据分析', 'target']
+];
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'light';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {}
+}
+
+// The new palette grows out of the click point as a circle, so the switch
+// changes only the visible area: same layout, same type scale, no reflow.
+const MASK_REVEAL = typeof CSS !== 'undefined' && !!CSS.supports
+  && CSS.supports('mask-image', 'radial-gradient(circle, #000, transparent)');
+
+function switchTheme(theme, event) {
+  if (!theme || theme === currentTheme()) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!document.startViewTransition || reduce) {
+    applyTheme(theme);
+    return;
+  }
+  const x = event && Number.isFinite(event.clientX) ? event.clientX : window.innerWidth - 48;
+  const y = event && Number.isFinite(event.clientY) ? event.clientY : 32;
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+  const root = document.documentElement;
+  try {
+    if (MASK_REVEAL) {
+      root.style.setProperty('--kf-x', `${x}px`);
+      root.style.setProperty('--kf-y', `${y}px`);
+      root.classList.add('kf-masking');
+    }
+    const transition = document.startViewTransition(() => applyTheme(theme));
+    let reveal = null;
+    const clearMask = () => {
+      root.classList.remove('kf-masking');
+      root.classList.remove('kf-masking-done');
+    };
+    // Safety net: never leave the page masked if an animation is cancelled.
+    const maskTimeout = setTimeout(clearMask, 2500);
+    transition.ready.then(() => {
+      if (MASK_REVEAL) {
+        // Grow well past the farthest corner so the feathered edge never lands
+        // inside the viewport, and keep the final frame with fill:forwards --
+        // without it the mask snaps back to 0 when the animation ends.
+        const reach = radius / 0.86;
+        const size = reach * 2;
+        reveal = root.animate({
+          maskSize: ['0px 0px', `${size}px ${size}px`],
+          maskPosition: [`${x}px ${y}px`, `${x - reach}px ${y - reach}px`]
+        }, {
+          duration: 1150,
+          easing: 'cubic-bezier(.32,.04,.3,1)',
+          fill: 'forwards',
+          pseudoElement: '::view-transition-new(root)'
+        });
+      } else {
+        reveal = root.animate({
+          clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`],
+          opacity: [0.55, 1]
+        }, {
+          duration: 1150,
+          easing: 'cubic-bezier(.32,.04,.3,1)',
+          fill: 'forwards',
+          pseudoElement: '::view-transition-new(root)'
+        });
+      }
+      reveal.finished.then(() => {
+        clearTimeout(maskTimeout);
+        // Switch to the settled state first (mask-image: none), then drop the
+        // classes two frames later; no mask fallback can paint in between.
+        if (MASK_REVEAL) root.classList.add('kf-masking-done');
+        requestAnimationFrame(() => requestAnimationFrame(clearMask));
+      }).catch(() => {});
+    }).catch(() => {});
+    transition.finished.finally(() => {
+      if (!reveal) {
+        clearTimeout(maskTimeout);
+        clearMask();
+      }
+    });
+  } catch {
+    applyTheme(theme);
+  }
+}
 const viewLabel = id => navItems().find(x => x[0] === id)?.[1] || (id === 'reviews' ? '存疑证据' : id === 'settings' ? '设置' : '工作台');
 const nameFor = id => kb.knowledge.find(k => k.knowledge_id === id)?.name || id;
 const objectiveFor = id => kb.objectives.find(o => o.objective_id === id);
@@ -81,6 +183,128 @@ function toast(message) {
   el.classList.add('visible');
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove('visible'), 3500);
+}
+
+// Avatars are keyed by account and kept in this browser only (no upload).
+const AVATAR_PREFIX = 'knowflow.avatar.';
+const avatarKey = () => AVATAR_PREFIX + (SESSION?.username || 'local');
+
+function readAvatar() {
+  try {
+    return localStorage.getItem(avatarKey()) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeAvatar(dataUrl) {
+  try {
+    if (dataUrl) localStorage.setItem(avatarKey(), dataUrl);
+    else localStorage.removeItem(avatarKey());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function avatarLabel() {
+  return SESSION?.role === 'teacher' ? '教' : '学';
+}
+
+function avatarBody() {
+  const src = readAvatar();
+  return src
+    ? `<img class="avatar-img" src="${esc(src)}" alt="">`
+    : `<span class="avatar-text">${avatarLabel()}</span>`;
+}
+
+function refreshAvatars() {
+  document.querySelectorAll('[data-avatar]').forEach(el => {
+    el.innerHTML = avatarBody();
+  });
+}
+
+function downsizedAvatar(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) {
+      reject(new Error('请选择 PNG、JPEG 或 WebP 图片。'));
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      reject(new Error('图片太大，请选择 8MB 以内的图片。'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('图片读取失败，请重试。'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('这张图片无法解析。'));
+      image.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        const side = Math.min(image.width, image.height);
+        context.drawImage(
+          image,
+          (image.width - side) / 2,
+          (image.height - side) / 2,
+          side,
+          side,
+          0,
+          0,
+          size,
+          size
+        );
+        resolve(canvas.toDataURL('image/jpeg', 0.86));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAvatarFile(file) {
+  try {
+    const dataUrl = await downsizedAvatar(file);
+    if (!writeAvatar(dataUrl)) {
+      toast('浏览器拒绝保存头像（本地存储已满或被禁用）。');
+      return;
+    }
+    refreshAvatars();
+    if (state.view === 'settings') render();
+    toast('头像已更新，只保存在本机浏览器。');
+  } catch (error) {
+    toast(error.message || '头像上传失败。');
+  }
+}
+
+// Popconfirm anchored to the header account chip. Kept outside the render
+// cycle so opening it never replays the list entrance animation.
+function closeAccountMenu() {
+  const wrap = document.querySelector('.account-wrap');
+  if (!wrap) return;
+  const pop = wrap.querySelector('.account-pop');
+  if (pop) pop.remove();
+  wrap.querySelector('[data-account-toggle]')?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleAccountMenu() {
+  const wrap = document.querySelector('.account-wrap');
+  const trigger = wrap?.querySelector('[data-account-toggle]');
+  if (!wrap || !trigger) return;
+  if (wrap.querySelector('.account-pop')) {
+    closeAccountMenu();
+    return;
+  }
+  const pop = document.createElement('div');
+  pop.className = 'account-pop';
+  pop.setAttribute('role', 'menu');
+  pop.innerHTML = `<div class="account-pop-head"><strong>${esc(SESSION?.display_name || '')}</strong><small>${SESSION?.role === 'teacher' ? '教师' : '学生'} · ${esc(SESSION?.username || '')}</small></div><button type="button" role="menuitem" data-account-profile>${icon('students', 14)}查看个人信息</button><button type="button" role="menuitem" class="danger" data-logout>${icon('close', 14)}退出登录</button>`;
+  wrap.append(pop);
+  trigger.setAttribute('aria-expanded', 'true');
+  pop.querySelector('[data-account-profile]')?.focus();
 }
 
 function readWork() {
@@ -120,7 +344,8 @@ function saveURL() {
     student: state.student,
     report: state.report,
     profile: state.profileTab,
-    panel: state.studentPanel
+    panel: state.studentPanel,
+    settingsTab: state.settingsTab
   });
   history.replaceState(null, '', `/${state.role}?${q}`);
 }
@@ -138,13 +363,15 @@ function normalize() {
   if (!D.nodes.some(n => n.node_id === state.node)) state.node = D.nodes.at(-1).node_id;
   if (!D.students.some(s => s.student_id === state.student)) state.student = D.students[0].student_id;
   if (!['ALL', ...groups()].includes(state.group)) state.group = 'ALL';
-  const allowedViews = [...navItems().map(x => x[0]), ...(isStudentAccount() ? [] : ['settings'])];
+  const allowedViews = [...navItems().map(x => x[0]), 'settings'];
   if (state.role === 'teacher') allowedViews.push('reviews');
   if (!allowedViews.includes(state.view)) state.view = 'overview';
   if (!REPORTS.some(r => r.id === state.report)) state.report = 'scores';
   if (!['analysis', 'knowledge', 'records', 'history', 'plans', 'feedback'].includes(state.profileTab)) state.profileTab = 'analysis';
   if (!['list', 'profile'].includes(state.studentPanel)) state.studentPanel = 'list';
   if (state.role === 'student' && state.profileTab === 'feedback') state.profileTab = 'analysis';
+  const allowedTabs = isStudentAccount() ? ['profile', 'display'] : ['profile', 'teaching', 'display', 'thresholds'];
+  if (!allowedTabs.includes(state.settingsTab)) state.settingsTab = 'profile';
 }
 
 function navItems() {
@@ -163,7 +390,7 @@ function navItems() {
 
 function shell() {
   const active = navItems().find(n => n[0] === state.view) || (state.view === 'reviews' ? ['reviews', '存疑证据', 'shield'] : ['settings', '设置', 'settings']);
-  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools">${isStudentAccount()?'':`<button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button>`}</div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><span class="viewer-chip" title="${isStudentAccount()?'学生账号':'教师账号'}">${icon(SESSION?.role==='teacher'?'shield':'students',14)}<strong>${esc(SESSION?.display_name||'')}</strong><small>${SESSION?.role==='teacher'?'教师':'学生'}</small></span><button class="text-button logout-button" data-logout>${icon('close',13)}退出登录</button><div class="avatar" title="${esc(SESSION?.display_name||'')}">${state.role==='teacher'?'KF':'S'}</div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
+  return `<div class="app-shell"><aside class="sidebar"><a class="brand" href="${routeURL(state.role)}"><img src="/favicon.svg" alt=""><div><strong>KnowFlow</strong><small>智慧学伴</small></div></a><div class="sidebar-label">${state.role==='teacher'?'教师工作台':'我的学习'}</div><nav class="nav" aria-label="主要导航">${navItems().map(([id,label,ico])=>`<button data-view="${id}" class="${state.view===id?'active':''}" aria-label="${label}" ${state.view===id?'aria-current="page"':''} title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}</nav><div class="sidebar-tools"><button class="settings-link ${state.view==='settings'?'active':''}" data-view="settings" aria-label="设置" title="设置" ${state.view==='settings'?'aria-current="page"':''}>${icon('settings',16)}<span>设置</span></button></div><div class="side-story"><div class="eyebrow">当前课程</div><h3>七年级 · 数学</h3><p>${kb.objectives.length} 个主题 · ${kb.knowledge.length} 项观察指标</p><div class="steps"><span></span><span></span><span></span></div></div><div class="sidebar-footer"><strong><i class="live-dot"></i> 本机数据已就绪</strong><p>赛事模拟数据 · 校验通过</p></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><span>工作空间</span><span>/</span><b>${active[1]}</b></div><div class="top-actions"><div class="account-wrap"><button type="button" class="avatar avatar-button" data-avatar data-account-toggle aria-haspopup="menu" aria-expanded="false" aria-label="账号菜单" title="${esc(SESSION?.display_name||'')}">${avatarBody()}</button></div></div></header><main id="main" tabindex="-1" class="fade-in">${content()}<footer class="page-footer"><strong>KnowFlow · 智慧学伴</strong><span>赛事模拟数据 · ${esc(D.meta.dataset_id)} · ${esc(D.meta.recommendation_mode)}</span></footer></main></div>${chatWidget()}`;
 }
 
 function hero(eyebrow, title, desc) {
@@ -756,7 +983,15 @@ function render() {
   unmountMap = map ? mountMap(map, kb, openKnowledge) : null;
   document.title = `${viewLabel(state.view)} · KnowFlow`;
   if (chatOpen) bindChatChrome();
-  if (state.view === 'settings' && !llmSettings && !settingsError) {
+  if (state.view === 'settings' && !profileData && !profileError) {
+    ensureProfile().then(() => {
+      if (state.view === 'settings') render();
+    }).catch(error => {
+      profileError = error.message || '读取个人设置失败。';
+      if (state.view === 'settings') render();
+    });
+  }
+  if (state.view === 'settings' && state.settingsTab === 'teaching' && !llmSettings && !settingsError) {
     ensureSettings().then(() => {
       if (state.view === 'settings') render();
     }).catch(error => {
@@ -1046,65 +1281,475 @@ async function ensureSettings() {
   return llmSettings;
 }
 
-function settingsPage() {
+let profileData = null;
+let profileError = null;
+
+async function ensureProfile() {
+  if (profileData) return profileData;
+  profileData = await getJSON('/api/profile');
+  return profileData;
+}
+
+function settingsHero() {
+  return `<section class="hero settings-hero"><div class="hero-copy"><div class="eyebrow">SETTINGS</div><h1>设置</h1></div><div class="node-card"><div class="eyebrow">当前测验</div><strong>${esc(state.node)}<span> · ${esc(node().date)}</span></strong><p>${node().taught_objective_ids.length} 个已教主题</p></div></section>`;
+}
+
+function settingsTabs() {
+  const tabs = SETTINGS_TABS.filter(([id]) => {
+    if (id === 'teaching' || id === 'thresholds') return !isStudentAccount();
+    return true;
+  });
+  return `<div class="settings-tabs" role="tablist" aria-label="设置分类">${tabs.map(([id, label, ico]) => `<button type="button" role="tab" aria-selected="${state.settingsTab === id}" class="${state.settingsTab === id ? 'active' : ''}" data-settings-tab="${id}">${icon(ico, 14)}${label}</button>`).join('')}</div>`;
+}
+
+function settingsNotice() {
+  if (profileError) {
+    return `<section class="panel"><div class="error-box">${esc(profileError)}</div><button class="button light section-gap" data-reload-profile>重试 ${icon('arrow', 14)}</button></section>`;
+  }
+  if (!profileData) {
+    return `<section class="panel"><div class="empty">正在读取本机设置…</div></section>`;
+  }
+  return '';
+}
+
+function setResult(id, message, ok = true) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('is-error', !ok);
+}
+
+function choiceGroup(name, options, current) {
+  return `<div class="choice-grid">${options.map(([value, label, desc]) => `<label class="choice"><input type="radio" name="${name}" value="${value}" ${value === current ? 'checked' : ''}><span><strong>${label}</strong>${desc ? `<small>${desc}</small>` : ''}</span></label>`).join('')}</div>`;
+}
+
+function avatarHero(account, teacher) {
+  return `<div class="info-hero">
+      <span class="info-avatar" data-avatar>${avatarBody()}</span>
+      <div class="info-hero-copy"><h3>${esc(account.display_name)}</h3><p>${esc(account.username)} · ${teacher ? '教师账号' : '学生账号'}</p></div>
+      <div class="avatar-actions">
+        <label class="button light avatar-upload" for="avatar-input">${icon('download', 13)}上传头像</label>
+        <input type="file" id="avatar-input" accept="image/png,image/jpeg,image/webp" hidden>
+        ${readAvatar() ? '<button type="button" class="text-button" data-avatar-clear>移除头像</button>' : ''}
+      </div>
+    </div>`;
+}
+
+function profilePanel() {
+  const loading = settingsNotice();
+  if (loading) return loading;
+  const account = profileData.account;
+  const p = profileData.profile;
+  const teacher = account.role === 'teacher';
+  return `<section class="panel">
+    ${panelHead('个人信息', '姓名、头像与任课信息；保存后立即生效。', '<span class="pill">本机账号</span>')}
+    ${avatarHero(account, teacher)}
+    <form id="profile-form" class="settings-form" autocomplete="off">
+      <div class="settings-row">
+        <div class="field"><label for="pf-name">姓名</label><input id="pf-name" value="${esc(account.display_name)}" maxlength="24"></div>
+        <div class="field"><label for="pf-term">当前学期</label><select id="pf-term">${termOptions(p.term).map(t => `<option ${t === p.term ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      </div>
+      <div class="settings-row">
+        ${teacher ? `<div class="field"><label for="pf-classes">任教班级</label><input id="pf-classes" value="${esc(p.classes)}" maxlength="40" placeholder="如：七年级 1 班、2 班"></div>
+        <div class="field"><label for="pf-subject">任教科目</label><input id="pf-subject" value="${esc(p.subject)}" maxlength="20"></div>` : `<div class="field"><label>班级</label><input value="${esc(currentProfile()?.group_id || '—')}" readonly></div>
+        <div class="field"><label>年级</label><input value="${esc(D.meta.grade || '—')}" readonly></div>`}
+      </div>
+      <div class="settings-actions"><button class="button primary" type="submit">保存个人信息</button><span id="profile-result" class="settings-result" role="status"></span></div>
+    </form>
+  </section>
+  <section class="panel section-gap">
+    ${panelHead('账号安全', '登录用户名与密码；修改后立即生效。', '<span class="pill">本机账号</span>')}
+    <form id="account-form" class="settings-form" autocomplete="off">
+      <div class="settings-row">
+        <div class="field"><label for="pf-username">用户名<span class="info-dot" title="3–24 位字母、数字或 _ . -" aria-label="用户名规则：3–24 位字母、数字或 _ . -">?</span></label><input id="pf-username" value="${esc(account.username)}" maxlength="24" autocomplete="username"></div>
+        <div class="field"><label>身份</label><input value="${teacher ? '教师' : '学生'}" readonly></div>
+      </div>
+      <div class="settings-actions">
+        <button class="button primary" type="submit">保存用户名</button>
+        <button class="button" type="button" data-open-password>${icon('shield', 14)}修改密码</button>
+        <span id="account-result" class="settings-result" role="status"></span>
+      </div>
+    </form>
+  </section>`;
+}
+
+function llmSection() {
+  const head = `<div class="settings-sub"><div><h3>LLM 文字层（可选）</h3><p>只改写 reason / check；校验失败会逐条回退模板。</p></div></div>`;
   if (settingsError) {
-    return `${hero('SETTINGS / 06','设置暂时读不到。','后端没有返回本机配置，请确认启动窗口仍在运行。')}<section class="panel"><div class="error-box">${esc(settingsError)}</div><button class="button light section-gap" data-view="settings">重试 ${icon('arrow',14)}</button></section>`;
+    return `${head}<div class="error-box">${esc(settingsError)}</div>`;
   }
   if (!llmSettings) {
-    return `${hero('SETTINGS / 06','正在读取本机配置…','设置只写这台电脑上的 .env，不会离开本机。')}<section class="panel"><div class="empty">读取中…</div></section>`;
+    return `${head}<div class="empty">正在读取本机模型配置…</div>`;
   }
   const s = llmSettings;
-  const provider = s.providers.find(p => p.value === s.provider) || s.providers[0];
-  return `${hero('SETTINGS / 06','把模型接进来，但数字仍由代码算。','这里改的是本机后端配置；保存后对之后生成的建议生效，页面上已有成果不会自动重算。')}
-  <div class="settings-grid">
-    <section class="panel">
-      ${panelHead('LLM 文字层','只改写 reason/check；输出要过数字锁与 ID 锁，失败逐条回退模板。','<span class="pill">本机设置</span>')}
-      <form id="settings-form" class="settings-form" autocomplete="off">
-        <label class="switch">
-          <input type="checkbox" id="llm-enabled" ${s.enabled ? 'checked' : ''}>
-          <span class="switch-track" aria-hidden="true"></span>
-          <span class="switch-copy"><strong>启用 LLM 模式</strong><small>关闭时只用规则模板，不产生任何外部请求。</small></span>
-        </label>
-        <div id="llm-config" class="llm-config" ${s.enabled ? '' : 'hidden'}>
-          <div class="field">
-            <label for="llm-provider">模型厂商</label>
-            <select id="llm-provider">${s.providers.map(p => `<option value="${esc(p.value)}" ${p.value === s.provider ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select>
-          </div>
-          <div class="field">
-            <label for="llm-api-key">API Key</label>
-            <input id="llm-api-key" type="password" value="" maxlength="200" autocomplete="new-password" placeholder="${s.api_key_set ? '已保存；留空表示不修改' : '粘贴 API Key'}">
-            <small>只写入本机 .env（Git 忽略），不会回显，也不会进入页面快照。</small>
-          </div>
-          <div class="settings-row">
-            <div class="field"><label for="llm-model">模型</label><input id="llm-model" value="${esc(s.model)}" maxlength="100"></div>
-            <div class="field"><label for="llm-base-url">Base URL</label><input id="llm-base-url" value="${esc(s.base_url)}" maxlength="200"></div>
-          </div>
-        </div>
-        <div class="settings-actions">
-          <button class="button primary" type="submit">保存设置</button>
-          <span id="settings-result" class="settings-result" role="status"></span>
-        </div>
-      </form>
-    </section>
-    <section class="panel">
-      ${panelHead('当前状态','后端已解析的值；保存成功后立即刷新。')}
-      <div class="settings-status">
-        <div><span>开关</span><strong>${s.enabled ? '已启用' : '未启用'}</strong></div>
-        <div><span>可调用</span><strong>${s.ready ? '是' : '否（缺 Key 或未启用）'}</strong></div>
-        <div><span>厂商</span><strong>${esc(provider.label)}</strong></div>
-        <div><span>模型</span><strong>${esc(s.model)}</strong></div>
-        <div><span>API Key</span><strong>${s.api_key_set ? '已保存' : '未保存'}</strong></div>
-        <div><span>写入文件</span><code>${esc(s.env_file)}</code></div>
+  const open = Boolean(s.enabled);
+  return `${head}
+  <form id="settings-form" class="settings-form" autocomplete="off">
+    <label class="switch">
+      <input type="checkbox" id="llm-enabled" ${open ? 'checked' : ''}>
+      <span class="switch-track" aria-hidden="true"></span>
+      <span class="switch-copy"><strong>启用 LLM 模式</strong><small>关闭时只用规则模板，不产生任何外部请求。</small></span>
+    </label>
+    <div id="llm-config" class="llm-config ${open ? 'open' : ''}" ${open ? '' : 'inert aria-hidden="true"'}>
+      <div class="field">
+        <label for="llm-provider">模型厂商</label>
+        <select id="llm-provider">${s.providers.map(p => `<option value="${esc(p.value)}" ${p.value === s.provider ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select>
       </div>
-      <div class="notice"><strong>生效方式：</strong>保存只改后端配置，已有成果不自动重算。要让页面里的建议文字也更新：<br><code>python -m knowflow.web --refresh --llm</code></div>
-      <div class="notice"><strong>边界：</strong>模型只接收聚合摘要（计数、比率、状态），不接收原始作答；输出必须引用 issue_id 与真实材料 ID。</div>
-    </section>
-  </div>`;
+      <div class="field">
+        <label for="llm-api-key">API Key</label>
+        <input id="llm-api-key" type="password" value="" maxlength="200" autocomplete="new-password" placeholder="${s.api_key_set ? '已保存；留空表示不修改' : '粘贴 API Key'}">
+        <small>只写入本机 .env（Git 忽略），不会回显。</small>
+      </div>
+      <div class="settings-row">
+        <div class="field"><label for="llm-model">模型</label><input id="llm-model" value="${esc(s.model)}" maxlength="100"></div>
+        <div class="field"><label for="llm-base-url">Base URL</label><input id="llm-base-url" value="${esc(s.base_url)}" maxlength="200"></div>
+      </div>
+      <div class="settings-actions"><button class="button primary" type="submit">保存模型配置</button><span id="settings-result" class="settings-result" role="status"></span></div>
+    </div>
+  </form>`;
 }
+
+function teachingPanel() {
+  const loading = settingsNotice();
+  if (loading) return loading;
+  const prefs = profileData.preferences;
+  return `<section class="panel">
+    ${panelHead('教学与 AI 偏好', '决定学习建议的语气、分析报告长度，以及数据不足时 AI 的默认动作。', '<span class="pill">本机账号</span>')}
+    <form id="teaching-form" class="settings-form">
+      <div class="settings-sub"><div><h3>学习建议的生成语气</h3></div></div>
+      ${choiceGroup('pref-tone', [['warm', '温和引导', '先肯定，再给建议'], ['direct', '简洁直接', '先结论，再下一步'], ['rigorous', '严谨正式', '先依据，再判断']], prefs.tone)}
+      <div class="settings-sub"><div><h3>分析报告的长度</h3></div></div>
+      ${choiceGroup('pref-length', [['brief', '简短', '120 字以内'], ['standard', '标准', '200 字以内'], ['detailed', '详细', '320 字以内，可分点']], prefs.report_length)}
+      <div class="settings-sub"><div><h3>数据不足时 AI 的默认行为</h3></div></div>
+      ${choiceGroup('pref-insufficient', [['prompt', '直接提示信息不足', '说明缺什么、需要补充哪类证据'], ['probe', '自动生成摸底测试', '建议先做一次摸底，补齐后再诊断']], prefs.insufficient)}
+      <div class="settings-actions"><button class="button primary" type="submit">保存偏好</button><span id="teaching-result" class="settings-result" role="status"></span></div>
+    </form>
+    ${llmSection()}
+  </section>`;
+}
+
+function termOptions(current) {
+  const list = [];
+  for (let start = 2024; start <= 2027; start += 1) {
+    list.push(`${start}-${start + 1}秋`, `${start}-${start + 1}春`);
+  }
+  if (current && !list.includes(current)) list.unshift(current);
+  return list;
+}
+
+function homeChoices() {
+  return isStudentAccount()
+    ? [['overview', '学习总览'], ['course', '我的知识地图'], ['plan', '练习与建议']]
+    : [['overview', '班级学情'], ['course', '课程知识地图'], ['students', '学生明细']];
+}
+
+function displayPanel() {
+  const loading = settingsNotice();
+  if (loading) return loading;
+  const theme = currentTheme();
+  const home = profileData.preferences.home_view;
+  return `<section class="panel">
+    ${panelHead('显示', '主题与登录后的默认首页；只影响这台电脑上的显示。', '<span class="pill">本机保存</span>')}
+    <div class="theme-options" role="radiogroup" aria-label="外观主题">${THEMES.map(t => `<button type="button" class="theme-card ${theme === t.id ? 'active' : ''}" data-theme-choice="${t.id}" role="radio" aria-checked="${theme === t.id}">
+      <span class="theme-preview ${t.id}" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="theme-copy"><strong>${t.label}</strong><small>${t.desc}</small></span>
+      <span class="theme-check">${icon('check', 13)}</span>
+    </button>`).join('')}</div>
+    <div class="settings-sub"><div><h3>默认首页</h3><p>登录后默认打开这个页面；地址里带参数时以参数为准。</p></div></div>
+    <form id="display-form" class="settings-form">
+      <div class="settings-row">
+        <div class="field"><label for="pref-home">默认打开</label><select id="pref-home">${homeChoices().map(([value, label]) => `<option value="${value}" ${value === home ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+      </div>
+      <div class="settings-actions"><button class="button primary" type="submit">保存显示设置</button><span id="display-result" class="settings-result" role="status"></span></div>
+    </form>
+  </section>`;
+}
+
+function thresholdPreview(th) {
+  const nodeId = state.node;
+  const list = Object.values(D.profiles[nodeId] || {});
+  const observed = p => Number(p?.coverage?.observed_items || 0);
+  const covered = list.filter(p => observed(p) >= th.coverage_sufficient).length;
+  const missing = list.filter(p => observed(p) < th.coverage_missing).length;
+  let mastered = 0;
+  let weak = 0;
+  let total = 0;
+  list.forEach(p => (p.knowledge_states || []).forEach(k => {
+    if (k.mastery == null) return;
+    total += 1;
+    if (k.mastery * 100 >= th.mastery_mastered) mastered += 1;
+    else if (k.mastery * 100 < th.mastery_weak) weak += 1;
+  }));
+  return `${nodeId}：${covered} / ${list.length} 名学生覆盖充足，${missing} 名覆盖缺失严重；${mastered} 条知识点判为已掌握，${weak} 条判为需巩固（共 ${total} 条有估计）。`;
+}
+
+function thresholdsPanel() {
+  const loading = settingsNotice();
+  if (loading) return loading;
+  const th = profileData.thresholds;
+  const analysis = D.meta.analysis || {};
+  const currentConfig = analysis.mastered_threshold == null
+    ? ''
+    : `<p class="avatar-hint" id="threshold-current">当前诊断配置：已掌握 ≥ ${Math.round(analysis.mastered_threshold * 100)}%、需巩固 &lt; ${Math.round(analysis.weak_threshold * 100)}%、最小证据 ${analysis.min_evidence} 条。</p>`;
+  return `<section class="panel">
+    ${panelHead('数据分析阈值', '修改后按新阈值重建诊断：覆盖缺失线同时作为最小证据数，掌握阈值决定状态判定。', '<span class="pill">本机账号</span>')}
+    ${currentConfig}
+    <form id="threshold-form" class="settings-form">
+      <div class="threshold-grid">
+        <label class="threshold-row" for="th-cov-ok"><span>覆盖充足：作答记录 ≥</span><input id="th-cov-ok" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_sufficient}"><span>条</span></label>
+        <label class="threshold-row" for="th-cov-miss"><span>覆盖缺失严重：作答记录 &lt;</span><input id="th-cov-miss" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_missing}"><span>条</span></label>
+        <label class="threshold-row" for="th-master"><span>已掌握：正确率 ≥</span><input id="th-master" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_mastered}"><span>%</span></label>
+        <label class="threshold-row" for="th-weak"><span>需巩固：正确率 &lt;</span><input id="th-weak" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_weak}"><span>%</span></label>
+      </div>
+      <div class="threshold-preview" id="threshold-preview">${esc(thresholdPreview(th))}</div>
+      <p class="avatar-hint">预览按当前快照统计；保存并重建后，画像与建议会按新阈值重新生成。</p>
+      <div class="settings-actions"><button class="button primary" type="submit">保存阈值</button><button class="button light" type="button" data-reset-thresholds>恢复默认</button><span id="threshold-result" class="settings-result" role="status"></span></div>
+    </form>
+  </section>`;
+}
+
+function settingsPage() {
+  const body = state.settingsTab === 'teaching'
+    ? teachingPanel()
+    : state.settingsTab === 'display'
+      ? displayPanel()
+      : state.settingsTab === 'thresholds'
+        ? thresholdsPanel()
+        : profilePanel();
+  return `${settingsHero()}${settingsTabs()}${body}`;
+}
+
+async function saveProfileForm() {
+  const payload = {
+    display_name: $('#pf-name').value.trim(),
+    term: $('#pf-term').value
+  };
+  const classes = $('#pf-classes');
+  const subject = $('#pf-subject');
+  if (classes) payload.classes = classes.value.trim();
+  if (subject) payload.subject = subject.value.trim();
+  try {
+    profileData = await postJSON('/api/profile', {profile: payload}, 'X-KnowFlow-Profile');
+    Object.assign(SESSION, profileData.account);
+    toast('个人信息已保存。');
+    render();
+  } catch (error) {
+    setResult('profile-result', error.message, false);
+  }
+}
+
+function renameAvatar(from, to) {
+  if (!from || !to || from === to) return;
+  try {
+    const value = localStorage.getItem(AVATAR_PREFIX + from);
+    if (value) {
+      localStorage.setItem(AVATAR_PREFIX + to, value);
+      localStorage.removeItem(AVATAR_PREFIX + from);
+    }
+  } catch {}
+}
+
+async function saveAccountForm() {
+  const next = $('#pf-username').value.trim();
+  const previous = SESSION?.username || '';
+  if (!next || next === previous) {
+    setResult('account-result', '用户名没有变化。', false);
+    return;
+  }
+  try {
+    const data = await postJSON('/api/profile', {profile: {username: next}}, 'X-KnowFlow-Profile');
+    renameAvatar(previous, next);
+    profileData = data;
+    Object.assign(SESSION, data.account);
+    refreshAvatars();
+    toast('用户名已更新，下次登录请使用新用户名。');
+    render();
+  } catch (error) {
+    setResult('account-result', error.message, false);
+  }
+}
+
+async function savePasswordForm() {
+  const typedUser = $('#pw-username').value.trim();
+  const current = $('#pw-current').value;
+  const next = $('#pw-new').value;
+  const confirmValue = $('#pw-confirm').value;
+  if (!typedUser) {
+    setResult('password-result', '请输入用户名。', false);
+    return;
+  }
+  if (next.length < 8) {
+    setResult('password-result', '新密码至少 8 位。', false);
+    return;
+  }
+  if (next !== confirmValue) {
+    setResult('password-result', '两次输入的新密码不一致。', false);
+    return;
+  }
+  try {
+    await postJSON('/api/password', {username: typedUser, current_password: current, new_password: next}, 'X-KnowFlow-Password');
+    $('#pw-current').value = '';
+    $('#pw-new').value = '';
+    $('#pw-confirm').value = '';
+    setResult('password-result', '密码已更新。', true);
+    document.getElementById('password-dialog')?.close();
+    toast('密码已更新，下次登录请使用新密码。');
+  } catch (error) {
+    setResult('password-result', error.message, false);
+  }
+}
+
+function choiceValue(name) {
+  return document.querySelector(`input[name="${name}"]:checked`)?.value || '';
+}
+
+async function savePreferences(patch) {
+  profileData = await postJSON('/api/preferences', patch, 'X-KnowFlow-Prefs');
+}
+
+async function saveTeachingForm() {
+  try {
+    await savePreferences({
+      preferences: {
+        tone: choiceValue('pref-tone'),
+        report_length: choiceValue('pref-length'),
+        insufficient: choiceValue('pref-insufficient')
+      }
+    });
+    toast('教学与 AI 偏好已保存。');
+  } catch (error) {
+    setResult('teaching-result', error.message, false);
+  }
+}
+
+async function saveDisplayForm() {
+  try {
+    await savePreferences({preferences: {home_view: $('#pref-home').value}});
+    toast('默认首页已保存。');
+  } catch (error) {
+    setResult('display-result', error.message, false);
+  }
+}
+
+function thresholdValues() {
+  return {
+    coverage_sufficient: Number($('#th-cov-ok').value),
+    coverage_missing: Number($('#th-cov-miss').value),
+    mastery_mastered: Number($('#th-master').value),
+    mastery_weak: Number($('#th-weak').value)
+  };
+}
+
+function updateThresholdPreview() {
+  const box = $('#threshold-preview');
+  if (!box) return;
+  box.textContent = thresholdPreview(thresholdValues());
+}
+
+async function saveThresholdForm() {
+  const values = thresholdValues();
+  if (!(values.coverage_missing >= 1 && values.coverage_missing < values.coverage_sufficient)) {
+    setResult('threshold-result', '覆盖度阈值需满足：缺失线 ≥1 且小于充足线。', false);
+    return;
+  }
+  if (!(values.mastery_weak >= 1 && values.mastery_weak < values.mastery_mastered)) {
+    setResult('threshold-result', '掌握度阈值需满足：需巩固线 ≥1% 且小于已掌握线。', false);
+    return;
+  }
+  try {
+    profileData = await postJSON('/api/preferences', {thresholds: values}, 'X-KnowFlow-Prefs');
+    setResult('threshold-result', '阈值已保存，正在按新阈值重建诊断（约 1 分钟）…', true);
+    toast('阈值已保存，正在重建诊断…');
+    await postJSON('/api/rebuild', {}, 'X-KnowFlow-Rebuild');
+    toast('诊断已按新阈值重建。');
+    location.reload();
+  } catch (error) {
+    setResult('threshold-result', error.message, false);
+  }
+}
+
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('.account-wrap')) closeAccountMenu();
+}, true);
 
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b) return;
+  if (b.hasAttribute('data-account-toggle')) {
+    toggleAccountMenu();
+    return;
+  }
+  if (b.hasAttribute('data-account-profile')) {
+    closeAccountMenu();
+    state.view = 'settings';
+    state.settingsTab = 'profile';
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
+  if (b.hasAttribute('data-reload-profile')) {
+    profileError = null;
+    profileData = null;
+    ensureProfile()
+      .catch(error => {
+        profileError = error.message || '读取个人设置失败。';
+      })
+      .finally(() => {
+        if (state.view === 'settings') render();
+      });
+    return;
+  }
+  if (b.hasAttribute('data-reset-thresholds')) {
+    $('#th-cov-ok').value = 10;
+    $('#th-cov-miss').value = 3;
+    $('#th-master').value = 85;
+    $('#th-weak').value = 60;
+    updateThresholdPreview();
+    return;
+  }
+  if (b.hasAttribute('data-open-password')) {
+    const dialog = document.getElementById('password-dialog');
+    if (dialog) {
+      setResult('password-result', '', true);
+      const userField = document.getElementById('pw-username');
+      if (userField) userField.value = SESSION?.username || '';
+      dialog.showModal();
+      document.getElementById('pw-current')?.focus();
+    }
+    return;
+  }
+  if (b.hasAttribute('data-close-password')) {
+    document.getElementById('password-dialog')?.close();
+    return;
+  }
+  if (b.hasAttribute('data-avatar-clear')) {
+    if (writeAvatar('')) {
+      refreshAvatars();
+      if (state.view === 'settings') render();
+      toast('头像已移除。');
+    }
+    return;
+  }
+  if (b.dataset.themeChoice) {
+    switchTheme(b.dataset.themeChoice, event);
+    document.querySelectorAll('[data-theme-choice]').forEach(el => {
+      const on = el.dataset.themeChoice === b.dataset.themeChoice;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-checked', String(on));
+    });
+    return;
+  }
+  if (b.dataset.settingsTab) {
+    state.settingsTab = b.dataset.settingsTab;
+    if (state.settingsTab === 'llm') {
+      llmSettings = null;
+      settingsError = null;
+    }
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
   if (b.hasAttribute('data-logout')) {
     logout();
     return;
@@ -1227,13 +1872,23 @@ document.addEventListener('click', event => {
   if (b.hasAttribute('data-export')) exportSummary();
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'avatar-input') {
+    handleAvatarFile(event.target.files?.[0]);
+    event.target.value = '';
+    return;
+  }
   if (event.target.id === 'chat-mode') {
     state.chatMode = event.target.value;
     return;
   }
   if (event.target.id === 'llm-enabled') {
     const config = document.querySelector('#llm-config');
-    if (config) config.hidden = !event.target.checked;
+    if (config) {
+      const open = event.target.checked;
+      config.classList.toggle('open', open);
+      config.toggleAttribute('inert', !open);
+      config.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
   }
   if (event.target.id === 'llm-provider') {
     const preset = llmSettings?.providers.find(p => p.value === event.target.value);
@@ -1267,6 +1922,10 @@ document.addEventListener('change', event => {
   }
 });
 document.addEventListener('input', event => {
+  if (event.target.closest('#threshold-form')) {
+    updateThresholdPreview();
+    return;
+  }
   if (event.target.id === 'student-search') {
     const position = event.target.selectionStart;
     state.search = event.target.value;
@@ -1280,6 +1939,36 @@ document.addEventListener('input', event => {
   if (event.target.id === 'people') updateBudget();
 });
 document.addEventListener('submit', async event => {
+  if (event.target.id === 'profile-form') {
+    event.preventDefault();
+    saveProfileForm();
+    return;
+  }
+  if (event.target.id === 'account-form') {
+    event.preventDefault();
+    saveAccountForm();
+    return;
+  }
+  if (event.target.id === 'password-form') {
+    event.preventDefault();
+    savePasswordForm();
+    return;
+  }
+  if (event.target.id === 'teaching-form') {
+    event.preventDefault();
+    saveTeachingForm();
+    return;
+  }
+  if (event.target.id === 'display-form') {
+    event.preventDefault();
+    saveDisplayForm();
+    return;
+  }
+  if (event.target.id === 'threshold-form') {
+    event.preventDefault();
+    saveThresholdForm();
+    return;
+  }
   if (event.target.id === 'chat-form') {
     event.preventDefault();
     const input = document.querySelector('#chat-input');
@@ -1399,6 +2088,7 @@ $('#drawer').addEventListener('cancel', () => {
 });
 document.addEventListener('keydown', event => {
   if (document.querySelector('#drawer')?.open) return;
+  if (event.key === 'Escape') closeAccountMenu();
   if (event.key === 'Escape' && chatOpen) {
     chatOpen = false;
     renderChat();
@@ -1441,6 +2131,12 @@ async function init() {
       state.role = 'student';
       state.student = SESSION.student_id;
     }
+    try {
+      const saved = await ensureProfile();
+      if (!params.get('view') && saved.preferences.home_view) {
+        state.view = saved.preferences.home_view;
+      }
+    } catch {}
     readWork();
     render();
   } catch (e) {

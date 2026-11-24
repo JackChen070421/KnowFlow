@@ -10,6 +10,22 @@
 
 ---
 
+## 2026-11-24 — 合并 #29 / 个人地图与变式训练 / 离线知识图谱
+
+**分支整合** · `integration/2026-11-24` → `main`
+
+- 合入 `feat/web-settings-analysis`（PR #29）：设置页四分区、阈值接入诊断与 `/api/rebuild`、改密与改名、白天/黑夜/护眼三主题。`feat/web-ui-theme`（PR #28）的提交已包含在其中，单独分支归档。
+- 合入 `feat/personal-map-variant-training`：变式训练闭环（出题 → A4 题卷/答案 PDF → 站内分页预览 → 扫描回录 → 教师核分）、知识地图拖拽与个人状态、课程资料库。
+- 合入 `feat/interactive-knowledge-map`：`examples/knowledge-map/` 离线"知识一查表"，与主程序零耦合。
+- 口径对齐：`auth.DEFAULT_THRESHOLDS` 的已掌握/需巩固由 `85/60` 改为 `75/40`，`diagnosis_config()` 回到 `DiagnosisConfig` 默认（0.75 / 0.40 / 3），正式数据诊断数字与已提交报告保持一致。
+- 未合入：`groupClassOverview` / `moduleTabs` 等按旧 DOM 重排班级页的分组层（依赖 `.heatmap-panel` / `.overview-primary`，这两个类名在 #30 之后已不存在，合并会直接抛错）；班级学情仍为 #30 的六子页结构。
+- 主题 token 收敛：`theme.css` 成为调色板唯一来源（浅色沿用 #30 深绿），`workspace.css` 只留尺寸与字体；补齐统计子页面与设置页在深色/护眼下的表面映射。
+- 验证：256 项 Python 测试、7 项前端测试、`ruff check` 通过；本机 `--no-auth` 与带登录两种模式启动，`/api/profile`（阈值 75/40）、`/api/training`、Demo 卷生成与 PDF 预览/分页/下载、`/training-print` 均实测；Edge 无头截图核对浅色/深色/护眼与课程页。
+- 未验证：其他浏览器与触屏；真实 LLM 出题质量；Safari/Firefox 的遮罩动画回退分支。
+- 回退：还原本条的提交（三个 merge 与后续两次修正），或 `git revert -m 1` 对应 merge；归档分支见 `archive/2026-11-24/*` 标签。
+
+---
+
 ## 2026-11-23 — 统计子页面与统一视觉样式
 
 **界面优化** · `feat/ui-statistics-pages`
@@ -33,6 +49,7 @@
 - 新增教师试卷软删除；关联扫描不再展示，历史文件保留，学生操作被拒绝。
 - 验证：界面切换与权限已验证；本轮提交前运行完整检查，结果见 PR。
 - 回退：还原本次代码；删除状态保存在本地训练 JSON 中，不改变原始教学数据。
+- **2026-11-24 合并说明**：本条的 DOM 分组层（`groupClassOverview` / `moduleTabs` / `arrangeWorkspace`）未合入——它按 #30 之前的类名重排页面，与六子页结构冲突；资料库、试卷软删除与训练入口已合入，见 11-24 条目。
 
 ---
 

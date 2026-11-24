@@ -1,12 +1,23 @@
 @charset "UTF-8";
 
 /* =====================================================================
-   Theme layer — loaded after styles.css.
+   Theme layer — loaded after styles.css and workspace.css.
    light (default) / dark / eye-care share one layout and one type scale;
    only the palette changes, so nothing reflows or rescales on switch.
+   这里是调色板的唯一来源：workspace.css 只保留尺寸与字体 token。
    ===================================================================== */
 
+/* 浅色沿用 #30 统一视觉样式的深绿主色，深色 / 护眼只覆盖颜色同名 token。 */
 :root {
+  --ink: #203a35;
+  --muted: #536760;
+  --teal: #176b56;
+  --deep: #153f36;
+  --mint: #e7f3ed;
+  --paper: #f3f6f5;
+  --line: #dbe5df;
+  --orange: #a65c2f;
+  --purple: #6d5799;
   --surface: #fff;
   --surface-2: #f7f9f6;
   --surface-3: #eef2ee;
@@ -1066,4 +1077,53 @@ dialog#password-dialog::backdrop {
 
 .settings-hero .node-card {
   margin-bottom: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Workspace components from #30 (统计子页面 / 统一视觉样式).
+   workspace.css 用字面色写这些组件，主题层在这里补一层同名映射，
+   让深色与护眼不再出现整条白底导航或白色摘要卡。浅色不受影响。
+   --------------------------------------------------------------------- */
+
+[data-theme="dark"] .report-nav,
+[data-theme="eye"] .report-nav {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .report-nav > button,
+[data-theme="eye"] .report-nav > button {
+  color: var(--muted);
+}
+
+[data-theme="dark"] .report-nav > button:hover,
+[data-theme="eye"] .report-nav > button:hover {
+  background: var(--surface-3);
+}
+
+[data-theme="dark"] .report-nav > button.active,
+[data-theme="eye"] .report-nav > button.active {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .score-lead,
+[data-theme="eye"] .score-lead {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .chart-switcher,
+[data-theme="eye"] .chart-switcher,
+[data-theme="dark"] .table-pager,
+[data-theme="eye"] .table-pager {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .node-history dl,
+[data-theme="eye"] .node-history dl {
+  background: var(--surface-2);
 }

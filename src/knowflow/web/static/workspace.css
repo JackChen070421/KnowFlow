@@ -1,14 +1,7 @@
-/* Shared visual system and viewport-sized analytics. Loaded after legacy views. */
+/* Shared visual system and viewport-sized analytics. Loaded after legacy views.
+   调色板只在 theme.css 定义（浅色 / 深色 / 护眼三套），这里只保留尺寸与字体 token，
+   避免两处 :root 各自定义颜色后互相覆盖。 */
 :root {
-  --ink: #203a35;
-  --muted: #536760;
-  --teal: #176b56;
-  --deep: #153f36;
-  --mint: #e7f3ed;
-  --paper: #f3f6f5;
-  --line: #dbe5df;
-  --orange: #a65c2f;
-  --purple: #6d5799;
   --radius: 18px;
   --shadow: 0 3px 14px rgb(28 61 47 / 4%);
   font-size: 16px;

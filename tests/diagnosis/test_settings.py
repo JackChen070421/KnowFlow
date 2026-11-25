@@ -6,7 +6,15 @@ import json
 
 import pytest
 
-from knowflow.llm.settings_store import MANAGED_KEYS, read_llm_settings, save_llm_settings
+from knowflow.llm.client import LLMError
+from knowflow.llm.settings_store import (
+    MANAGED_KEYS,
+    read_llm_settings,
+    save_llm_settings,
+)
+from knowflow.llm.settings_store import (
+    test_llm_connection as probe_llm_connection,
+)
 
 
 def baseline(monkeypatch) -> None:
@@ -112,3 +120,50 @@ def test_settings_are_readable_without_the_key(monkeypatch):
     assert state["api_key_set"] is True
     assert "sk-hidden" not in json.dumps(state, ensure_ascii=False)
     assert {item["value"] for item in state["providers"]} >= {"deepseek", "openai", "qwen", "custom"}
+
+
+def test_probe_without_a_key_is_a_config_error(monkeypatch):
+    baseline(monkeypatch)
+    result = probe_llm_connection({})
+    assert result["ok"] is False
+    assert result["kind"] == "config"
+    assert "API Key" in result["error"]
+
+
+def test_probe_reports_the_classified_failure(monkeypatch):
+    baseline(monkeypatch)
+    monkeypatch.setenv("KNOWFLOW_LLM_API_KEY", "sk-probe-secret")
+
+    class Failing:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def complete(self, system: str, user: str) -> str:
+            raise LLMError("auth", "HTTP 401：Authentication Fails")
+
+    monkeypatch.setattr("knowflow.llm.settings_store.OpenAICompatClient", Failing)
+    result = probe_llm_connection({})
+    assert result["ok"] is False
+    assert result["kind"] == "auth"
+    assert "401" in result["error"]
+    assert "sk-probe-secret" not in json.dumps(result, ensure_ascii=False)
+
+
+def test_probe_reports_latency_on_success(monkeypatch):
+    baseline(monkeypatch)
+    monkeypatch.setenv("KNOWFLOW_LLM_API_KEY", "sk-probe-secret")
+
+    class Working:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def complete(self, system: str, user: str) -> str:
+            return "正常"
+
+    monkeypatch.setattr("knowflow.llm.settings_store.OpenAICompatClient", Working)
+    result = probe_llm_connection({})
+    assert result["ok"] is True
+    assert result["reply"] == "正常"
+    assert isinstance(result["elapsed_ms"], int)
+
+

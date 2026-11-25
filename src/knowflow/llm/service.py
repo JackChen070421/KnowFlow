@@ -67,7 +67,7 @@ class ReasonWriter:
             if not problems:
                 return (
                     response["reason"].strip(),
-                    response["check"].strip(),
+                    (response.get("check") or fallback_check).strip(),
                     WriteMeta("llm", attempt),
                 )
             errors.extend(problems[:3])

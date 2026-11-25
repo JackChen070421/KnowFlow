@@ -178,10 +178,14 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - 输入只能是 `schemas/llm/llm_summary.schema.json`：计数、比率、状态、错误模式；不含原始作答/姓名/自由文本。
 - 输出只能是 `schemas/llm/llm_response.schema.json`：`reason`/`check`/摘要/错因标签。
 - **数字锁/ID 锁**：输出中的数字与 ID 必须来自输入白名单；不合规重试 ≤2 后降级模板。
+- **决策/语言边界**：材料、完成门槛、排序、诊断结论由代码产出，语言层不得改动。`check` 不交给模型改写；`reason` 只能引用计划已选材料（`llm/contract.py` 的 `material_drift`），越权回退模板。`answer_key` 权限由 `contract.answer_key_visible` 统一判定。
 - `llm.enabled=false` 时全流程必须能跑通（模板/规则），LLM 可关闭。
 - 实现位于 `src/knowflow/llm/`：`summary.py` 构造白名单摘要，`guard.py` 做 schema/数字/ID 三重检查，`service.py` 负责重试与回退；`recommend --llm` 与 `explain` 是仅有的调用入口。`run_manifest.json` 的 `llm` 块必须记录实际使用、回退与错误，不得把回退写成“已用模型”。
 - 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
+- 传输层**不依赖第三方 SDK**：`llm/client.py` 用标准库直连 OpenAI 兼容接口。失败必须按 `LLMError.kind`（auth / billing / model / request / rate_limit / server / timeout / network / empty / bad_response）分类并记日志，不得统一写成“调用不通”；只对 timeout / network / 5xx / 429 重试，最多一次。
 - 网页对话 `/api/chat` 复用 `llm/chat.py` 的事实卡与白名单（仅回环、要求 `X-KnowFlow-Chat` 头）；上下文只来自已校验快照，不读 `data/raw`。
+- 对话的输入分两类，规则不同：**学习者数据**（计数、比率、状态、ID、计划）只能是聚合事实；**课程内容**（`objective_text`、学习卡、题面与解析，来自已校验的 `knowledge_base.json`）可以随问题发送，用于讲题。姓名、原始作答、评分明细、`answer_key`（学生端）永不进入 prompt。
+- 对话的数字锁按**数据主张**判定：句中出现人数/比例/掌握度/覆盖等学习者语境时，数字必须落在事实卡（含列表长度）内；讲做法时的教学数字（“14 道题”“第 12 周”）放行。ID 仍是全快照真实 ID。多轮上文由前端带最近 6 轮、后端截断到 2400 字，只接受 `role`/`text`。`POST /api/settings/llm/test` 提供 1 token 连通性探测，设置页据此显示真实可用性。
 - prompt 与代码同审；不把真实数据/密钥/姓名放进 prompt 或示例。
 - 存疑审查的 `flag_reasons`、`review_note` 与审查产物默认**不进** `llm_summary`：它们是本机审计信息，不是教学摘要。
 
@@ -278,6 +282,9 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.28 | 2026-11-25 | 建议语言层第一档：决策/语言边界（`llm/contract.py`）、`check` 确定性、材料白名单收紧、`numbers_used` 移除；回退率 27%→10%、材料漂移归零；测试 278 项 |
+| v0.27 | 2026-11-25 | AI 学伴 P1/P2：课程内容检索（课标/学习卡/题面）进事实卡、多轮上文、提示词区分“学习者数据/学科知识”、数字锁改按数据主张判定、证据模式只提醒一次格式、温度 0.6；测试 278 项 |
+| v0.26 | 2026-11-24 | AI 学伴传输层：去掉 `openai` SDK 依赖改标准库直连、`LLMError` 失败分类与日志、按 kind 提示并重试一次、`/api/settings/llm/test` 连通性探测、前端 45 s 超时与「重试」；测试 268 项 |
 | v0.25 | 2026-11-17 | AI 学伴：窗口拖动/缩放、简洁/证据模式、回答下方“推理依据”（事实卡步骤与证据，不含模型隐藏思维链）；`/api/chat` 增加 `mode`；测试 242 项 |
 | v0.24 | 2026-11-16 | 方向五：`data/feedback` 事件账本（补充作答/教师调整/评语/学生反馈）、派生诊断与 `diagnosis_diff`、教师调整重放（锁定/移除/换材料/时间/难度）、`/api/feedback` 与教师/学生界面；契约 v0.10（22 schemas）；测试 239 项 |
 | v0.23 | 2026-11-16 | 方向三：学习路径（`plan_item_id`/依赖/完成条件/状态/版本/`history`/`plan_diff`）、probe 启发式评分、`path-event` 进度事件与 `recommend --progress/--previous`；契约 v0.9（21 schemas）；测试 231 项 |

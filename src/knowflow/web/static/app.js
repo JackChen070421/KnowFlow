@@ -1110,18 +1110,18 @@ function citeChip(id) {
 
 function chatLog() {
   if (!chatMessages.length) {
-    return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。简洁模式少列数字，证据模式按“结论 / 依据”展开。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
+    return `<div class="chat-welcome"><strong>可以这样问</strong><p>学情数字只来自这份成果，概念与做法按课程内容讲；没有依据时会直说。简洁模式少列数字，证据模式按“结论 / 依据”展开，也可以连着追问。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 到底怎么算？">K-07 到底怎么算？</button></div></div>`;
   }
   return chatMessages.map(message => {
     const trace = message.trace;
     const modeLabel = message.mode === 'evidence' ? '证据' : '简洁';
-    return `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${trace?`<details class="chat-trace"><summary>查看推理依据</summary><div class="chat-trace-steps">${trace.steps.map((step,index)=>`<div class="chat-trace-step"><span>${index+1}</span><div><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p></div></div>`).join('')}</div>${trace.evidence?.length?`<div class="chat-trace-evidence"><strong>用到的证据</strong><div class="chat-evidence-list">${trace.evidence.map(item=>`<span class="chat-evidence">${item.id?citeChip(item.id):''}<span>${esc(item.text)}</span></span>`).join('')}</div></div>`:''}<p class="chat-trace-note">${esc(trace.note||'展示事实卡与规则步骤，不含模型隐藏思维链。')}</p></details>`:''}${message.source?`<small class="chat-source">${modeLabel}模式 · ${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`;
+    return `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${trace?`<details class="chat-trace"><summary>查看推理依据</summary><div class="chat-trace-steps">${trace.steps.map((step,index)=>`<div class="chat-trace-step"><span>${index+1}</span><div><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p></div></div>`).join('')}</div>${trace.evidence?.length?`<div class="chat-trace-evidence"><strong>用到的证据</strong><div class="chat-evidence-list">${trace.evidence.map(item=>`<span class="chat-evidence">${item.id?citeChip(item.id):''}<span>${esc(item.text)}</span></span>`).join('')}</div></div>`:''}<p class="chat-trace-note">${esc(trace.note||'展示事实卡与规则步骤，不含模型隐藏思维链。')}</p></details>`:''}${message.source?`<small class="chat-source">${modeLabel}模式 · ${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}${message.retry&&message.question?`<button type="button" class="chat-retry" data-chat-retry="${esc(message.question)}">重试这次提问</button>`:''}</div>`;
   }).join('');
 }
 
 function chatPanel() {
   const resizeHandles = ['n','s','e','w','ne','nw','se','sw'].map(dir=>`<span class="chat-resize" data-resize="${dir}" aria-hidden="true"></span>`).join('');
-  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话">${resizeHandles}<header class="chat-head" data-chat-drag><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><div class="chat-input-row"><select id="chat-mode" class="chat-mode-select" aria-label="回答方式" ${chatBusy?'disabled':''}><option value="concise" ${state.chatMode==='concise'?'selected':''}>简洁</option><option value="evidence" ${state.chatMode==='evidence'?'selected':''}>证据</option></select><textarea id="chat-input" rows="2" maxlength="500" placeholder="问当前班级、学生或知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></div></form><div class="chat-foot">基于当前学情 · 简洁 / 证据两种回答 · 每条回答下方可展开依据</div></section>`;
+  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话">${resizeHandles}<header class="chat-head" data-chat-drag><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><div class="chat-input-row"><select id="chat-mode" class="chat-mode-select" aria-label="回答方式" ${chatBusy?'disabled':''}><option value="concise" ${state.chatMode==='concise'?'selected':''}>简洁</option><option value="evidence" ${state.chatMode==='evidence'?'selected':''}>证据</option></select><textarea id="chat-input" rows="2" maxlength="500" placeholder="问学情，或让我讲讲某个知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></div></form><div class="chat-foot">基于当前学情 · 简洁 / 证据两种回答 · 每条回答下方可展开依据</div></section>`;
 }
 
 function clampChatRect(rect) {
@@ -1243,37 +1243,56 @@ function renderChat() {
 async function sendChat(raw) {
   const text = (raw || '').trim();
   if (!text || chatBusy) return;
-  chatMessages.push({
-    role: 'user',
-    text
-  });
+  // A retry replaces the failed answer instead of stacking a second copy of the
+  // same question in the log.
+  while (chatMessages.length && chatMessages[chatMessages.length - 1].retry) chatMessages.pop();
+  const prior = chatMessages.filter(message => !message.error && message.text);
+  const trailing = prior[prior.length - 1];
+  if (trailing && trailing.role === 'user' && trailing.text === text) prior.pop();
+  const history = prior.slice(-6).map(message => ({
+    role: message.role === 'user' ? 'user' : 'assistant',
+    text: message.text.slice(0, 600)
+  }));
+  const last = chatMessages[chatMessages.length - 1];
+  if (!(last && last.role === 'user' && last.text === text)) {
+    chatMessages.push({
+      role: 'user',
+      text
+    });
+  }
   chatBusy = true;
   renderChat();
   try {
     const data = await postJSON('/api/chat', {
       message: text,
       mode: state.chatMode,
+      history,
       context: {
         node_id: state.node,
         group_id: state.group,
         student_id: state.student
       }
-    }, 'X-KnowFlow-Chat');
+    }, 'X-KnowFlow-Chat', {timeoutMs: 45000});
     const staleMode = !data.trace || data.trace.mode !== state.chatMode;
     chatMessages.push({
       role: 'assistant',
-      text: data.answer,
+      // 气泡是纯文本：模型偶尔仍会带 ** 强调，这里去掉，免得露出星号。
+      text: String(data.answer || '').replace(/\*\*/g, ''),
       citations: data.citations || [],
       source: data.source,
       trace: data.trace,
       mode: data.trace?.mode || state.chatMode,
+      question: text,
+      retry: data.source !== 'llm',
       note: data.note || (staleMode ? '当前后端进程未加载所选回答方式（旧版本）；请关闭并重启 dashboard 后重试。' : undefined)
     });
   } catch (error) {
     chatMessages.push({
       role: 'assistant',
       text: error.message,
-      error: true
+      error: true,
+      question: text,
+      retry: true
     });
   } finally {
     chatBusy = false;
@@ -1281,8 +1300,9 @@ async function sendChat(raw) {
   }
 }
 
-async function postJSON(url, body, header = 'X-KnowFlow-Settings') {
-  const send = () => fetch(url, {
+async function postJSON(url, body, header = 'X-KnowFlow-Settings', options = {}) {
+  const timeoutMs = options.timeoutMs || 0;
+  const request = () => ({
     method: 'POST',
     cache: 'no-store',
     headers: {
@@ -1291,16 +1311,29 @@ async function postJSON(url, body, header = 'X-KnowFlow-Settings') {
     },
     body: JSON.stringify(body)
   });
+  const send = async () => {
+    if (!timeoutMs) return fetch(url, request());
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...request(), signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const timeoutMessage = `等待超过 ${Math.round(timeoutMs / 1000)} 秒仍未返回，本次请求已取消；可以重试一次。`;
   let response;
   try {
     response = await send();
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError') throw Error(timeoutMessage);
     // A restarted dashboard can reset one keep-alive socket; retry once, then
     // tell the user the backend is gone instead of leaking "Failed to fetch".
     await new Promise(resolve => setTimeout(resolve, 400));
     try {
       response = await send();
-    } catch {
+    } catch (retryError) {
+      if (retryError?.name === 'AbortError') throw Error(timeoutMessage);
       throw Error('无法连接本机后端：请确认启动窗口仍在运行（不要关闭它），然后刷新页面重试。');
     }
   }
@@ -1415,7 +1448,7 @@ function profilePanel() {
 }
 
 function llmSection() {
-  const head = `<div class="settings-sub"><div><h3>LLM 文字层（可选）</h3><p>只改写 reason / check；校验失败会逐条回退模板。</p></div></div>`;
+  const head = `<div class="settings-sub"><div><h3>LLM 文字层（可选）</h3><p>AI 学伴对话与推荐文字都走这里；调用失败会说明具体原因，并回退本地规则。</p></div></div>`;
   if (settingsError) {
     return `${head}<div class="error-box">${esc(settingsError)}</div>`;
   }
@@ -1445,7 +1478,9 @@ function llmSection() {
         <div class="field"><label for="llm-model">模型</label><input id="llm-model" value="${esc(s.model)}" maxlength="100"></div>
         <div class="field"><label for="llm-base-url">Base URL</label><input id="llm-base-url" value="${esc(s.base_url)}" maxlength="200"></div>
       </div>
-      <div class="settings-actions"><button class="button primary" type="submit">保存模型配置</button><span id="settings-result" class="settings-result" role="status"></span></div>
+      <p class="settings-hint">直连方式：Python 标准库（无需安装 SDK）· 单次超时 ${esc(s.timeout_seconds ?? '—')} 秒 · 界面最多等 45 秒</p>
+      <div class="settings-actions"><button class="button primary" type="submit">保存模型配置</button><button class="button" type="button" data-llm-test>测试连接</button><span id="settings-result" class="settings-result" role="status"></span></div>
+      <p class="settings-hint" id="llm-test-result" role="status"></p>
     </div>
   </form>`;
 }
@@ -1781,6 +1816,26 @@ document.addEventListener('click', event => {
     });
     return;
   }
+  if (b.hasAttribute('data-llm-test')) {
+    const out = document.querySelector('#llm-test-result');
+    if (out) out.textContent = '正在连接模型…';
+    postJSON('/api/settings/llm/test', {
+      provider: document.querySelector('#llm-provider').value,
+      model: document.querySelector('#llm-model').value.trim(),
+      base_url: document.querySelector('#llm-base-url').value.trim(),
+      api_key: document.querySelector('#llm-api-key').value
+    }, 'X-KnowFlow-Settings', {timeoutMs: 20000})
+      .then(result => {
+        if (!out) return;
+        out.textContent = result.ok
+          ? `连接正常：${result.model} · ${result.elapsed_ms} ms · 回复「${result.reply}」`
+          : `连接失败（${result.kind}）：${result.error}`;
+      })
+      .catch(error => {
+        if (out) out.textContent = error.message;
+      });
+    return;
+  }
   if (b.dataset.settingsTab) {
     state.settingsTab = b.dataset.settingsTab;
     if (state.settingsTab === 'llm') {
@@ -1808,6 +1863,10 @@ document.addEventListener('click', event => {
   }
   if (b.dataset.chatPrompt) {
     sendChat(b.dataset.chatPrompt);
+    return;
+  }
+  if (b.dataset.chatRetry) {
+    sendChat(b.dataset.chatRetry);
     return;
   }
   if (b.hasAttribute('data-close')) {

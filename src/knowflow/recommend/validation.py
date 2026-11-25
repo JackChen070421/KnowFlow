@@ -11,6 +11,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 from knowflow.contracts import build_registry, repo_root
+from knowflow.llm.contract import material_drift
 from knowflow.recommend.catalog import build_catalog, load_knowledge_base
 from knowflow.recommend.rules import MIN_EVIDENCE, POLICY_VERSION
 
@@ -184,6 +185,9 @@ def validate_recommendation(
                 errors.append(f"plan[{index}]: {field} contains unlocked numbers {sorted(unknown)}")
         if issue["issue_id"] not in item["reason"]:
             errors.append(f"plan[{index}]: reason does not cite issue_id")
+        drift = material_drift(item["reason"] + " " + item["check"], item)
+        if drift:
+            errors.append(f"plan[{index}]: text cites materials outside the plan: {drift}")
         if not item["check"].strip():
             errors.append(f"plan[{index}]: empty check")
 

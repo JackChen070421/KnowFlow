@@ -50,7 +50,14 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_api_key: str = Field(default="", repr=False)
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    llm_timeout_seconds: float = Field(default=30.0, gt=0.0)
+    # A chat answer is a conversation, not a rewritten reason/check line: warmer,
+    # and short enough to stay readable in the bubble.
+    llm_chat_temperature: float = Field(default=0.6, ge=0.0, le=2.0)
+    llm_chat_max_tokens: int = Field(default=700, ge=16, le=8192)
+    # One call must not block the chat bubble for half a minute: the interactive
+    # path retries a timeout once, so the worst case is ~2 x this value.
+    llm_timeout_seconds: float = Field(default=20.0, gt=0.0)
+    llm_max_tokens: int = Field(default=1024, ge=16, le=8192)
 
     # --- paths ----------------------------------------------------------
     data_dir: Path = Path("./data")

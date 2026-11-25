@@ -345,6 +345,48 @@ def _check(
     return f"{lead}{'、'.join(assessment_ids)}，至少 2 题全对；否则回到讲解材料重看。"
 
 
+def refresh_item_wording(
+    item: dict,
+    issue: dict,
+    profile: dict,
+    catalog: dict,
+    review: dict | None = None,
+) -> None:
+    """Regenerate reason/check after the decision layer changed the materials.
+
+    A teacher's ``replace_materials`` changes the decision, so the language must
+    follow.  Called with the final material list; the completion ``check`` stays
+    deterministic and only ever cites those materials.
+    """
+
+    materials = [m for m in item["material_ids"] if m in catalog["materials"]]
+    explain_id = next(
+        (
+            m
+            for m in materials
+            if catalog["materials"][m]["material_type"] == "explain"
+        ),
+        None,
+    )
+    assessments = [
+        m
+        for m in materials
+        if catalog["materials"][m]["material_type"] == "assessment"
+    ]
+    view = _planning_view(profile, issue["knowledge_id"], review)
+    planning = _planning_issue(issue, view)
+    if not assessments:
+        names = "、".join(catalog["materials"][m].get("title", m) for m in materials)
+        item["reason"] = (
+            f"{issue['issue_id']} 对应 {issue['knowledge_id']}；"
+            f"按计划先看 {names or '相关材料'}，再按要求自检。"
+        )
+        item["check"] = "完成计划材料并自检。"
+        return
+    item["reason"] = _reason(planning, profile, catalog, explain_id, assessments, review)
+    item["check"] = _check(planning, catalog, explain_id, assessments)
+
+
 def _plan_item(
     seq: int,
     issue: dict,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from knowflow.recommend.rules import refresh_item_wording
+
 
 def _sorted(events: list[dict]) -> list[dict]:
     return sorted(events, key=lambda event: (event["created_at"], event["event_id"]))
@@ -135,7 +137,13 @@ def removed_items(state: dict) -> list[dict]:
     return removed
 
 
-def apply_to_recommendation(rec: dict, state: dict, catalog: dict) -> dict:
+def apply_to_recommendation(
+    rec: dict,
+    state: dict,
+    catalog: dict,
+    profile: dict | None = None,
+    review: dict | None = None,
+) -> dict:
     unmatched = []
     applied = []
     by_item = {item["plan_item_id"]: item for item in rec.get("plan", []) if item.get("plan_item_id")}
@@ -143,6 +151,7 @@ def apply_to_recommendation(rec: dict, state: dict, catalog: dict) -> dict:
     by_knowledge = {
         item["knowledge_ids"][0]: item for item in rec.get("plan", []) if item.get("knowledge_ids")
     }
+    issues = {issue["issue_id"]: issue for issue in (profile or {}).get("issues", [])}
     for plan_item_id, entry in state["items"].items():
         snapshot = entry["snapshot"]
         item = (
@@ -164,6 +173,10 @@ def apply_to_recommendation(rec: dict, state: dict, catalog: dict) -> dict:
                 item["primary_material_id"] = materials[0]
                 if "completion_condition" in item:
                     item["completion_condition"]["material_ids"] = materials
+                # 决定层换了材料，语言层必须跟上：reason/check 重新按新材料生成。
+                issue = issues.get(item.get("issue_id"))
+                if issue is not None and profile is not None:
+                    refresh_item_wording(item, issue, profile, catalog, review)
         if entry["est_minutes"] is not None:
             item["est_minutes"] = entry["est_minutes"]
         if entry["difficulty"] is not None:

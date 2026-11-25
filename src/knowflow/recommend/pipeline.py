@@ -477,7 +477,7 @@ def recommend_run(
                     removed,
                 )
             if fb_state["events"]:
-                apply_to_recommendation(rec, fb_state, catalog)
+                apply_to_recommendation(rec, fb_state, catalog, profile, review)
             rec["plan_diff"] = _plan_diff(previous_rec, rec, len(state["events"]))
             if rec.get("feedback", {}).get("teacher_adjustments"):
                 rec["plan_diff"]["reason"] += (

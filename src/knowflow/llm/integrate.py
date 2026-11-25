@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..recommend.validation import allowed_numbers
+from .contract import material_drift
 from .service import PROMPT_VERSION, ReasonWriter
 from .summary import build_issue_summary, summary_errors
 
@@ -21,7 +22,12 @@ def rewrite_plan(
     dataset_id: str,
     writer: ReasonWriter,
 ) -> dict:
-    """Rewrite plan wording in place and return honest per-run counters."""
+    """Rewrite plan wording in place and return honest per-run counters.
+
+    Only ``reason`` is rewritten: the completion ``check`` is a decision (the
+    evidence threshold), so it stays deterministic.  The model may cite only the
+    materials the plan already assigned; anything else is rejected as drift.
+    """
 
     issues = {issue["issue_id"]: issue for issue in profile.get("issues", [])}
     used = fallback = attempts = 0
@@ -39,7 +45,7 @@ def rewrite_plan(
             issue["knowledge_id"],
             issue["objective_id"],
         }
-        citation_ids |= set((issue.get("evidence") or {}).get("material_ids") or [])
+        # 决定层已选定材料：语言层只能引用计划里的这几份，不能自行换材料。
         citation_ids |= set(item["material_ids"])
         titles = {
             material_id: catalog["materials"][material_id]["title"]
@@ -60,14 +66,20 @@ def rewrite_plan(
             attempts += 1
             errors.extend(problems[:2])
             continue
-        reason, check, meta = writer.write(summary, item["reason"], item["check"])
-        item["reason"], item["check"] = reason, check
+        reason, _check, meta = writer.write(summary, item["reason"], item["check"])
         attempts += meta.attempts
-        if meta.source == "llm":
-            used += 1
-        else:
+        if meta.source != "llm":
             fallback += 1
             errors.extend(meta.errors)
+            continue
+        drift = material_drift(reason, item)
+        if drift:
+            fallback += 1
+            errors.append(f"materials outside plan: {drift}")
+            continue
+        item["reason"] = reason
+        # check 是完成门槛（决定层），保持确定性文案，不做改写。
+        used += 1
     if used:
         rec["generated_by"] = {
             "provider": writer.provider,

@@ -307,7 +307,7 @@ def test_review_block_records_both_views(bundle: dict, review_context: dict) -> 
     assert state["mastery"] == 0.6  # official: 2 full credit of 3
     assert state["review"]["official_mastery"] == 0.6
     assert state["review"]["usable_mastery"] == 0.75
-    assert state["review"]["usable_status"] == "insufficient_evidence"
+    assert state["review"]["usable_status"] == "likely_mastered"
     assert state["review"]["status_changed"] is True
     assert state["evidence_count"] == 3  # official ledger untouched
 

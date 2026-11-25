@@ -7,6 +7,21 @@ from .contract import material_drift
 from .service import PROMPT_VERSION, ReasonWriter
 from .summary import build_issue_summary, summary_errors
 
+# 决定层已经判成"巩固"时，文案必须给出巩固动作；只写"补充观测"就是把动作说反了。
+CONSOLIDATE_WORDS = ("巩固", "练习", "重做", "学习卡", "复核", "讲解")
+
+
+def _advice_conflict(item: dict, reason: str) -> str | None:
+    """Reject a rewrite that flattens an actionable item into "observe more"."""
+
+    if item.get("activity_type") != "consolidate":
+        return None
+    if any(word in reason for word in CONSOLIDATE_WORDS):
+        return None
+    if "补观测" in reason or "补充观测" in reason:
+        return "consolidate advice collapsed to observation"
+    return None
+
 
 def _state(profile: dict, knowledge_id: str) -> dict:
     return next(
@@ -76,6 +91,11 @@ def rewrite_plan(
         if drift:
             fallback += 1
             errors.append(f"materials outside plan: {drift}")
+            continue
+        conflict = _advice_conflict(item, reason)
+        if conflict:
+            fallback += 1
+            errors.append(conflict)
             continue
         item["reason"] = reason
         # check 是完成门槛（决定层），保持确定性文案，不做改写。

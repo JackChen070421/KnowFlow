@@ -207,6 +207,9 @@ def build_facts(
             "needs_observation": [
                 item["knowledge_id"] for item in profile["lists"]["needs_observation"]
             ][:5],
+            "needs_coverage": [
+                item["knowledge_id"] for item in profile["lists"].get("needs_coverage", [])
+            ][:5],
             "states": [
                 {
                     "id": state["knowledge_id"],
@@ -245,6 +248,7 @@ def build_facts(
     if facts.get("student"):
         knowledge_ids |= set(facts["student"]["needs_consolidation"])
         knowledge_ids |= set(facts["student"]["needs_observation"])
+        knowledge_ids |= set(facts["student"].get("needs_coverage") or [])
         knowledge_ids |= {state["id"] for state in facts["student"]["states"]}
     if not knowledge_ids and facts.get("class"):
         knowledge_ids = {item["id"] for item in facts["class"]["knowledge"][:3]}
@@ -491,7 +495,8 @@ def build_trace(
                 "detail": (
                     f"观测覆盖 {coverage['observed']}/{coverage['applicable']}；"
                     f"建议巩固 {len(student['needs_consolidation'])} 个，"
-                    f"待观察 {len(student['needs_observation'])} 个"
+                    f"待观察 {len(student['needs_observation'])} 个，"
+                    f"未覆盖 {len(student.get('needs_coverage') or [])} 个"
                 ),
             }
         )
@@ -666,7 +671,8 @@ def rules_answer(facts: dict, mode: str = "concise") -> str:
             basis = [
                 f"观测覆盖 {coverage['observed']}/{coverage['applicable']}"
                 f"（{_ratio(coverage['ratio'])}）",
-                f"建议巩固 {len(needs)} 个，待观察 {len(student.get('needs_observation') or [])} 个",
+                f"建议巩固 {len(needs)} 个，待观察 {len(student.get('needs_observation') or [])} 个，"
+                f"未覆盖 {len(student.get('needs_coverage') or [])} 个",
             ]
             if plan:
                 first = plan[0]
@@ -682,7 +688,9 @@ def rules_answer(facts: dict, mode: str = "concise") -> str:
         if plan:
             parts.append(_pick(NEXT_STEPS, student["id"] + mode))
         if student.get("needs_observation"):
-            parts.append("证据不足的知识点先补观测，不急着下结论。")
+            parts.append("有 1～2 条评分但方向不明的知识点，再测一次就能定性。")
+        if student.get("needs_coverage"):
+            parts.append("还有些知识点一条评分都没有，先布置基线题；未覆盖不等于没掌握。")
         return "".join(parts)
 
     class_facts = facts.get("class") or {}

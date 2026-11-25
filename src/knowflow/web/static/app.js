@@ -612,9 +612,9 @@ function studentsPage() {
     <div class="toolbar"><label class="search-field">${icon('search',15)}<input id="student-search" placeholder="搜索学生 ID" aria-label="搜索学生 ID" value="${esc(state.search)}"></label><div class="filters">
     <label class="filter">筛选<select id="student-filter"><option value="all" ${state.studentFilter==='all'?'selected':''}>全部学生</option><option value="needs" ${state.studentFilter==='needs'?'selected':''}>建议巩固</option><option value="unknown" ${state.studentFilter==='unknown'?'selected':''}>范围待确认</option><option value="submitted" ${state.studentFilter==='submitted'?'selected':''}>有练习提交</option></select></label>
     <label class="filter">排序<select id="student-sort"><option value="id" ${state.studentSort==='id'?'selected':''}>学生 ID</option><option value="score" ${state.studentSort==='score'?'selected':''}>得分率从高到低</option><option value="coverage" ${state.studentSort==='coverage'?'selected':''}>覆盖率从低到高</option></select></label></div></div>
-    <div class="table-scroll roster-scroll" aria-label="学生列表"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观察</th><th>新练习提交</th><th></th></tr></thead><tbody>${page.items.map(p=>{
+    <div class="table-scroll roster-scroll" aria-label="学生列表"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观测 / 未覆盖</th><th>新练习提交</th><th></th></tr></thead><tbody>${page.items.map(p=>{
       const s=D.stats[state.node][p.student_id],pr=planProgress(p.student_id);
-      return `<tr class="${p.student_id===state.student?'selected':''}"><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td><td><span class="table-score">${pct(s.score_ratio)}</span><small class="muted"> · ${s.graded} 条评分</small></td><td>${p.coverage.scope_known?pct(p.coverage.ratio):'范围待确认'}</td><td>${s.assigned?`${s.attempted} / ${s.assigned}`:'未记录'}</td><td>${p.lists.needs_consolidation.length} / ${p.lists.needs_observation.length}</td><td>${pr.done?`${pr.done} / ${pr.total} · 待评阅`:pr.total?'未记录':'无新计划'}</td><td><button class="text-button" data-student="${esc(p.student_id)}" aria-label="查看 ${esc(p.student_id)} 详情">查看 ${icon('arrow',13)}</button></td></tr>`;
+      return `<tr class="${p.student_id===state.student?'selected':''}"><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td><td><span class="table-score">${pct(s.score_ratio)}</span><small class="muted"> · ${s.graded} 条评分</small></td><td>${p.coverage.scope_known?pct(p.coverage.ratio):'范围待确认'}</td><td>${s.assigned?`${s.attempted} / ${s.assigned}`:'未记录'}</td><td>${p.lists.needs_consolidation.length} / ${p.lists.needs_observation.length} / ${(p.lists.needs_coverage||[]).length}</td><td>${pr.done?`${pr.done} / ${pr.total} · 待评阅`:pr.total?'未记录':'无新计划'}</td><td><button class="text-button" data-student="${esc(p.student_id)}" aria-label="查看 ${esc(p.student_id)} 详情">查看 ${icon('arrow',13)}</button></td></tr>`;
     }).join('')}</tbody></table>${!list.length?empty('没有符合筛选条件的学生。'):''}</div>
     ${pagination('roster', page, '人')}<p class="quiet-note">得分率仅反映已评分题目。新练习提交等待评阅，不自动更新画像。</p>
   </section></div>`;
@@ -646,7 +646,7 @@ function personalPage(teacher = false) {
 }
 
 function profileAnalysis(p) {
-  const focus = `<div class="personal-focus">${[['建议巩固',p.lists.needs_consolidation],['掌握较好',p.lists.strengths],['待观察',p.lists.needs_observation]].map(([label, list]) => `<button data-profile-tab="knowledge"><span>${label}</span><strong>${list.length}<small> 项</small></strong></button>`).join('')}</div>`;
+  const focus = `<div class="personal-focus">${[['建议巩固',p.lists.needs_consolidation],['掌握较好',p.lists.strengths],['待观察',p.lists.needs_observation],['未覆盖',p.lists.needs_coverage||[]]].map(([label, list]) => `<button data-profile-tab="knowledge"><span>${label}</span><strong>${list.length}<small> 项</small></strong></button>`).join('')}</div>`;
   return chartDeck(chartCard(isStudentAccount() ? '我的主题表现' : '主题表现对比', isStudentAccount() ? '本人已评分题目 · 按主题汇总' : '个人与所在班级的已评分题目', topicComparison(p.student_id), isStudentAccount() ? '按本人已评分题目总分计算。学生账号只接收本人明细，不用个人数据冒充班级得分率。' : '均按已评分题目总分计算。本人包含在班级统计中；作答材料和数量可能不同，仅作描述性对照。') + chartCard('知识状态', '每个知识点归入一种状态', donut(statusCount(p), p.knowledge_states.length, '个知识点') + focus, '较可能与已确认状态在图中合并，知识明细保留原判断。证据不足不等于未掌握。'));
 }
 
@@ -727,7 +727,7 @@ function bindSourceLibrary(){
 
 function knowledgeMap(p) {
   if(kb.curriculum_graph?.nodes?.length)return `<div data-interactive-map ${p?'data-personal="true"':''}></div>`;
-  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
+  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['unobserved_count','unobserved'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
 function requirements() {
@@ -1550,13 +1550,21 @@ function thresholdPreview(th) {
   let mastered = 0;
   let weak = 0;
   let total = 0;
+  let uncovered = 0;
+  let sparse = 0;
   list.forEach(p => (p.knowledge_states || []).forEach(k => {
+    if (k.status === 'not_applicable') return;
+    if (!k.evidence_count) {
+      if (!(k.state_counts?.pending > 0)) uncovered += 1;
+      return;
+    }
+    if (k.evidence_count < th.min_evidence) sparse += 1;
     if (k.mastery == null) return;
     total += 1;
     if (k.mastery * 100 >= th.mastery_mastered) mastered += 1;
     else if (k.mastery * 100 < th.mastery_weak) weak += 1;
   }));
-  return `${nodeId}：${covered} / ${list.length} 名学生覆盖充足，${missing} 名覆盖缺失严重；${mastered} 条知识点判为已掌握，${weak} 条判为需巩固（共 ${total} 条有估计）。`;
+  return `${nodeId}：${covered} / ${list.length} 名学生覆盖充足，${missing} 名覆盖缺失严重；知识点层面：${uncovered} 个未覆盖（无评分）、${sparse} 个有评分但不足 ${th.min_evidence} 条判为待观察；${mastered} 条判为已掌握，${weak} 条判为需巩固（共 ${total} 条有估计）。`;
 }
 
 function thresholdsPanel() {
@@ -1568,12 +1576,13 @@ function thresholdsPanel() {
     ? ''
     : `<p class="avatar-hint" id="threshold-current">当前诊断配置：已掌握 ≥ ${Math.round(analysis.mastered_threshold * 100)}%、需巩固 &lt; ${Math.round(analysis.weak_threshold * 100)}%、最小证据 ${analysis.min_evidence} 条。</p>`;
   return `<section class="panel">
-    ${panelHead('数据分析阈值', '修改后按新阈值重建诊断：覆盖缺失线同时作为最小证据数，掌握阈值决定状态判定。', '<span class="pill">本机账号</span>')}
+    ${panelHead('数据分析阈值', '修改后按新阈值重建诊断：诊断证据门槛决定"几个知识点还算待观察"，掌握阈值决定状态判定，覆盖线只影响看板标注。', '<span class="pill">本机账号</span>')}
     ${currentConfig}
     <form id="threshold-form" class="settings-form">
       <div class="threshold-grid">
         <label class="threshold-row" for="th-cov-ok"><span>覆盖充足：作答记录 ≥</span><input id="th-cov-ok" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_sufficient}"><span>条</span></label>
         <label class="threshold-row" for="th-cov-miss"><span>覆盖缺失严重：作答记录 &lt;</span><input id="th-cov-miss" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_missing}"><span>条</span></label>
+        <label class="threshold-row" for="th-min-ev"><span>诊断证据门槛：有效评分 ≥</span><input id="th-min-ev" class="threshold-input" type="number" min="1" max="20" value="${th.min_evidence}"><span>条</span></label>
         <label class="threshold-row" for="th-master"><span>已掌握：正确率 ≥</span><input id="th-master" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_mastered}"><span>%</span></label>
         <label class="threshold-row" for="th-weak"><span>需巩固：正确率 &lt;</span><input id="th-weak" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_weak}"><span>%</span></label>
       </div>
@@ -1711,6 +1720,7 @@ function thresholdValues() {
   return {
     coverage_sufficient: Number($('#th-cov-ok').value),
     coverage_missing: Number($('#th-cov-miss').value),
+    min_evidence: Number($('#th-min-ev').value),
     mastery_mastered: Number($('#th-master').value),
     mastery_weak: Number($('#th-weak').value)
   };
@@ -1730,6 +1740,10 @@ async function saveThresholdForm() {
   }
   if (!(values.mastery_weak >= 1 && values.mastery_weak < values.mastery_mastered)) {
     setResult('threshold-result', '掌握度阈值需满足：需巩固线 ≥1% 且小于已掌握线。', false);
+    return;
+  }
+  if (!(values.min_evidence >= 1 && values.min_evidence <= 20)) {
+    setResult('threshold-result', '诊断证据门槛需介于 1 到 20 条之间。', false);
     return;
   }
   try {

@@ -7,7 +7,8 @@ from statistics import mean
 
 from knowflow.cleaning.states import STATES, classify_state
 
-from .mastery import DiagnosisConfig, estimate_mastery
+from .evidence import evidence_action
+from .mastery import DiagnosisConfig, apply_evidence_status, estimate_mastery
 
 MASTERED = {"likely_mastered", "confirmed_mastered"}
 WEAK = {"likely_weak", "confirmed_weak"}
@@ -77,12 +78,21 @@ def build_student_profile(
         counts["unobserved"] = len(items) - len(selected)
         graded = [r for r in selected if r["attempted"] and r["score"] is not None]
         estimate = estimate_mastery(counts["observed_correct"], len(graded), config)
+        estimate = apply_evidence_status(
+            estimate, observed=len(graded), pending=counts["pending"]
+        )
         if not known_scope:
             estimate["status_reason"] = "该学生没有此测验节点的参与记录，适用范围待确认。"
         elif not items:
             estimate.update(
                 status="not_applicable",
                 status_reason="此节点没有该知识点的可测题目；不据此判断学生未掌握。",
+            )
+        elif estimate["status"] == "insufficient_evidence" and len(items) < config.min_evidence:
+            # 题量本身达不到门槛：这不是"学生没做"，是"这一节点没给够可测题"。
+            estimate["status_reason"] = (
+                f"{estimate['status_reason']}"
+                f"本节点该知识点只有{len(items)}道可测题，题目本身不足，需补充材料或换节点。"
             )
         disputed = [r for r in graded if _is_disputed(review, r["record_id"])]
         review_block = None
@@ -135,10 +145,16 @@ def build_student_profile(
         }
         if review_block:
             entry["review"] = review_block
+        entry["evidence_action"] = evidence_action(entry)
         states.append(entry)
     objectives = _objectives(states)
     issues = _issues(sid, states, records, review)
-    lists = {"strengths": [], "needs_consolidation": [], "needs_observation": []}
+    lists = {
+        "strengths": [],
+        "needs_consolidation": [],
+        "needs_observation": [],
+        "needs_coverage": [],
+    }
     for state in states:
         status = state["status"]
         if status == "not_applicable":
@@ -146,6 +162,8 @@ def build_student_profile(
         key = (
             "strengths"
             if status in MASTERED
+            else "needs_coverage"
+            if status == "unobserved"
             else "needs_observation"
             if status == "insufficient_evidence"
             else "needs_consolidation"
@@ -191,7 +209,9 @@ def _objectives(states):
         statuses = {s["status"] for s in applicable}
         if not applicable:
             status = "not_applicable"
-        elif "insufficient_evidence" in statuses:
+        elif statuses & {"insufficient_evidence", "unobserved"}:
+            # 主题层只有一个"证据不足"概括口径：未覆盖与证据不足在知识点层分开，
+            # 汇总到主题时都还不支持结论。
             status = "insufficient_evidence"
         elif statuses <= MASTERED:
             status = "confirmed_mastered" if statuses == {"confirmed_mastered"} else "likely_mastered"
@@ -234,7 +254,14 @@ def _issues(sid, states, records, review=None):
         ]
         n = len(graded)
         full = state["state_counts"]["observed_correct"]
-        if state["status"] == "insufficient_evidence":
+        if state["status"] == "unobserved":
+            kind = "insufficient_evidence"
+            statement = (
+                state["status_reason"]
+                + f" 本节点该知识点共{state['applicable_items']}道可测题，暂无评分；"
+                "先完成基线题再判断。"
+            )
+        elif state["status"] == "insufficient_evidence":
             kind = "insufficient_evidence"
             statement = state["status_reason"] + f" 有效评分{n}项；已有失分只作观察线索。"
         elif loss:
@@ -296,6 +323,7 @@ def build_class_profile(
                 "mastered_count": sum(s["status"] in MASTERED for s in states),
                 "weak_count": sum(s["status"] in WEAK for s in states),
                 "insufficient_count": sum(s["status"] == "insufficient_evidence" for s in states),
+                "unobserved_count": sum(s["status"] == "unobserved" for s in states),
                 "mixed_count": sum(s["status"] == "mixed_performance" for s in states),
                 "not_applicable_count": sum(s["status"] == "not_applicable" for s in states),
                 "observed_student_count": sum(s["evidence_count"] > 0 for s in states),
@@ -335,18 +363,22 @@ def build_class_profile(
             key = ("scope_unknown", ())
         elif weak:
             key = ("consolidate", weak)
+        elif mixed:
+            # 有已观测的失分点可查，比"题太少"更能直接教学，排在补观测之前。
+            key = ("practice", mixed)
         elif p["lists"]["needs_observation"]:
             key = ("observe", ())
-        elif mixed:
-            key = ("practice", mixed)
+        elif p["lists"]["needs_coverage"]:
+            key = ("cover", ())
         else:
             key = ("extend", ())
         buckets[key].append(p["student_id"])
     labels = {
         "scope_unknown": "确认参与范围",
         "consolidate": "针对薄弱内容巩固",
-        "observe": "补充观测",
         "practice": "分项练习",
+        "observe": "补充观测",
+        "cover": "补齐覆盖",
         "extend": "变式与迁移",
     }
     for (kind, kids), ids in sorted(buckets.items()):
@@ -400,6 +432,9 @@ def build_class_profile(
             ),
             "students_with_insufficient_evidence": sum(
                 bool(p["lists"]["needs_observation"]) for p in selected
+            ),
+            "students_with_coverage_gap": sum(
+                bool(p["lists"]["needs_coverage"]) for p in selected
             ),
             "students_with_known_scope": sum(p["coverage"]["scope_known"] for p in selected),
         },

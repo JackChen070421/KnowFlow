@@ -90,7 +90,7 @@ assert errors == [], errors
 
 ### 为什么 `mastery` 允许 `null`？
 
-无观测不能写 0。`null` 表达“不知道”，对应 `insufficient_evidence`；这是“缺少记录不等于未掌握”的字段级体现。
+无观测不能写 0。`null` 表达“不知道”，对应 `unobserved`（有题但没评分）或 `insufficient_evidence`（评分不足）；这是“缺少记录不等于未掌握”的字段级体现。两者分开是因为动作不同：前者要布置基线题，后者要再测一次。
 
 ### 为什么 `knowledge_base` 用 `$ref`？
 

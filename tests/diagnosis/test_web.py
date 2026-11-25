@@ -996,6 +996,7 @@ def test_profile_preferences_and_password_flow(dashboard_run, tmp_path):
         assert payload["thresholds"] == {
             "coverage_sufficient": 10,
             "coverage_missing": 3,
+            "min_evidence": 2,
             "mastery_mastered": 75,
             "mastery_weak": 40,
         }
@@ -1138,6 +1139,7 @@ def test_thresholds_drive_the_diagnosis_configuration():
         {
             "coverage_sufficient": 12,
             "coverage_missing": 5,
+            "min_evidence": 5,
             "mastery_mastered": 90,
             "mastery_weak": 55,
         }
@@ -1148,7 +1150,10 @@ def test_thresholds_drive_the_diagnosis_configuration():
     assert threshold_config(None)["mastery_mastered"] == 75
     assert threshold_config(None)["mastery_weak"] == 40
     assert threshold_config(None)["coverage_missing"] == 3  # 默认口径与 DiagnosisConfig 对齐
-    assert diagnosis_config(None).min_evidence == 3
+    assert threshold_config(None)["min_evidence"] == 2
+    # 覆盖率线只影响看板标注，不得顺手改掉诊断门槛。
+    assert diagnosis_config({"coverage_missing": 5}).min_evidence == 2
+    assert diagnosis_config(None).min_evidence == 2
     assert diagnosis_config(None).weak_threshold == 0.4
     assert diagnosis_config(None).mastered_threshold == 0.75
 

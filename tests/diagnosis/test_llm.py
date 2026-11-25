@@ -129,10 +129,12 @@ def test_summary_is_schema_valid_and_carries_no_raw_text(bundle):
         "confirmed_weak",
         "likely_weak",
         "insufficient_evidence",
+        "unobserved",
         "mixed_performance",
         "likely_mastered",
         "confirmed_mastered",
     }
+    assert "evidence_action" in summary["facts"]
     serialized = json.dumps(summary, ensure_ascii=False)
     assert ANSWER_TEXT not in serialized
     assert "synthetic-private-steps" not in serialized
@@ -383,4 +385,38 @@ def test_client_rejects_a_non_json_body(monkeypatch):
         client.complete("系统", "问题")
 
     assert caught.value.kind == "bad_response"
+
+
+def test_prompt_lets_the_action_override_the_status():
+    """状态只决定"能不能下结论"，动作由 evidence_action 决定——不能退回一句话。"""
+
+    from knowflow.llm.prompt import SYSTEM_PROMPT
+
+    assert "evidence_action" in SYSTEM_PROMPT
+    assert "只能建议补充观测" not in SYSTEM_PROMPT
+    for action in ("probe", "pending", "sparse_weak", "sparse_mastered", "sparse_mixed"):
+        assert action in SYSTEM_PROMPT
+
+
+def test_summary_carries_the_sparse_action(bundle):
+    summary, _, _ = issue_summary(bundle, sid="S004", kid="K-03")
+    assert summary["facts"]["evidence_action"] in {
+        "probe",
+        "not_attempted",
+        "pending",
+        "sparse_weak",
+        "sparse_mastered",
+        "sparse_mixed",
+        None,
+    }
+    assert summary_errors(summary) == []
+
+
+def test_rewrite_guard_rejects_flattened_advice():
+    from knowflow.llm.integrate import _advice_conflict
+
+    consolidate_item = {"activity_type": "consolidate"}
+    assert _advice_conflict(consolidate_item, "建议补充观测，再测一次") is not None
+    assert _advice_conflict(consolidate_item, "先用 M-001 重做同评分点练习，再复核") is None
+    assert _advice_conflict({"activity_type": "probe"}, "建议补充观测") is None
 

@@ -7,6 +7,9 @@ item records a rule-derived value and the run README says so.
 
 from __future__ import annotations
 
+from knowflow.diagnosis.evidence import evidence_action as _shared_action
+from knowflow.diagnosis.mastery import DiagnosisConfig
+
 from . import path as path_module
 from . import probe as probe_module
 
@@ -14,12 +17,10 @@ POLICY_VERSION = "r3-rules-2"
 MAX_PLAN_ITEMS = 3
 MAX_PROBE_PER_ISSUE = 3
 MAX_PROBE_ITEMS = 12
-MIN_EVIDENCE = 3
+# 建议文案里的"达到几次评分再复核"必须与诊断门槛同源，否则会在文案里写错数字。
+MIN_EVIDENCE = DiagnosisConfig().min_evidence
 WEAK_STATUSES = {"confirmed_weak", "likely_weak", "mixed_performance"}
 GAP_TYPES = {"score_point_gap", "performance_gap"}
-# 稀疏观测（低于 min_evidence）下，后验概率达到这些门槛就把“证据不足”拆成梯度判断。
-SPARSE_WEAK_P = 0.6
-SPARSE_MASTERED_P = 0.4
 
 
 def _sparse_action(state: dict) -> str:
@@ -29,29 +30,14 @@ def _sparse_action(state: dict) -> str:
     ``pending``（已作答待评分）/ ``not_attempted``（已布置未作答）/ ``probe``
     （0 次观测、无后验，或已被 review 调整口径）。只有 ``sparse_weak`` 升级为
     低置信度巩固，其余仍补观测、但文案不同。
+
+    诊断层已经把同一判断写进 ``evidence_action``，这里优先读它，保证建议与
+    画像说的是同一件事。
     """
 
-    observed = int(state.get("evidence_count") or 0)
-    counts = state.get("state_counts") or {}
-    if observed == 0:
-        if state.get("review"):
-            return "probe"
-        if int(counts.get("pending") or 0) > 0:
-            return "pending"
-        if int(counts.get("assigned_not_attempted") or 0) > 0:
-            return "not_attempted"
-        return "probe"
-    if state.get("review"):
-        return "probe"
-    weak = state.get("weak_probability")
-    mastered = state.get("mastered_probability")
-    if weak is None or mastered is None:
-        return "probe"
-    if weak >= SPARSE_WEAK_P:
-        return "sparse_weak"
-    if mastered >= SPARSE_MASTERED_P:
-        return "sparse_mastered"
-    return "sparse_mixed"
+    return state.get("evidence_action") or _shared_action(
+        state if state.get("status") else {**state, "status": "insufficient_evidence"}
+    )
 
 
 def _prior_risk(profile: dict, catalog: dict, knowledge_id: str) -> tuple[int, str]:
@@ -275,7 +261,7 @@ def _prerequisite(issue: dict, profile: dict, catalog: dict, review: dict | None
         view = _planning_view(profile, entry["source_knowledge_id"], review)
         if view["status"] in {"confirmed_weak", "likely_weak"}:
             missing.append(entry["source_knowledge_id"])
-        elif view["status"] == "insufficient_evidence":
+        elif view["status"] in {"insufficient_evidence", "unobserved"}:
             pending.append(entry["source_knowledge_id"])
     draft_edges = [entry["edge_id"] for entry in catalog.get("pending_prerequisites", {}).get(target, [])]
     draft_edges += catalog.get("pending_node_relations", {}).get(target, [])
@@ -303,7 +289,12 @@ def _dependency_issues(
     for entry in catalog.get("reviewed_prerequisites", {}).get(issue["knowledge_id"], []):
         source = entry["source_knowledge_id"]
         view = _planning_view(profile, source, review)
-        if view["status"] not in {"confirmed_weak", "likely_weak", "insufficient_evidence"}:
+        if view["status"] not in {
+            "confirmed_weak",
+            "likely_weak",
+            "insufficient_evidence",
+            "unobserved",
+        }:
             continue
         dependency = issues_by_knowledge.get(source)
         if dependency is not None:
@@ -415,6 +406,13 @@ def _reason(
             return (
                 f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」已布置但未作答，"
                 f"可能偏难或需要动机引导；从更简单的入口补一次观测。"
+            )
+        if n == 0:
+            prior = f"（{prior_reason}）" if prior_reason else ""
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」在本节点没有已评分作答"
+                f"{prior}；先完成 {'、'.join(assessment_ids)} 建立基线，"
+                f"未覆盖不等于未掌握，拿到评分前不写掌握度。{note}"
             )
         if sparse == "sparse_mastered":
             state = _state(profile, issue["knowledge_id"]) or {}
@@ -559,7 +557,9 @@ def _plan_item(
     used.update(material_ids)
     activity_type = "probe" if planning["type"] == "insufficient_evidence" else "consolidate"
     activity = (
-        "补充观测：未作答题"
+        "建立基线：未作答题"
+        if activity_type == "probe" and action in {"probe", "not_attempted"}
+        else "补充观测：未作答题"
         if activity_type == "probe"
         else "看学习卡 + 同评分点练习"
         if explain_id

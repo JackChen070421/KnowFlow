@@ -1,9 +1,9 @@
 import {relax} from './map-layout.mjs';
 export function mountMap(host, {materials, knowledge, curriculum_graph: graph}, openKnowledge, profile=null, training=null) {
-const palette={mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#d39b34'],insufficient_evidence:['证据不足','#a3afbf'],not_applicable:['未覆盖','#cbd3df']};
+const palette={mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#d39b34'],insufficient_evidence:['待观察','#a3afbf'],unobserved:['未覆盖','#8296a8'],not_applicable:['本节点不适用','#cbd3df']};
 const personalStates=new Map((profile?.knowledge_states||[]).map(s=>[s.knowledge_id,s]));
 palette.confirmed_weak=['需加强','#df785c'];palette.confirmed_mastered=['已掌握','#199b79'];
-function nodeState(n){const ss=n.indicators.map(id=>personalStates.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
+function nodeState(n){const ss=n.indicators.map(id=>personalStates.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='unobserved')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
 const nodes = (graph?.nodes || []).map(n => ({
  id: n.node_id, name: n.title, topic: n.theme_index, summary: n.summary,
  loc: n.source_locator, book: n.textbook, page: n.pdf_page,
@@ -144,7 +144,7 @@ function showDetail(){
  d.append(el('h3','对应观察指标'));
  for(const id of n.indicators){
   const k=knowledge.find(item=>item.knowledge_id===id);
-  if(profile){const s=personalStates.get(id);d.append(el('p',k?.name+'：'+(palette[s?.status]||palette.insufficient_evidence)[0]+(s?.evidence_count?' · '+s.evidence_count+' 条评分证据':' · 暂无足够证据')));
+  if(profile){const s=personalStates.get(id);d.append(el('p',k?.name+'：'+(palette[s?.status]||palette.insufficient_evidence)[0]+(s?.evidence_count?' · '+s.evidence_count+' 条评分证据':' · 暂无评分，未覆盖')));
    const scores=[];for(const scan of training?.scans||[]){if(scan.status!=='reviewed'||scan.student_id!==profile.student_id||scan.node_id!==profile.node_id)continue;const paper=training.papers.find(p=>p.id===scan.paper_id);for(const q of paper?.questions||[]){if(q.knowledge_id===id)scores.push(scan.scores[q.question_id])}}
    if(scores.length)d.append(el('p','补充训练：'+scores.length+' 题 · 平均得分 '+Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*100)+'%（独立证据，未覆盖原始诊断）'));
   }

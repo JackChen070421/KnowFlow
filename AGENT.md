@@ -22,7 +22,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 1. **契约先行**：`schemas/` 是接口；改字段/枚举/ID 先改 schema + `CONTRACT.md`，再改代码。
 2. **数字由代码算**：`mastery`、正确率、覆盖度、排名只能由确定性代码产出；LLM 不改数字。
 3. **原始数据不出本机**：`data/raw`、`data/interim` 不进 Git、不进 LLM；LLM 只接收 `llm_summary`。
-4. **缺失不等于未掌握**：无记录 = `unobserved`，输出 `insufficient_evidence`，不推断成 0 或“不会”。
+4. **缺失不等于未掌握**：无记录 = `unobserved`（未覆盖），有 1~2 条评分才叫 `insufficient_evidence`；两者都不推断成 0 或“不会”，但动作不同：前者先布置基线题，后者再测一次。
 5. **证据链闭合**：结论带 `record_id`/`material_id`/`knowledge_id`；建议带 `issue_id` 与可验证的 `check`。
 6. **小步可回滚**：一任务一分支一 PR；不顺手大重构；不 force-push `main`。
 7. **先验证后提交**：schema/引用/一致性/隐私检查通过才算完成；没有输出就不说“已完成”。

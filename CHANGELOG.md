@@ -10,6 +10,22 @@
 
 ---
 
+## 2026-11-26 — 待观察瘦身：把"未覆盖"从"证据不足"里拆出来
+
+**本机未提交** · `feat/coverage-vs-evidence`
+
+- ① 新状态 `unobserved`：有可测题但 0 条已评分且无待评分 → 进新桶 `lists.needs_coverage`；`insufficient_evidence` 只保留"有评分但不足门槛 / 已作答待评分"。
+- ② 动作与状态解耦：`diagnosis/evidence.py::evidence_action` 成为六档动作的唯一出处，写进 `knowledge_states[].evidence_action`，诊断层、建议层、语言层共用；`rules._sparse_action` 改为读它。
+- ③ 语言层不再被状态绑架：`llm_summary.facts` 传 `evidence_action`；prompt 第 4 条从"只能建议补充观测"改为按动作分档；`integrate._advice_conflict` 拒绝把巩固项改写成只补观测。
+- ④ 班级分层：`mixed_performance` 优先于"补观测"（有失分点可查 > 题太少），新增 `cover` 档；`knowledge_distribution` 增 `unobserved_count`，`coverage_summary` 增 `students_with_coverage_gap`。
+- ⑤ 设置解耦：`min_evidence` 从 `coverage_missing` 拆成独立项，改覆盖率显示阈值不再改变诊断结论。
+- ⑥ 门槛 3→2：`min_evidence` 默认改为 2，`rules.MIN_EVIDENCE` 改为从 `DiagnosisConfig` 读取（此前是硬编码 3，改设置会让文案说错数字）。依据：2 条证据在任何组合下都到不了 `confirmation_probability=0.9`，只会得到 `likely_*`/`mixed_performance`，不会冒充"已确认"；1 条不作数（答错一题就给 likely_weak 站不住）。题量本身少于门槛的知识点，`status_reason` 明确写"题目本身不足"，不归因于学生。
+- 效果（官方数据 80 个画像 / 521 个可测状态）：待观察 77.7%→**25.0%**、人均 5.06→**1.62**、有待观察的学生 80/80→67/80；班级"补充观测" N01 26→4、N02 31→2；建议里"补充观测"类文案 64→0，"建立基线"70。`confirmed_*` 数量未增加（仍 2 条），说明没有靠放宽确认门槛凑数。
+- 验证：`pytest` 294 项、`ruff` 通过；`prepare` 重建真实快照，诊断与建议两个 gate 均 pass；`/api/snapshot` 实测服务端已返回新口径。
+- 回退：还原 `diagnosis/{mastery,profiles,validation}.py`、删除 `diagnosis/evidence.py`、`recommend/rules.py`、`llm/{summary,prompt,integrate}.py`、两个 schema 与前端图例。
+
+---
+
 ## 2026-11-25 — 稀疏观测下的建议：后验、子状态与层级先验
 
 **本机未提交** · `feat/sparse-recommendation`

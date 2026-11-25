@@ -51,6 +51,7 @@
         "mean_ratio",
         "students_below_0_5",
         "students_with_insufficient_evidence",
+        "students_with_coverage_gap",
         "students_with_known_scope"
       ],
       "properties": {
@@ -61,7 +62,16 @@
           "description": "仅对 scope_known=true 且 ratio 非 null 的学生取均值；无人可算时为 null"
         },
         "students_below_0_5": {"type": "integer", "minimum": 0},
-        "students_with_insufficient_evidence": {"type": "integer", "minimum": 0},
+        "students_with_insufficient_evidence": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "needs_observation 非空的学生数：有评分但不足门槛"
+        },
+        "students_with_coverage_gap": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "needs_coverage 非空的学生数：有可测题但一条评分都没有"
+        },
         "students_with_known_scope": {
           "type": "integer",
           "minimum": 0,
@@ -81,6 +91,7 @@
           "mastered_count",
           "weak_count",
           "insufficient_count",
+          "unobserved_count",
           "mixed_count",
           "not_applicable_count",
           "mean_mastery"
@@ -92,6 +103,11 @@
           "mastered_count": {"type": "integer", "minimum": 0},
           "weak_count": {"type": "integer", "minimum": 0},
           "insufficient_count": {"type": "integer", "minimum": 0},
+          "unobserved_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "本节点有可测题但该生一条评分都没有的人数；与 insufficient_count 分开计数"
+          },
           "mixed_count": {"type": "integer", "minimum": 0},
           "not_applicable_count": {"type": "integer", "minimum": 0},
           "mean_mastery": {

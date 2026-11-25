@@ -7,7 +7,8 @@ import pytest
 
 from knowflow.cli import main
 from knowflow.diagnosis.beta import betainc, betappf
-from knowflow.diagnosis.mastery import DiagnosisConfig, estimate_mastery
+from knowflow.diagnosis.evidence import evidence_action
+from knowflow.diagnosis.mastery import DiagnosisConfig, apply_evidence_status, estimate_mastery
 from knowflow.diagnosis.pipeline import (
     build_bundle,
     export_evidence,
@@ -92,10 +93,12 @@ def test_unknown_participation_is_null_coverage(bundle):
     p = profile(bundle, "S006")
     assert p["coverage"]["ratio"] is None
     assert p["coverage"]["scope_known"] is False
+    # 没有参与记录 = 未覆盖（unobserved），不是"看了但看不准"。
     assert all(
-        s["mastery"] is None and s["status"] == "insufficient_evidence"
-        for s in p["knowledge_states"]
+        s["mastery"] is None and s["status"] == "unobserved" for s in p["knowledge_states"]
     )
+    assert p["lists"]["needs_coverage"]
+    assert not p["lists"]["needs_observation"]
 
 
 def test_partial_credit_becomes_score_point_evidence(bundle):
@@ -114,7 +117,8 @@ def test_partial_credit_becomes_score_point_evidence(bundle):
     ("correct", "n", "status"),
     [
         (0, 0, "insufficient_evidence"),
-        (0, 2, "insufficient_evidence"),
+        (0, 1, "insufficient_evidence"),
+        (0, 2, "likely_weak"),
         (0, 3, "likely_weak"),
         (3, 3, "likely_mastered"),
         (0, 8, "confirmed_weak"),
@@ -131,7 +135,14 @@ def test_beta_statuses(correct, n, status):
         assert 0 <= low < result["mastery"] < high <= 1
     else:
         assert result["mastery"] is None
-        assert result["credible_interval"] is None
+
+
+def test_two_observations_never_reach_a_confirmed_status():
+    """门槛降到 2 只放开"方向"，不放开"已确认"：确认仍要概率 ≥0.9。"""
+
+    for correct in range(3):
+        result = estimate_mastery(correct, 2, DiagnosisConfig())
+        assert not result["status"].startswith("confirmed_")
 
 
 def test_beta_primitive_matches_known_values():
@@ -168,6 +179,7 @@ def test_class_distribution_counts_sum_to_population(bundle):
             row["mastered_count"]
             + row["weak_count"]
             + row["insufficient_count"]
+            + row["unobserved_count"]
             + row["mixed_count"]
             + row["not_applicable_count"]
         )
@@ -262,6 +274,111 @@ def test_student_profile_recomputes_from_bundle(bundle):
     assert validate_student(p, bundle, DiagnosisConfig()) == []
     p["knowledge_states"][0]["evidence_count"] = 99
     assert validate_student(p, bundle, DiagnosisConfig())
+
+
+def test_apply_evidence_status_separates_uncovered_from_insufficient():
+    """一条评分都没有是"未覆盖"，不是"证据不足"；门槛参数本身不变。"""
+
+    empty = estimate_mastery(0, 0, DiagnosisConfig())
+    assert apply_evidence_status(empty, observed=0, pending=0)["status"] == "unobserved"
+    # 交了但没评分：仍然算证据不足，因为已经有作答在等结果。
+    assert apply_evidence_status(empty, observed=0, pending=1)["status"] == "insufficient_evidence"
+    # 有 1~2 条评分：不足以定性，但确实看过了。
+    sparse = estimate_mastery(1, 1, DiagnosisConfig())
+    assert apply_evidence_status(sparse, observed=1, pending=0)["status"] == "insufficient_evidence"
+
+
+def test_unobserved_knowledge_goes_to_the_coverage_list(bundle):
+    p = profile(bundle, "S004")  # N02 只做了 K-03 的一道题
+    uncovered = [
+        s for s in p["knowledge_states"] if s["status"] == "unobserved" and s["applicable_items"]
+    ]
+    assert uncovered, "K-01/K-02 在该节点有题但一道没做"
+    assert {item["knowledge_id"] for item in p["lists"]["needs_coverage"]} == {
+        s["knowledge_id"] for s in uncovered
+    }
+    assert all(s["knowledge_id"] not in {i["knowledge_id"] for i in p["lists"]["needs_observation"]} for s in uncovered)
+    assert all(s["evidence_action"] == "probe" for s in uncovered)
+
+
+def test_evidence_action_splits_sparse_substates():
+    base = {"status": "insufficient_evidence", "evidence_count": 0, "state_counts": {}}
+    assert evidence_action(base) == "probe"
+    assert evidence_action({**base, "state_counts": {"pending": 1}}) == "pending"
+    assert evidence_action({**base, "state_counts": {"assigned_not_attempted": 1}}) == "not_attempted"
+    sparse = {"status": "insufficient_evidence", "evidence_count": 1, "state_counts": {}}
+    assert evidence_action({**sparse, "weak_probability": 0.8, "mastered_probability": 0.05}) == "sparse_weak"
+    assert evidence_action({**sparse, "weak_probability": 0.1, "mastered_probability": 0.7}) == "sparse_mastered"
+    assert evidence_action({**sparse, "weak_probability": 0.2, "mastered_probability": 0.3}) == "sparse_mixed"
+    assert evidence_action({"status": "likely_mastered", "evidence_count": 5}) is None
+
+
+def _tier_profile(sid, statuses, observation=(), coverage=()):
+    """Minimal profile shaped only for tiering (build_class_profile reads these keys).
+
+    Every knowledge point of the bundle must appear, so callers pass a full map.
+    """
+
+    states = [
+        {
+            "knowledge_id": kids,
+            "objective_id": "OBJ-7M-01",
+            "status": status,
+            "mastery": 0.5,
+            "evidence_count": 1,
+            "performance": {"mean_score_ratio": 0.5},
+        }
+        for kids, status in statuses.items()
+    ]
+    return {
+        "student_id": sid,
+        "group_id": "G1",
+        "node_id": "N02",
+        "coverage": {"scope_known": True, "ratio": 0.5},
+        "knowledge_states": states,
+        "lists": {
+            "strengths": [],
+            "needs_consolidation": [],
+            "needs_observation": [{"knowledge_id": k, "reason": "r"} for k in observation],
+            "needs_coverage": [{"knowledge_id": k, "reason": "r"} for k in coverage],
+        },
+        "issues": [],
+    }
+
+
+def test_class_tier_prefers_actionable_gaps_over_sparse_evidence(bundle):
+    """有已观测失分点的学生先做分项练习，不再被"补观测"盖过去。"""
+
+    ps = [
+        _tier_profile(
+            "S901",
+            {"K-01": "mixed_performance", "K-02": "insufficient_evidence", "K-03": "likely_mastered"},
+            observation=["K-02"],
+        ),
+        _tier_profile(
+            "S902",
+            {"K-01": "insufficient_evidence", "K-02": "likely_mastered", "K-03": "likely_mastered"},
+            observation=["K-01"],
+        ),
+        _tier_profile(
+            "S903",
+            {"K-01": "unobserved", "K-02": "likely_mastered", "K-03": "likely_mastered"},
+            coverage=["K-01"],
+        ),
+    ]
+    c = build_class_profile(ps, "ALL", bundle, "N02")
+    tiers = {tier["tier_id"].split("-")[0]: set(tier["student_ids"]) for tier in c["tiers"]}
+    assert "S901" in tiers["practice"]
+    assert "S901" not in tiers.get("observe", set())
+    assert "S902" in tiers["observe"]
+    assert "S903" in tiers["cover"]
+    assert {sid for members in tiers.values() for sid in members} == {"S901", "S902", "S903"}
+
+
+def test_class_tier_members_partition_the_class(bundle):
+    ps = [profile(bundle, s["student_id"]) for s in bundle["students"]]
+    c = build_class_profile(ps, "ALL", bundle, "N02")
+    assert validate_class(c, ps, bundle) == []
 
 
 def test_latest_run_dir_picks_newest_completed_run(tmp_path):

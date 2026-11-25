@@ -99,7 +99,7 @@ Set-Location 'D:\桌面\KnowFlow'
 
 - 掌握度、正确率、覆盖度、排名：确定性代码计算，可复算。
 - LLM：只做措辞/错因归类，不碰分数；原始数据不进模型。
-- 缺失：`unobserved` / `insufficient_evidence`，不推断成“未掌握”。
+- 缺失：`unobserved`（有题但一条评分都没有）/ `insufficient_evidence`（评分不足），都不推断成“未掌握”。
 
 ---
 

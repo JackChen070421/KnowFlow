@@ -14,6 +14,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 
 from knowflow.contracts import build_registry, repo_root
+from knowflow.diagnosis.evidence import evidence_action
 
 from .contract import MUST_NOT_INFER
 
@@ -21,6 +22,7 @@ STATUS_VALUES = {
     "confirmed_weak",
     "likely_weak",
     "insufficient_evidence",
+    "unobserved",
     "likely_mastered",
     "confirmed_mastered",
     "mixed_performance",
@@ -134,6 +136,8 @@ def build_issue_summary(
         "confidence": _confidence(state),
         "evidence_count": int(state.get("evidence_count") or 0),
         "status": _status(state),
+        # 动作和状态分开：状态说“能不能下结论”，动作说“下一步做什么”。
+        "evidence_action": evidence_action(state),
         "coverage_ratio": float(ratio) if isinstance(ratio, (int, float)) else 0.0,
         "error_patterns": _error_patterns(issue),
     }

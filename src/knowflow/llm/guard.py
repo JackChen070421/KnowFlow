@@ -80,12 +80,9 @@ def response_errors(response: dict, summary: dict) -> list[str]:
         errors.append("ref_id must equal the summary ref_id")
 
     reason = response["reason"]
-    check = response["check"]
-    text = reason + "\n" + check
+    check = response.get("check") or ""
+    text = reason + ("\n" + check if check else "")
     numbers = _numbers(text)
-    undeclared = numbers - {float(value) for value in response["numbers_used"]}
-    if undeclared:
-        errors.append(f"numbers_used misses {sorted(undeclared)}")
     unlocked = numbers - allowed_numbers
     if unlocked:
         errors.append(f"reason/check contains unlocked numbers {sorted(unlocked)}")

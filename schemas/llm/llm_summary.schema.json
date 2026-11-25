@@ -24,6 +24,11 @@
       "type": "string",
       "const": "zh-CN"
     },
+    "audience": {
+      "type": "string",
+      "enum": ["teacher", "student"],
+      "description": "读者身份：决定 reason 的语气与是否给最终答案"
+    },
     "facts": {
       "type": "object",
       "additionalProperties": false,
@@ -37,6 +42,7 @@
         "confidence",
         "evidence_count",
         "status",
+        "evidence_action",
         "coverage_ratio",
         "error_patterns"
       ],
@@ -55,10 +61,24 @@
             "confirmed_weak",
             "likely_weak",
             "insufficient_evidence",
+            "unobserved",
             "mixed_performance",
             "likely_mastered",
             "confirmed_mastered"
           ]
+        },
+        "evidence_action": {
+          "type": ["string", "null"],
+          "enum": [
+            "probe",
+            "not_attempted",
+            "pending",
+            "sparse_weak",
+            "sparse_mastered",
+            "sparse_mixed",
+            null
+          ],
+          "description": "决定建议动作的档位；status 只表示结论是否成立，不决定动作"
         },
         "coverage_ratio": {"type": "number", "minimum": 0, "maximum": 1},
         "error_patterns": {

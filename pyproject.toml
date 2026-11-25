@@ -30,7 +30,9 @@ dependencies = [
 [project.optional-dependencies]
 io = ["pandas>=2.1"]
 stats = ["numpy>=1.26", "scipy>=1.11"]
-llm = ["openai>=1.30"]
+# Deprecated: the LLM client speaks HTTP with the standard library, so no SDK is
+# installed. The empty extra stays so old notes (`uv sync --extra llm`) still run.
+llm = []
 training = ["reportlab>=4.2", "pillow>=10.4", "pymupdf>=1.24"]
 app = ["streamlit>=1.35", "plotly>=5.20"]
 dev = [

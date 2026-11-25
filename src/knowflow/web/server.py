@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from knowflow.contracts import repo_root
 from knowflow.diagnosis.pipeline import export_evidence
 from knowflow.llm.chat import answer_question
-from knowflow.llm.settings_store import read_llm_settings, save_llm_settings
+from knowflow.llm.settings_store import read_llm_settings, save_llm_settings, test_llm_connection
 from knowflow.web.auth import COOKIE_NAME, Account, AuthStore
 from knowflow.web.data import read_json
 from knowflow.web.training import TrainingStore
@@ -108,7 +108,8 @@ def create_server(
     thresholds_provider=None,
 ) -> ThreadingHTTPServer:
     training = TrainingStore(repo_root() / 'data/training' / snapshot['meta']['dataset_id'], snapshot)
-    materials = {m["material_id"]: m for m in read_json(run / "knowledge_base.json")["materials"]}
+    knowledge_base = read_json(run / "knowledge_base.json")
+    materials = {m["material_id"]: m for m in knowledge_base["materials"]}
     raw = (repo_root() / "data/raw" / snapshot["meta"]["dataset_id"]).resolve()
     documents = {}
     for mid, material in materials.items():
@@ -146,6 +147,9 @@ def create_server(
         fresh = load_dashboard(run)
         snapshot.clear()
         snapshot.update(fresh)
+        # The chat reads 课标原文与材料正文 from here; a rebuilt run has new ones.
+        knowledge_base.clear()
+        knowledge_base.update(read_json(run / "knowledge_base.json"))
         print(f"[rebuild] snapshot updated {run.name}", flush=True)
         return run.name
 
@@ -487,6 +491,7 @@ def create_server(
                 "/api/login",
                 "/api/logout",
                 "/api/settings/llm",
+                "/api/settings/llm/test",
                 "/api/chat",
                 "/api/feedback",
                 "/api/profile",
@@ -590,6 +595,7 @@ def create_server(
 
             required_header = {
                 "/api/settings/llm": "X-KnowFlow-Settings",
+                "/api/settings/llm/test": "X-KnowFlow-Settings",
                 "/api/chat": "X-KnowFlow-Chat",
                 "/api/feedback": "X-KnowFlow-Feedback",
                 "/api/profile": "X-KnowFlow-Profile",
@@ -616,6 +622,19 @@ def create_server(
                 except Exception as exc:  # local write/recompute errors
                     traceback.print_exc()
                     self.json({"error": f"反馈保存失败（{type(exc).__name__}）。"}, 500)
+                return
+
+            if path == "/api/settings/llm/test":
+                if not self.require_teacher(account):
+                    return
+                try:
+                    self.json(test_llm_connection(payload))
+                except Exception as exc:  # a probe must never drop the connection
+                    traceback.print_exc()
+                    self.json(
+                        {"ok": False, "kind": "unknown", "error": f"测试失败（{type(exc).__name__}）。"},
+                        500,
+                    )
                 return
 
             if path == "/api/settings/llm":
@@ -707,12 +726,16 @@ def create_server(
 
             question = payload.get("message")
             context = payload.get("context") or {}
+            history = payload.get("history")
             mode = payload.get("mode") or "concise"
             if mode not in ("concise", "evidence"):
                 self.json({"error": "mode 必须是 concise 或 evidence。"}, 400)
                 return
             if not isinstance(question, str) or not isinstance(context, dict):
                 self.json({"error": "message 必须是字符串，context 必须是对象。"}, 400)
+                return
+            if history is not None and not isinstance(history, list):
+                self.json({"error": "history 必须是数组。"}, 400)
                 return
             if account.role == "student" and account.student_id:
                 context = {**context, "student_id": account.student_id}
@@ -729,6 +752,8 @@ def create_server(
                     context=context,
                     mode=mode,
                     preferences=preferences,
+                    history=history,
+                    knowledge=knowledge_base,
                 )
             except ValueError as exc:
                 self.json({"error": str(exc)}, 400)

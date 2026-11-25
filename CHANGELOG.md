@@ -10,6 +10,97 @@
 
 ---
 
+## 2026-11-26 — 待观察瘦身：把"未覆盖"从"证据不足"里拆出来
+
+**本机未提交** · `feat/coverage-vs-evidence`
+
+- ① 新状态 `unobserved`：有可测题但 0 条已评分且无待评分 → 进新桶 `lists.needs_coverage`；`insufficient_evidence` 只保留"有评分但不足门槛 / 已作答待评分"。
+- ② 动作与状态解耦：`diagnosis/evidence.py::evidence_action` 成为六档动作的唯一出处，写进 `knowledge_states[].evidence_action`，诊断层、建议层、语言层共用；`rules._sparse_action` 改为读它。
+- ③ 语言层不再被状态绑架：`llm_summary.facts` 传 `evidence_action`；prompt 第 4 条从"只能建议补充观测"改为按动作分档；`integrate._advice_conflict` 拒绝把巩固项改写成只补观测。
+- ④ 班级分层：`mixed_performance` 优先于"补观测"（有失分点可查 > 题太少），新增 `cover` 档；`knowledge_distribution` 增 `unobserved_count`，`coverage_summary` 增 `students_with_coverage_gap`。
+- ⑤ 设置解耦：`min_evidence` 从 `coverage_missing` 拆成独立项，改覆盖率显示阈值不再改变诊断结论。
+- ⑥ 门槛 3→2：`min_evidence` 默认改为 2，`rules.MIN_EVIDENCE` 改为从 `DiagnosisConfig` 读取（此前是硬编码 3，改设置会让文案说错数字）。依据：2 条证据在任何组合下都到不了 `confirmation_probability=0.9`，只会得到 `likely_*`/`mixed_performance`，不会冒充"已确认"；1 条不作数（答错一题就给 likely_weak 站不住）。题量本身少于门槛的知识点，`status_reason` 明确写"题目本身不足"，不归因于学生。
+- 效果（官方数据 80 个画像 / 521 个可测状态）：待观察 77.7%→**25.0%**、人均 5.06→**1.62**、有待观察的学生 80/80→67/80；班级"补充观测" N01 26→4、N02 31→2；建议里"补充观测"类文案 64→0，"建立基线"70。`confirmed_*` 数量未增加（仍 2 条），说明没有靠放宽确认门槛凑数。
+- 验证：`pytest` 294 项、`ruff` 通过；`prepare` 重建真实快照，诊断与建议两个 gate 均 pass；`/api/snapshot` 实测服务端已返回新口径。
+- 回退：还原 `diagnosis/{mastery,profiles,validation}.py`、删除 `diagnosis/evidence.py`、`recommend/rules.py`、`llm/{summary,prompt,integrate}.py`、两个 schema 与前端图例。
+
+---
+
+## 2026-11-25 — 稀疏观测下的建议：后验、子状态与层级先验
+
+**本机未提交** · `feat/sparse-recommendation`
+
+- ① 后验接进决策：`rules._sparse_action` 用 `weak_probability/mastered_probability` 把“证据不足”拆成梯度——后验 ≥60% 薄弱 → 低置信度巩固，≥40% 已掌握 → 轻量复核，中间 → 继续观测；`_priority/_reason/_check` 相应分档。
+- ② 区分稀疏子状态：0 观测 / 已布置未作答 / 已作答待评分（defer）各有文案，不再统一“补 3 题”。
+- ③ 层级先验：`_prior_risk` 用 reviewed 先修 + 同主题平均表现给 0 观测知识点先验风险，参与排序并写入理由。
+- `allowed_numbers` 纳入后验概率（含百分比写法），否则“约 64%”会被数字锁误杀。
+- 效果（真实 N02，40 人）：巩固项 34→69、补观测 65→41；“稀疏薄弱→巩固”43、“先验风险”17、“稀疏已掌握”5、“稀疏中间”4。
+- 验证：`pytest` 285 项、`ruff` 通过；`recommend --node N02` 真实数据 gate=pass。
+- 未验证：`audience=student` 端到端；先修先验（真实图谱无 reviewed 边，仅单测覆盖）。
+- 回退：还原 `rules.py`（`_sparse_action/_prior_risk/_reason/_check/_plan_item/recommend_profile`）、`validation.py::allowed_numbers` 与相关测试。
+
+---
+
+## 2026-11-25 — 交互契约：行为红线同源 + 受众（第二档）
+
+**本机未提交** · `feat/contract-behavior-audience`
+
+- 行为红线单一来源：`MUST_NOT_INFER`（5 条）与 `BOUNDARY_NOTE` 迁到 `llm/contract.py`；`summary.py`、`prompt.py`、`chat.py` 三处经 `forbidden_text()` 同源注入，两条路径的“出门声明”收拢到一处。
+- 推荐路径补受众：`build_issue_summary` / `explain_student` 增 `audience`（默认 teacher），写进 `llm_summary`（schema 增 `audience` 枚举）；prompt 按 audience 决定语气与是否给答案。
+- 新增 `tests/diagnosis/test_contract.py`：红线共享、材料漂移、answer_key 权限、audience 透传。
+- 验证：`pytest` 283 项、`ruff` 通过；真实 `explain` 返回 `source=llm`、`attempts=1`、summary 带 `audience=teacher`。
+- 未验证：`audience=student` 的真实调用（仅单测）；`explain` 独立工具仍按“解释单题”给出全部相关材料（无计划可漂移，属预期）。
+- 回退：还原 `contract.py`/`summary.py`/`prompt.py`/`chat.py`/`explain.py` 与 schema、`test_contract.py`。
+
+---
+
+## 2026-11-25 — 建议语言层：决策/语言边界与契约修复（第一档）
+
+**本机未提交** · `fix/recommend-text-boundary`
+
+- 决策/语言边界落成代码：新增 `llm/contract.py`（`material_drift`、`answer_key_visible`）；语言层只能引用计划已选材料，否则回退模板。
+- `check`（完成门槛）不再交给模型改写：`integrate.py` 只改 `reason`，`check` 保持 `rules.py` 确定性文案——修掉“证据门槛 3→1”与“材料漂移 22%”两类越权。
+- 教师「换材料」后 reason/check 跟着新材料重生成（`feedback/apply.py` + `rules.refresh_item_wording`）；`verify-recommend` 新增“正文引用材料 ⊆ 计划材料”闸门。
+- 契约实现矛盾：`llm_response.schema.json` 去掉 `numbers_used` 必填、`check` 改可选；`guard.py` 从正文抽数字不再比对 `numbers_used`；prompt 去掉 check/numbers_used、禁用掌握度小数、reason 上限 240。
+- `answer_key` 权限抽到 `contract.answer_key_visible`，`retrieval.py` 复用。
+- 验证：`pytest` 278 项、`ruff` 通过；真实 deepseek-chat 复跑 N02：回退率 27%→10%（89/99 改写）、材料漂移 0、六位小数 0、check 与模板一致。
+- 未验证：其余节点 / 厂商端点。
+- 回退：还原 `contract.py`/`guard.py`/`prompt.py`/`service.py`/`integrate.py`/`rules.py`/`validation.py`/`feedback/apply.py`/`pipeline.py` 与 schema、`test_llm.py`。
+
+---
+
+## 2026-11-25 — AI 学伴 P1/P2：能讲题、能追问、数字锁按数据主张判定
+
+**本机未提交** · `feat/chat-teaching-p1p2`
+
+- 讲不了题的根因：事实卡只有统计（`name/title`），65 份材料的正文/解析与 `objective_text` 从未发送。新增 `llm/retrieval.py`：按知识点名/ID/课标字面重叠打分，取课标原文 + 该主题学习卡 + 至多 2 道例题（题面/解析；学生端不含 `answer_key`）写入 `facts.sources`，总数 ≤5、单条 ≤220 字。
+- 边界：学习者数据仍是聚合事实；课程内容来自已校验 `knowledge_base.json`，经 `create_server` 缓存并在 `/api/rebuild` 后刷新。`/api/snapshot` 体积不变（1.69 MB）。
+- 提示词：区分 A 学习者数据（只能来自 FACTS）与 B 学科知识（可讲，可引用 sources，但不得据此编造学生数据）；补受众（学生/教师）、3 条语气示例、禁 Markdown、材料用 M- 编号；`temperature 0.6`、`max_tokens 700`、`MAX_ANSWER 1200`。
+- 多轮：前端带最近 6 轮 `/api/chat` 的 `history`，后端 `normalize_history` 只收 `role/text`、单条 600 字、合计 2400 字；新增 `complete_messages`，历史作为独立轮次发送，注入式假客户端仍走单轮 `complete`。
+- 校验：数字锁从“整段白名单”改为“数据主张”判定——人数/比例/掌握度/覆盖等语境的数字必须对得上事实卡（列表长度也算事实），教学数字（“14 道题”“第 12 周”）放行，“约”给更宽的四舍五入带宽；证据模式的“结论/依据”只提醒一次，不再因此丢弃内容。
+- 其它：点名知识点即使不在默认 6 条状态里也会补进事实卡；规则兜底多套句式；前端去掉残留的 `**`。
+- 验证：`pytest` 278 项、`ruff`、`node --check` 通过；真实 deepseek-chat 6/6 由模型回答（0.85–2.2 s）：`K-07 怎么算` 讲出变号规则并引用 M-057，`分数加减法` 给出通分方法，`你好` 正常寒暄，带 2 轮上文问“那第二个呢”正确落到 K-02；HTTP 端到端 `history_turns=2`、坏 `history` 返回 400。
+- 未验证：浏览器内视觉走查（无头截图未重做）；教师端 `answer_key` 的真实调用（仅单测覆盖）；弱网与其它厂商端点。
+- 回退：还原 `chat.py`/`retrieval.py`/`client.py`/`server.py`/`config.py`/`app.js` 与相关测试，`.env` 去掉两个 chat 键即可回到 P0 行为。
+
+---
+
+## 2026-11-24 — AI 学伴：传输层不再靠 SDK，失败要说得清
+
+**本机未提交** · `fix/chat-transport-p0`
+
+- 现象：本机 `.venv` 未安装 `openai`，`client._sdk()` 抛 `RuntimeError`，被 `except Exception` 吞掉后统一显示“模型暂时调用不通”，实际 100% 走规则兜底且没有任何日志。
+- 传输：`llm/client.py` 改为标准库 `urllib` 直连（温度、`max_tokens`、超时照传），删除 SDK 依赖；代理只读环境变量，忽略 Windows 注册表里的旧代理。
+- 分类：新增 `LLMError(kind)`（auth / billing / model / request / rate_limit / server / timeout / network / empty / bad_response）；`chat.py` 记 warning 日志（密钥脱敏），气泡按 kind 给出可执行提示；只对 timeout / network / 5xx / 429 重试一次。
+- 可观测：新增 `POST /api/settings/llm/test`（1 token 探测，返回 kind/延迟/错误）与设置页「测试连接」；`read_llm_settings` 增加 `timeout_seconds` 与 `transport`。
+- 前端：`/api/chat` 45 s 中止并提示；规则兜底或请求失败时气泡下方出现「重试这次提问」（重试替换旧答案，不叠加重复提问）。
+- 配置：`Settings` 新增 `llm_max_tokens`（`.env` 里原本就有但此前未生效）；`llm_timeout_seconds` 默认 30 → 20，本机 `.env` 同步为 20。
+- 验证：`pytest` 268 项通过、`ruff check`、`node --check` 通过；真实调用 deepseek-chat 5 个问题全部由模型回答（1.2–2.1 s）；坏 URL / 坏模型名 / 坏 Key 分别分类为 model / request / auth；`--no-auth` 启动后 `POST /api/chat` 返回 `source=llm`，`/api/settings/llm/test` 返回 `ok:true, 517 ms`。
+- 未验证：LLM 设置块的视觉走查（`--no-auth` 下账号相关分区不渲染，需教师登录后人工确认）；真实弱网下的超时重试；其他厂商端点。对话面板与设置页外壳已用无头截图确认无排版破损。
+- 回退：还原本条涉及的 `client.py`/`chat.py`/`settings_store.py`/`server.py`/`app.js`/`styles.css` 与相关测试，并把 `.env` 的 `TIMEOUT` 改回 30；`openai` 依赖已不需要，无需回装。
+
+---
+
 ## 2026-11-24 — 合并 #29 / 个人地图与变式训练 / 离线知识图谱
 
 **分支整合** · `integration/2026-11-24` → `main`

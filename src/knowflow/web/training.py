@@ -67,7 +67,7 @@ class TrainingStore:
             if not profile:
                 raise ValueError('当前学生在该测验没有画像。')
             states = profile['knowledge_states']
-            priority = {'weak': 0, 'likely_weak': 0, 'mixed_performance': 1, 'insufficient_evidence': 2}
+            priority = {'weak': 0, 'likely_weak': 0, 'mixed_performance': 1, 'insufficient_evidence': 2, 'unobserved': 3}
             selected = sorted(states, key=lambda s: priority.get(s['status'], 3))[:count]
             summary = [{'knowledge_id': s['knowledge_id'], 'name': knowledge[s['knowledge_id']],
                         'status': s['status']} for s in selected]

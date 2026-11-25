@@ -612,9 +612,9 @@ function studentsPage() {
     <div class="toolbar"><label class="search-field">${icon('search',15)}<input id="student-search" placeholder="搜索学生 ID" aria-label="搜索学生 ID" value="${esc(state.search)}"></label><div class="filters">
     <label class="filter">筛选<select id="student-filter"><option value="all" ${state.studentFilter==='all'?'selected':''}>全部学生</option><option value="needs" ${state.studentFilter==='needs'?'selected':''}>建议巩固</option><option value="unknown" ${state.studentFilter==='unknown'?'selected':''}>范围待确认</option><option value="submitted" ${state.studentFilter==='submitted'?'selected':''}>有练习提交</option></select></label>
     <label class="filter">排序<select id="student-sort"><option value="id" ${state.studentSort==='id'?'selected':''}>学生 ID</option><option value="score" ${state.studentSort==='score'?'selected':''}>得分率从高到低</option><option value="coverage" ${state.studentSort==='coverage'?'selected':''}>覆盖率从低到高</option></select></label></div></div>
-    <div class="table-scroll roster-scroll" aria-label="学生列表"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观察</th><th>新练习提交</th><th></th></tr></thead><tbody>${page.items.map(p=>{
+    <div class="table-scroll roster-scroll" aria-label="学生列表"><table class="data-table"><thead><tr><th>学生</th><th>得分率</th><th>评分覆盖</th><th>已作答 / 已布置</th><th>巩固 / 待观测 / 未覆盖</th><th>新练习提交</th><th></th></tr></thead><tbody>${page.items.map(p=>{
       const s=D.stats[state.node][p.student_id],pr=planProgress(p.student_id);
-      return `<tr class="${p.student_id===state.student?'selected':''}"><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td><td><span class="table-score">${pct(s.score_ratio)}</span><small class="muted"> · ${s.graded} 条评分</small></td><td>${p.coverage.scope_known?pct(p.coverage.ratio):'范围待确认'}</td><td>${s.assigned?`${s.attempted} / ${s.assigned}`:'未记录'}</td><td>${p.lists.needs_consolidation.length} / ${p.lists.needs_observation.length}</td><td>${pr.done?`${pr.done} / ${pr.total} · 待评阅`:pr.total?'未记录':'无新计划'}</td><td><button class="text-button" data-student="${esc(p.student_id)}" aria-label="查看 ${esc(p.student_id)} 详情">查看 ${icon('arrow',13)}</button></td></tr>`;
+      return `<tr class="${p.student_id===state.student?'selected':''}"><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td><td><span class="table-score">${pct(s.score_ratio)}</span><small class="muted"> · ${s.graded} 条评分</small></td><td>${p.coverage.scope_known?pct(p.coverage.ratio):'范围待确认'}</td><td>${s.assigned?`${s.attempted} / ${s.assigned}`:'未记录'}</td><td>${p.lists.needs_consolidation.length} / ${p.lists.needs_observation.length} / ${(p.lists.needs_coverage||[]).length}</td><td>${pr.done?`${pr.done} / ${pr.total} · 待评阅`:pr.total?'未记录':'无新计划'}</td><td><button class="text-button" data-student="${esc(p.student_id)}" aria-label="查看 ${esc(p.student_id)} 详情">查看 ${icon('arrow',13)}</button></td></tr>`;
     }).join('')}</tbody></table>${!list.length?empty('没有符合筛选条件的学生。'):''}</div>
     ${pagination('roster', page, '人')}<p class="quiet-note">得分率仅反映已评分题目。新练习提交等待评阅，不自动更新画像。</p>
   </section></div>`;
@@ -646,7 +646,7 @@ function personalPage(teacher = false) {
 }
 
 function profileAnalysis(p) {
-  const focus = `<div class="personal-focus">${[['建议巩固',p.lists.needs_consolidation],['掌握较好',p.lists.strengths],['待观察',p.lists.needs_observation]].map(([label, list]) => `<button data-profile-tab="knowledge"><span>${label}</span><strong>${list.length}<small> 项</small></strong></button>`).join('')}</div>`;
+  const focus = `<div class="personal-focus">${[['建议巩固',p.lists.needs_consolidation],['掌握较好',p.lists.strengths],['待观察',p.lists.needs_observation],['未覆盖',p.lists.needs_coverage||[]]].map(([label, list]) => `<button data-profile-tab="knowledge"><span>${label}</span><strong>${list.length}<small> 项</small></strong></button>`).join('')}</div>`;
   return chartDeck(chartCard(isStudentAccount() ? '我的主题表现' : '主题表现对比', isStudentAccount() ? '本人已评分题目 · 按主题汇总' : '个人与所在班级的已评分题目', topicComparison(p.student_id), isStudentAccount() ? '按本人已评分题目总分计算。学生账号只接收本人明细，不用个人数据冒充班级得分率。' : '均按已评分题目总分计算。本人包含在班级统计中；作答材料和数量可能不同，仅作描述性对照。') + chartCard('知识状态', '每个知识点归入一种状态', donut(statusCount(p), p.knowledge_states.length, '个知识点') + focus, '较可能与已确认状态在图中合并，知识明细保留原判断。证据不足不等于未掌握。'));
 }
 
@@ -727,7 +727,7 @@ function bindSourceLibrary(){
 
 function knowledgeMap(p) {
   if(kb.curriculum_graph?.nodes?.length)return `<div data-interactive-map ${p?'data-personal="true"':''}></div>`;
-  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
+  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['unobserved_count','unobserved'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
 function requirements() {
@@ -1110,18 +1110,18 @@ function citeChip(id) {
 
 function chatLog() {
   if (!chatMessages.length) {
-    return `<div class="chat-welcome"><strong>可以这样问</strong><p>回答只基于当前这份学情成果；没有依据时会直说。简洁模式少列数字，证据模式按“结论 / 依据”展开。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 的课程要求是什么？">K-07 的课程要求是什么？</button></div></div>`;
+    return `<div class="chat-welcome"><strong>可以这样问</strong><p>学情数字只来自这份成果，概念与做法按课程内容讲；没有依据时会直说。简洁模式少列数字，证据模式按“结论 / 依据”展开，也可以连着追问。</p><div class="chat-prompts"><button type="button" data-chat-prompt="${esc(`${state.student} 现在最需要补什么？`)}">${esc(`${state.student} 现在最需要补什么？`)}</button><button type="button" data-chat-prompt="这个班最薄弱的三个知识点？">这个班最薄弱的三个知识点？</button><button type="button" data-chat-prompt="K-07 到底怎么算？">K-07 到底怎么算？</button></div></div>`;
   }
   return chatMessages.map(message => {
     const trace = message.trace;
     const modeLabel = message.mode === 'evidence' ? '证据' : '简洁';
-    return `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${trace?`<details class="chat-trace"><summary>查看推理依据</summary><div class="chat-trace-steps">${trace.steps.map((step,index)=>`<div class="chat-trace-step"><span>${index+1}</span><div><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p></div></div>`).join('')}</div>${trace.evidence?.length?`<div class="chat-trace-evidence"><strong>用到的证据</strong><div class="chat-evidence-list">${trace.evidence.map(item=>`<span class="chat-evidence">${item.id?citeChip(item.id):''}<span>${esc(item.text)}</span></span>`).join('')}</div></div>`:''}<p class="chat-trace-note">${esc(trace.note||'展示事实卡与规则步骤，不含模型隐藏思维链。')}</p></details>`:''}${message.source?`<small class="chat-source">${modeLabel}模式 · ${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}</div>`;
+    return `<div class="chat-msg ${message.role} ${message.error ? 'error' : ''}"><div class="chat-bubble">${esc(message.text)}</div>${message.citations?.length?`<div class="chat-cites">${message.citations.map(citeChip).join('')}</div>`:''}${trace?`<details class="chat-trace"><summary>查看推理依据</summary><div class="chat-trace-steps">${trace.steps.map((step,index)=>`<div class="chat-trace-step"><span>${index+1}</span><div><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p></div></div>`).join('')}</div>${trace.evidence?.length?`<div class="chat-trace-evidence"><strong>用到的证据</strong><div class="chat-evidence-list">${trace.evidence.map(item=>`<span class="chat-evidence">${item.id?citeChip(item.id):''}<span>${esc(item.text)}</span></span>`).join('')}</div></div>`:''}<p class="chat-trace-note">${esc(trace.note||'展示事实卡与规则步骤，不含模型隐藏思维链。')}</p></details>`:''}${message.source?`<small class="chat-source">${modeLabel}模式 · ${message.source === 'llm' ? 'LLM 生成 · 已核对' : '本地规则回答'}</small>`:''}${message.note?`<small class="chat-note">${esc(message.note)}</small>`:''}${message.retry&&message.question?`<button type="button" class="chat-retry" data-chat-retry="${esc(message.question)}">重试这次提问</button>`:''}</div>`;
   }).join('');
 }
 
 function chatPanel() {
   const resizeHandles = ['n','s','e','w','ne','nw','se','sw'].map(dir=>`<span class="chat-resize" data-resize="${dir}" aria-hidden="true"></span>`).join('');
-  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话">${resizeHandles}<header class="chat-head" data-chat-drag><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><div class="chat-input-row"><select id="chat-mode" class="chat-mode-select" aria-label="回答方式" ${chatBusy?'disabled':''}><option value="concise" ${state.chatMode==='concise'?'selected':''}>简洁</option><option value="evidence" ${state.chatMode==='evidence'?'selected':''}>证据</option></select><textarea id="chat-input" rows="2" maxlength="500" placeholder="问当前班级、学生或知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></div></form><div class="chat-foot">基于当前学情 · 简洁 / 证据两种回答 · 每条回答下方可展开依据</div></section>`;
+  return `<section class="chat-panel" role="dialog" aria-label="与 AI 对话">${resizeHandles}<header class="chat-head" data-chat-drag><div><strong>AI 学伴</strong><small>${esc(chatContextLabel())}</small></div><button type="button" class="icon-button" data-chat-close aria-label="关闭对话">${icon('close')}</button></header><div class="chat-log" id="chat-log" aria-live="polite">${chatLog()}</div>${chatBusy?'<div class="chat-typing">正在查阅本机证据…</div>':''}<form class="chat-form" id="chat-form"><div class="chat-input-row"><select id="chat-mode" class="chat-mode-select" aria-label="回答方式" ${chatBusy?'disabled':''}><option value="concise" ${state.chatMode==='concise'?'selected':''}>简洁</option><option value="evidence" ${state.chatMode==='evidence'?'selected':''}>证据</option></select><textarea id="chat-input" rows="2" maxlength="500" placeholder="问学情，或让我讲讲某个知识点…" ${chatBusy?'disabled':''}></textarea><button class="button primary" type="submit" ${chatBusy?'disabled':''}>发送</button></div></form><div class="chat-foot">基于当前学情 · 简洁 / 证据两种回答 · 每条回答下方可展开依据</div></section>`;
 }
 
 function clampChatRect(rect) {
@@ -1243,37 +1243,56 @@ function renderChat() {
 async function sendChat(raw) {
   const text = (raw || '').trim();
   if (!text || chatBusy) return;
-  chatMessages.push({
-    role: 'user',
-    text
-  });
+  // A retry replaces the failed answer instead of stacking a second copy of the
+  // same question in the log.
+  while (chatMessages.length && chatMessages[chatMessages.length - 1].retry) chatMessages.pop();
+  const prior = chatMessages.filter(message => !message.error && message.text);
+  const trailing = prior[prior.length - 1];
+  if (trailing && trailing.role === 'user' && trailing.text === text) prior.pop();
+  const history = prior.slice(-6).map(message => ({
+    role: message.role === 'user' ? 'user' : 'assistant',
+    text: message.text.slice(0, 600)
+  }));
+  const last = chatMessages[chatMessages.length - 1];
+  if (!(last && last.role === 'user' && last.text === text)) {
+    chatMessages.push({
+      role: 'user',
+      text
+    });
+  }
   chatBusy = true;
   renderChat();
   try {
     const data = await postJSON('/api/chat', {
       message: text,
       mode: state.chatMode,
+      history,
       context: {
         node_id: state.node,
         group_id: state.group,
         student_id: state.student
       }
-    }, 'X-KnowFlow-Chat');
+    }, 'X-KnowFlow-Chat', {timeoutMs: 45000});
     const staleMode = !data.trace || data.trace.mode !== state.chatMode;
     chatMessages.push({
       role: 'assistant',
-      text: data.answer,
+      // 气泡是纯文本：模型偶尔仍会带 ** 强调，这里去掉，免得露出星号。
+      text: String(data.answer || '').replace(/\*\*/g, ''),
       citations: data.citations || [],
       source: data.source,
       trace: data.trace,
       mode: data.trace?.mode || state.chatMode,
+      question: text,
+      retry: data.source !== 'llm',
       note: data.note || (staleMode ? '当前后端进程未加载所选回答方式（旧版本）；请关闭并重启 dashboard 后重试。' : undefined)
     });
   } catch (error) {
     chatMessages.push({
       role: 'assistant',
       text: error.message,
-      error: true
+      error: true,
+      question: text,
+      retry: true
     });
   } finally {
     chatBusy = false;
@@ -1281,8 +1300,9 @@ async function sendChat(raw) {
   }
 }
 
-async function postJSON(url, body, header = 'X-KnowFlow-Settings') {
-  const send = () => fetch(url, {
+async function postJSON(url, body, header = 'X-KnowFlow-Settings', options = {}) {
+  const timeoutMs = options.timeoutMs || 0;
+  const request = () => ({
     method: 'POST',
     cache: 'no-store',
     headers: {
@@ -1291,16 +1311,29 @@ async function postJSON(url, body, header = 'X-KnowFlow-Settings') {
     },
     body: JSON.stringify(body)
   });
+  const send = async () => {
+    if (!timeoutMs) return fetch(url, request());
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...request(), signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const timeoutMessage = `等待超过 ${Math.round(timeoutMs / 1000)} 秒仍未返回，本次请求已取消；可以重试一次。`;
   let response;
   try {
     response = await send();
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError') throw Error(timeoutMessage);
     // A restarted dashboard can reset one keep-alive socket; retry once, then
     // tell the user the backend is gone instead of leaking "Failed to fetch".
     await new Promise(resolve => setTimeout(resolve, 400));
     try {
       response = await send();
-    } catch {
+    } catch (retryError) {
+      if (retryError?.name === 'AbortError') throw Error(timeoutMessage);
       throw Error('无法连接本机后端：请确认启动窗口仍在运行（不要关闭它），然后刷新页面重试。');
     }
   }
@@ -1415,7 +1448,7 @@ function profilePanel() {
 }
 
 function llmSection() {
-  const head = `<div class="settings-sub"><div><h3>LLM 文字层（可选）</h3><p>只改写 reason / check；校验失败会逐条回退模板。</p></div></div>`;
+  const head = `<div class="settings-sub"><div><h3>LLM 文字层（可选）</h3><p>AI 学伴对话与推荐文字都走这里；调用失败会说明具体原因，并回退本地规则。</p></div></div>`;
   if (settingsError) {
     return `${head}<div class="error-box">${esc(settingsError)}</div>`;
   }
@@ -1445,7 +1478,9 @@ function llmSection() {
         <div class="field"><label for="llm-model">模型</label><input id="llm-model" value="${esc(s.model)}" maxlength="100"></div>
         <div class="field"><label for="llm-base-url">Base URL</label><input id="llm-base-url" value="${esc(s.base_url)}" maxlength="200"></div>
       </div>
-      <div class="settings-actions"><button class="button primary" type="submit">保存模型配置</button><span id="settings-result" class="settings-result" role="status"></span></div>
+      <p class="settings-hint">直连方式：Python 标准库（无需安装 SDK）· 单次超时 ${esc(s.timeout_seconds ?? '—')} 秒 · 界面最多等 45 秒</p>
+      <div class="settings-actions"><button class="button primary" type="submit">保存模型配置</button><button class="button" type="button" data-llm-test>测试连接</button><span id="settings-result" class="settings-result" role="status"></span></div>
+      <p class="settings-hint" id="llm-test-result" role="status"></p>
     </div>
   </form>`;
 }
@@ -1515,13 +1550,21 @@ function thresholdPreview(th) {
   let mastered = 0;
   let weak = 0;
   let total = 0;
+  let uncovered = 0;
+  let sparse = 0;
   list.forEach(p => (p.knowledge_states || []).forEach(k => {
+    if (k.status === 'not_applicable') return;
+    if (!k.evidence_count) {
+      if (!(k.state_counts?.pending > 0)) uncovered += 1;
+      return;
+    }
+    if (k.evidence_count < th.min_evidence) sparse += 1;
     if (k.mastery == null) return;
     total += 1;
     if (k.mastery * 100 >= th.mastery_mastered) mastered += 1;
     else if (k.mastery * 100 < th.mastery_weak) weak += 1;
   }));
-  return `${nodeId}：${covered} / ${list.length} 名学生覆盖充足，${missing} 名覆盖缺失严重；${mastered} 条知识点判为已掌握，${weak} 条判为需巩固（共 ${total} 条有估计）。`;
+  return `${nodeId}：${covered} / ${list.length} 名学生覆盖充足，${missing} 名覆盖缺失严重；知识点层面：${uncovered} 个未覆盖（无评分）、${sparse} 个有评分但不足 ${th.min_evidence} 条判为待观察；${mastered} 条判为已掌握，${weak} 条判为需巩固（共 ${total} 条有估计）。`;
 }
 
 function thresholdsPanel() {
@@ -1533,12 +1576,13 @@ function thresholdsPanel() {
     ? ''
     : `<p class="avatar-hint" id="threshold-current">当前诊断配置：已掌握 ≥ ${Math.round(analysis.mastered_threshold * 100)}%、需巩固 &lt; ${Math.round(analysis.weak_threshold * 100)}%、最小证据 ${analysis.min_evidence} 条。</p>`;
   return `<section class="panel">
-    ${panelHead('数据分析阈值', '修改后按新阈值重建诊断：覆盖缺失线同时作为最小证据数，掌握阈值决定状态判定。', '<span class="pill">本机账号</span>')}
+    ${panelHead('数据分析阈值', '修改后按新阈值重建诊断：诊断证据门槛决定"几个知识点还算待观察"，掌握阈值决定状态判定，覆盖线只影响看板标注。', '<span class="pill">本机账号</span>')}
     ${currentConfig}
     <form id="threshold-form" class="settings-form">
       <div class="threshold-grid">
         <label class="threshold-row" for="th-cov-ok"><span>覆盖充足：作答记录 ≥</span><input id="th-cov-ok" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_sufficient}"><span>条</span></label>
         <label class="threshold-row" for="th-cov-miss"><span>覆盖缺失严重：作答记录 &lt;</span><input id="th-cov-miss" class="threshold-input" type="number" min="1" max="500" value="${th.coverage_missing}"><span>条</span></label>
+        <label class="threshold-row" for="th-min-ev"><span>诊断证据门槛：有效评分 ≥</span><input id="th-min-ev" class="threshold-input" type="number" min="1" max="20" value="${th.min_evidence}"><span>条</span></label>
         <label class="threshold-row" for="th-master"><span>已掌握：正确率 ≥</span><input id="th-master" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_mastered}"><span>%</span></label>
         <label class="threshold-row" for="th-weak"><span>需巩固：正确率 &lt;</span><input id="th-weak" class="threshold-input" type="number" min="1" max="100" value="${th.mastery_weak}"><span>%</span></label>
       </div>
@@ -1676,6 +1720,7 @@ function thresholdValues() {
   return {
     coverage_sufficient: Number($('#th-cov-ok').value),
     coverage_missing: Number($('#th-cov-miss').value),
+    min_evidence: Number($('#th-min-ev').value),
     mastery_mastered: Number($('#th-master').value),
     mastery_weak: Number($('#th-weak').value)
   };
@@ -1695,6 +1740,10 @@ async function saveThresholdForm() {
   }
   if (!(values.mastery_weak >= 1 && values.mastery_weak < values.mastery_mastered)) {
     setResult('threshold-result', '掌握度阈值需满足：需巩固线 ≥1% 且小于已掌握线。', false);
+    return;
+  }
+  if (!(values.min_evidence >= 1 && values.min_evidence <= 20)) {
+    setResult('threshold-result', '诊断证据门槛需介于 1 到 20 条之间。', false);
     return;
   }
   try {
@@ -1781,6 +1830,26 @@ document.addEventListener('click', event => {
     });
     return;
   }
+  if (b.hasAttribute('data-llm-test')) {
+    const out = document.querySelector('#llm-test-result');
+    if (out) out.textContent = '正在连接模型…';
+    postJSON('/api/settings/llm/test', {
+      provider: document.querySelector('#llm-provider').value,
+      model: document.querySelector('#llm-model').value.trim(),
+      base_url: document.querySelector('#llm-base-url').value.trim(),
+      api_key: document.querySelector('#llm-api-key').value
+    }, 'X-KnowFlow-Settings', {timeoutMs: 20000})
+      .then(result => {
+        if (!out) return;
+        out.textContent = result.ok
+          ? `连接正常：${result.model} · ${result.elapsed_ms} ms · 回复「${result.reply}」`
+          : `连接失败（${result.kind}）：${result.error}`;
+      })
+      .catch(error => {
+        if (out) out.textContent = error.message;
+      });
+    return;
+  }
   if (b.dataset.settingsTab) {
     state.settingsTab = b.dataset.settingsTab;
     if (state.settingsTab === 'llm') {
@@ -1808,6 +1877,10 @@ document.addEventListener('click', event => {
   }
   if (b.dataset.chatPrompt) {
     sendChat(b.dataset.chatPrompt);
+    return;
+  }
+  if (b.dataset.chatRetry) {
+    sendChat(b.dataset.chatRetry);
     return;
   }
   if (b.hasAttribute('data-close')) {

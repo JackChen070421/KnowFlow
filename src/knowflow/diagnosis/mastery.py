@@ -12,7 +12,10 @@ from .beta import betainc, betappf
 class DiagnosisConfig:
     prior_alpha: float = 1.0
     prior_beta: float = 1.0
-    min_evidence: int = 3
+    # 2 条是能给出方向性说法的最低证据量：2 条的任何组合都达不到确认门槛
+    # （P≥0.9），所以只会得到 likely_* / mixed_performance，不会冒充"已确认"。
+    # 1 条不作数——答错一题就给 likely_weak 这个说法站不住。
+    min_evidence: int = 2
     weak_threshold: float = 0.4
     mastered_threshold: float = 0.75
     confirmation_probability: float = 0.9
@@ -88,4 +91,22 @@ def estimate_mastery(correct: int, observed: int, config: DiagnosisConfig) -> di
         "weak_probability": round(weak, 6),
         "mastered_probability": round(mastered, 6),
         "status_reason": reason,
+    }
+
+
+def apply_evidence_status(estimate: dict, *, observed: int, pending: int) -> dict:
+    """单独标出"未覆盖"：0 条有效评分且没有待评分，不是"证据不足"。
+
+    ``insufficient_evidence`` 是"看了，但还看不准"；一条记录都没有是"根本没看到"。
+    两者对教师的动作不同（再测一次 vs 先布置），因此在这里分开。门槛参数不变：
+    仍然是 1 ≤ 有效评分 < ``min_evidence`` 才叫证据不足。
+    """
+
+    if estimate["status"] != "insufficient_evidence" or observed or pending:
+        return estimate
+    return {
+        **estimate,
+        "status": "unobserved",
+        "confidence": "low",
+        "status_reason": "该知识点在本节点没有任何已评分作答；未覆盖不等于未掌握。",
     }

@@ -10,7 +10,11 @@ from knowflow.diagnosis.pipeline import run_diagnosis
 from knowflow.diagnosis.profiles import build_student_profile
 from knowflow.recommend.catalog import build_catalog
 from knowflow.recommend.pipeline import recommend_run
-from knowflow.recommend.rules import recommend_profile
+from knowflow.recommend.rules import (
+    _prior_risk,
+    _sparse_action,
+    recommend_profile,
+)
 from knowflow.recommend.validation import validate_recommendation, validate_saved_recommendations
 
 STAMP = "2026-11-14T18:00:00+08:00"
@@ -195,13 +199,73 @@ def test_score_point_gap_uses_failed_criterion_and_explain(bundle):
     assert 1 <= item["est_minutes"] <= 120
 
 
-def test_insufficient_evidence_becomes_unattempted_probe(bundle):
+def test_sparse_posterior_splits_probe_and_low_confidence_consolidate(bundle):
     rec, _, node_available = recommendation(bundle, "S004")
+    probes = [item for item in rec["plan"] if item["activity_type"] == "probe"]
+    consolidates = [item for item in rec["plan"] if item["activity_type"] == "consolidate"]
+    # 1 次失分、后验约 64% 概率薄弱 → 低置信度巩固，而不是一律“补观测”
+    assert consolidates, "S004 的 K-03 有 1 次失分，应为低置信度巩固"
+    assert "概率薄弱" in consolidates[0]["reason"]
+    assert "低置信度" in consolidates[0]["reason"]
+    # 0 观测知识点仍走补观测，且理由仍不把“未观测”说成“未掌握”
+    assert probes, "仍有 0 观测知识点需要补观测"
+    assert any("未掌握" in item["reason"] for item in probes)
     assert rec["probe_plan"]["needed"] is True
     assert rec["probe_plan"]["items"]
     assert all(material in node_available for material in rec["probe_plan"]["items"])
-    assert all(item["activity_type"] == "probe" for item in rec["plan"])
-    assert "未掌握" in rec["plan"][0]["reason"]
+
+
+def test_sparse_action_distinguishes_substates_and_posterior():
+    assert _sparse_action({"evidence_count": 0, "state_counts": {}}) == "probe"
+    assert _sparse_action({"evidence_count": 0, "state_counts": {"pending": 1}}) == "pending"
+    assert (
+        _sparse_action({"evidence_count": 0, "state_counts": {"assigned_not_attempted": 1}})
+        == "not_attempted"
+    )
+    assert (
+        _sparse_action(
+            {"evidence_count": 1, "weak_probability": 0.64, "mastered_probability": 0.06}
+        )
+        == "sparse_weak"
+    )
+    assert (
+        _sparse_action(
+            {"evidence_count": 1, "weak_probability": 0.16, "mastered_probability": 0.44}
+        )
+        == "sparse_mastered"
+    )
+    assert (
+        _sparse_action(
+            {"evidence_count": 2, "weak_probability": 0.35, "mastered_probability": 0.16}
+        )
+        == "sparse_mixed"
+    )
+
+
+def test_prior_risk_borrows_strength_from_siblings_and_prerequisites():
+    profile = {
+        "knowledge_states": [
+            {"knowledge_id": "K-01", "objective_id": "OBJ-1", "mastery": 0.3, "status": "likely_weak"},
+            {"knowledge_id": "K-02", "objective_id": "OBJ-1", "mastery": None, "status": "insufficient_evidence"},
+            {"knowledge_id": "K-03", "objective_id": "OBJ-2", "mastery": None, "status": "insufficient_evidence"},
+        ]
+    }
+    catalog = {
+        "knowledge": {
+            "K-01": {"knowledge_id": "K-01", "objective_id": "OBJ-1"},
+            "K-02": {"knowledge_id": "K-02", "objective_id": "OBJ-1"},
+            "K-03": {"knowledge_id": "K-03", "objective_id": "OBJ-2"},
+        },
+        "reviewed_prerequisites": {"K-03": [{"source_knowledge_id": "K-01"}]},
+    }
+    # K-03 的先修 K-01 薄弱 → high 先验
+    score, reason = _prior_risk(profile, catalog, "K-03")
+    assert score == 2
+    assert "先修 K-01 薄弱" in reason
+    # K-02 的同主题 K-01 平均偏低 → medium 先验
+    score2, reason2 = _prior_risk(profile, catalog, "K-02")
+    assert score2 == 1
+    assert "同主题" in reason2
 
 
 def test_scope_unknown_gets_no_fabricated_plan(bundle):

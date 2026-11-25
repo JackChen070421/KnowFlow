@@ -51,10 +51,13 @@ DEFAULT_PREFERENCES = {
     "home_view": "overview",
 }
 DEFAULT_THRESHOLDS = {
-    # 与 knowflow.diagnosis.mastery.DiagnosisConfig 的默认口径对齐（0.75 / 0.40 / 3），
+    # 与 knowflow.diagnosis.mastery.DiagnosisConfig 的默认口径对齐（0.75 / 0.40 / 2），
     # 这样合并后正式数据的诊断数字与已有报告、PPT 保持一致。
     "coverage_sufficient": 10,
     "coverage_missing": 3,
+    # 诊断门槛单独一项：过去它由 coverage_missing 直接换算，改一个覆盖率显示阈值
+    # 就会把所有知识点推成"待观察"。两者分开后各管一件事。
+    "min_evidence": 2,
     "mastery_mastered": 75,
     "mastery_weak": 40,
 }
@@ -174,17 +177,21 @@ def _validate_thresholds(values: dict) -> dict:
     try:
         coverage_ok = int(merged["coverage_sufficient"])
         coverage_missing = int(merged["coverage_missing"])
+        min_evidence = int(merged["min_evidence"])
         mastery_ok = int(merged["mastery_mastered"])
         mastery_weak = int(merged["mastery_weak"])
     except (TypeError, ValueError) as exc:
         raise ValueError("阈值必须是整数。") from exc
     if not 1 <= coverage_missing < coverage_ok <= 500:
         raise ValueError("覆盖度阈值需满足：缺失线 ≥1，且小于充足线（最大 500）。")
+    if not 1 <= min_evidence <= 20:
+        raise ValueError("诊断证据门槛需介于 1 到 20 条之间。")
     if not 1 <= mastery_weak < mastery_ok <= 100:
         raise ValueError("掌握度阈值需满足：需巩固线 ≥1%，且小于已掌握线（最大 100%）。")
     return {
         "coverage_sufficient": coverage_ok,
         "coverage_missing": coverage_missing,
+        "min_evidence": min_evidence,
         "mastery_mastered": mastery_ok,
         "mastery_weak": mastery_weak,
     }

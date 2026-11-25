@@ -16,7 +16,6 @@ from knowflow.feedback import (
     supplemental_record,
     validate_event,
 )
-from knowflow.recommend.catalog import build_catalog
 from knowflow.recommend.pipeline import recommend_run
 from knowflow.recommend.validation import validate_saved_recommendations
 
@@ -181,26 +180,36 @@ def test_supplemental_diagnosis_changes_mastery_but_not_canonical(
 def test_teacher_lock_and_replace_persist_across_versions(
     tmp_path, bundle, canonical_root
 ) -> None:
+    # 给 K-02 加一份节点范围内的备用材料，保证低置信度巩固项有可替换空间。
+    bundle["materials"].append(
+        {
+            "material_id": "M-007",
+            "objective_id": "OBJ-7M-02",
+            "max_score": 2.0,
+            "rubric": [
+                {"point_id": "M-007P1", "label": "步骤一", "max_score": 1.0},
+                {"point_id": "M-007P2", "label": "步骤二", "max_score": 1.0},
+            ],
+            "knowledge_ids": ["K-02"],
+        }
+    )
+    for node in bundle["nodes"]:
+        if node["node_id"] == "N02":
+            node["material_ids"] = sorted([*node["material_ids"], "M-007"])
+
     knowledge = _knowledge(tmp_path, bundle)
     run = _run(tmp_path, "run", bundle)
     first = _recommend(tmp_path, run, knowledge, "rec1")
     assert len(first["plan"]) >= 2
-    target = first["plan"][1]
-    catalog = build_catalog(json.loads(knowledge.read_text(encoding="utf-8")))
-    replacement = next(
-        material["material_id"]
-        for material in catalog["materials"].values()
-        if material["material_type"] == "assessment"
-        and target["knowledge_ids"][0] in material["knowledge_ids"]
-        and material["material_id"] not in target["material_ids"]
-    )
+    target = first["plan"][0]  # K-02 低置信度巩固
+    replacement = "M-007"
     events = tmp_path / "events.jsonl"
-    append_event(events, _adjustment(first, 1, "lock", "课堂统一讲", "EV-TEST-0101"))
+    append_event(events, _adjustment(first, 2, "lock", "课堂统一讲", "EV-TEST-0101"))
     append_event(
         events,
         _adjustment(
             first,
-            2,
+            1,
             "replace_materials",
             "换成同评分点练习",
             "EV-TEST-0102",
@@ -210,7 +219,7 @@ def test_teacher_lock_and_replace_persist_across_versions(
     second = _recommend(
         tmp_path, run, knowledge, "rec2", feedback=str(events), previous=str(tmp_path / "rec1")
     )
-    locked = next(item for item in second["plan"] if item["issue_id"] == first["plan"][0]["issue_id"])
+    locked = next(item for item in second["plan"] if item["issue_id"] == first["plan"][1]["issue_id"])
     replaced = next(item for item in second["plan"] if item["issue_id"] == target["issue_id"])
     assert locked["teacher_locked"] is True
     assert any(

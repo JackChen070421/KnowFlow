@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {storyContent,storyPaths,storyExperiment,nodeVisuals} from '../../src/knowflow/web/static/course-stories.mjs';
+import {radialLayout} from '../../src/knowflow/web/static/map-layout.mjs';
+
+test('exploration covers every official node exactly once and links resolve',()=>{
+ const graph=JSON.parse(readFileSync(new URL('../../knowledge/curriculum_graph.json',import.meta.url),'utf8'));
+ const ids=graph.nodes.map(n=>n.node_id).sort();
+ assert.deepEqual(storyPaths.flatMap(p=>p.ids).sort(),ids);
+ assert.deepEqual(Object.keys(storyContent).sort(),ids);
+ assert.deepEqual(Object.keys(nodeVisuals).sort(),ids);
+ for(const c of Object.values(storyContent)){
+  for(const key of ['title','question','idea','example','caution','check','answer'])assert.ok(c[key]);
+  for(const [id,reason] of c.next){assert.ok(storyContent[id]);assert.ok(reason)}
+  assert.equal(c.extra.length,2);
+ }
+});
+
+test('category hierarchy places circular nodes with equal angular spacing',()=>{
+ const graph=JSON.parse(readFileSync(new URL('../../knowledge/curriculum_graph.json',import.meta.url),'utf8'));
+ const nodes=graph.nodes.map(n=>({id:n.node_id,topic:n.theme_index}));
+ const {positions,hubs,links}=radialLayout(nodes);
+ assert.equal(hubs.size,3);assert.equal(links.length,nodes.length);
+ for(const n of nodes){assert.equal(links.find(l=>l.id===n.id).topic,n.topic);assert.ok(positions.has(n.id))}
+ const points=[...positions.values()];
+ for(let i=0;i<points.length;i++)for(let j=i+1;j<points.length;j++){
+  assert.ok(Math.hypot(points[i].x-points[j].x,points[i].y-points[j].y)>90,'circular nodes overlap');
+ }
+ for(const [topic,hub] of hubs){const angles=nodes.filter(n=>n.topic===topic).map(n=>{const p=positions.get(n.id);assert.ok(Math.abs(Math.hypot(p.x-hub.x,p.y-hub.y)-180)<.001);return (Math.atan2(p.y-hub.y,p.x-hub.x)+2*Math.PI)%(2*Math.PI)}).sort((a,b)=>a-b);for(let i=0;i<angles.length;i++){const gap=(angles[(i+1)%angles.length]-angles[i]+2*Math.PI)%(2*Math.PI);assert.ok(Math.abs(gap-2*Math.PI/angles.length)<.001)}}
+});
+test('multiplication preserves, reverses or collapses order',()=>{
+ for(const k of [-2,-1,-.5,0,.5,1,2]){
+  const r=storyExperiment('mirror',k);
+  assert.equal(Math.sign(r.b-r.a),Math.sign(k));
+ }
+ assert.match(storyExperiment('mirror',0).text,/严格大小关系消失/);
+});
+test('cost comparison switches at the real-valued boundary',()=>{
+ assert.equal(storyExperiment('cost',2).a,11);
+ assert.equal(storyExperiment('cost',2).b,10);
+ assert.equal(storyExperiment('cost',2.5).a,storyExperiment('cost',2.5).b);
+ assert.ok(storyExperiment('cost',3).a<storyExperiment('cost',3).b);
+});
+test('intersection distinguishes an interval, a singleton and the empty set',()=>{
+ assert.match(storyExperiment('intersection',2).text,/2 ≤ x ≤ 6/);
+ assert.match(storyExperiment('intersection',6).text,/只剩 x = 6/);
+ assert.match(storyExperiment('intersection',7).text,/没有公共解/);
+});

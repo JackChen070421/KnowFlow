@@ -30,6 +30,7 @@ ASSETS = {
     "/login.js": "text/javascript",
     "/charts.js": "text/javascript",
     "/knowledge-map.js": "text/javascript",
+    "/course-stories.mjs": "text/javascript",
     "/analytics.mjs": "text/javascript",
     "/theme-boot.js": "text/javascript",
     "/map-layout.mjs": "text/javascript",

@@ -57,6 +57,12 @@ def allowed_numbers(issue: dict, state: dict) -> set[float]:
         value = state.get(key)
         if isinstance(value, (int, float)):
             allowed.add(float(value))
+    # 稀疏观测下，reason 可以引用后验概率（“约 64% 概率薄弱”）。
+    for key in ("weak_probability", "mastered_probability", "mastery"):
+        value = state.get(key)
+        if isinstance(value, (int, float)):
+            allowed.add(float(value))
+            allowed.add(float(round(value * 100)))
     block = state.get("review") or {}
     for key in ("usable_evidence_count", "usable_full_credit"):
         value = block.get(key)

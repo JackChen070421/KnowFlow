@@ -10,6 +10,21 @@
 
 ---
 
+## 2026-11-25 — 稀疏观测下的建议：后验、子状态与层级先验
+
+**本机未提交** · `feat/sparse-recommendation`
+
+- ① 后验接进决策：`rules._sparse_action` 用 `weak_probability/mastered_probability` 把“证据不足”拆成梯度——后验 ≥60% 薄弱 → 低置信度巩固，≥40% 已掌握 → 轻量复核，中间 → 继续观测；`_priority/_reason/_check` 相应分档。
+- ② 区分稀疏子状态：0 观测 / 已布置未作答 / 已作答待评分（defer）各有文案，不再统一“补 3 题”。
+- ③ 层级先验：`_prior_risk` 用 reviewed 先修 + 同主题平均表现给 0 观测知识点先验风险，参与排序并写入理由。
+- `allowed_numbers` 纳入后验概率（含百分比写法），否则“约 64%”会被数字锁误杀。
+- 效果（真实 N02，40 人）：巩固项 34→69、补观测 65→41；“稀疏薄弱→巩固”43、“先验风险”17、“稀疏已掌握”5、“稀疏中间”4。
+- 验证：`pytest` 285 项、`ruff` 通过；`recommend --node N02` 真实数据 gate=pass。
+- 未验证：`audience=student` 端到端；先修先验（真实图谱无 reviewed 边，仅单测覆盖）。
+- 回退：还原 `rules.py`（`_sparse_action/_prior_risk/_reason/_check/_plan_item/recommend_profile`）、`validation.py::allowed_numbers` 与相关测试。
+
+---
+
 ## 2026-11-25 — 交互契约：行为红线同源 + 受众（第二档）
 
 **本机未提交** · `feat/contract-behavior-audience`

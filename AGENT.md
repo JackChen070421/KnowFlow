@@ -180,6 +180,7 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - **数字锁/ID 锁**：输出中的数字与 ID 必须来自输入白名单；不合规重试 ≤2 后降级模板。
 - **决策/语言边界**：材料、完成门槛、排序、诊断结论由代码产出，语言层不得改动。`check` 不交给模型改写；`reason` 只能引用计划已选材料（`llm/contract.py` 的 `material_drift`），越权回退模板。`answer_key` 权限由 `contract.answer_key_visible` 统一判定。
 - 行为红线单一来源：`MUST_NOT_INFER` 与 `BOUNDARY_NOTE` 在 `llm/contract.py`，`summary.py`/`prompt.py`/`chat.py` 三处经 `forbidden_text()` 同源注入；推荐摘要带 `audience`（teacher/student），prompt 据此决定语气与是否给答案。
+- 稀疏观测不是“证据不足”一个答案：`recommend/rules.py` 用后验概率（`weak_probability/mastered_probability`）与 `state_counts` 子状态，把低于 `min_evidence` 的知识点拆成低置信度巩固 / 轻量复核 / 继续观测 / 布置未做 / 待评分；0 观测知识点用 reviewed 先修 + 同主题表现做层级先验（`_prior_risk`）参与排序。
 - `llm.enabled=false` 时全流程必须能跑通（模板/规则），LLM 可关闭。
 - 实现位于 `src/knowflow/llm/`：`summary.py` 构造白名单摘要，`guard.py` 做 schema/数字/ID 三重检查，`service.py` 负责重试与回退；`recommend --llm` 与 `explain` 是仅有的调用入口。`run_manifest.json` 的 `llm` 块必须记录实际使用、回退与错误，不得把回退写成“已用模型”。
 - 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
@@ -283,6 +284,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.30 | 2026-11-25 | 稀疏观测建议：后验概率接进决策（`_sparse_action`）、子状态区分、层级先验（`_prior_risk`）；巩固项 34→69、补观测 65→41；测试 285 项 |
 | v0.29 | 2026-11-25 | 交互契约第二档：行为红线 `MUST_NOT_INFER`/`BOUNDARY_NOTE` 单一来源并三处同源注入、推荐路径补 `audience`；新增契约测试；测试 283 项 |
 | v0.28 | 2026-11-25 | 建议语言层第一档：决策/语言边界（`llm/contract.py`）、`check` 确定性、材料白名单收紧、`numbers_used` 移除；回退率 27%→10%、材料漂移归零；测试 278 项 |
 | v0.27 | 2026-11-25 | AI 学伴 P1/P2：课程内容检索（课标/学习卡/题面）进事实卡、多轮上文、提示词区分“学习者数据/学科知识”、数字锁改按数据主张判定、证据模式只提醒一次格式、温度 0.6；测试 278 项 |

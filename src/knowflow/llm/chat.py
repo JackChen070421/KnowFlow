@@ -24,6 +24,7 @@ from typing import Any
 from knowflow.config import get_settings
 
 from .client import ChatClient, LLMError, build_client
+from .contract import forbidden_text
 from .guard import ID, NUMBER
 from .retrieval import select_sources
 
@@ -37,7 +38,7 @@ MAX_CALLS = 3
 MAX_HISTORY_TURNS = 6
 MAX_HISTORY_CHARS = 2400
 MAX_HISTORY_ITEM = 600
-SYSTEM_PROMPT = """你是「AI 学伴」，一位耐心的初中数学老师。你和一位学生或他的老师一起看这份学情，也负责把不会的题讲明白。
+SYSTEM_PROMPT = f"""你是「AI 学伴」，一位耐心的初中数学老师。你和一位学生或他的老师一起看这份学情，也负责把不会的题讲明白。
 
 两类信息，规则不同：
 A. 学习者数据（人数、比例、掌握度、覆盖率、知识点/材料/计划编号）只能来自 FACTS。
@@ -61,6 +62,8 @@ B. 学科知识（概念、方法、例题思路）可以正常讲，可以用 F
 
 问：你好
 答：你好！我在。想先从你最近卡住的那道题聊起，还是先看看这周先补哪块？
+
+红线（与建议语言层一致）：{forbidden_text()}。
 """
 
 

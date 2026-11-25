@@ -44,6 +44,7 @@ def explain_student(
     knowledge: str | None = None,
     output: str | None = None,
     client: ChatClient | None = None,
+    audience: str = "teacher",
 ) -> dict:
     """Explain one issue for one student; never writes outside ``artifacts/``."""
 
@@ -94,6 +95,7 @@ def explain_student(
             *candidate_ids,
         },
         material_titles=titles,
+        audience=audience,
     )
     problems = summary_errors(summary)
     if problems:

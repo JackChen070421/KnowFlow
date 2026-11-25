@@ -48,3 +48,25 @@ def answer_key_visible(role: str | None) -> bool:
     """Only a teacher may see an answer key.  Unknown callers get nothing."""
 
     return role == "teacher"
+
+
+# --- 行为红线：推荐与对话两条路径共用，prompt 与代码同源 -------------------
+
+MUST_NOT_INFER = (
+    "不得把未记录或未作答说成未掌握",
+    "不得新增摘要白名单之外的数字或 ID",
+    "不得推断姓名、学号或原始作答内容",
+    "不得改变诊断状态、掌握度或建议顺序",
+    "不得改动材料选择或完成门槛",
+)
+
+BOUNDARY_NOTE = (
+    "学习者数据只发聚合事实；课程内容（课标原文、学习卡、题面与解析）可随问题发送，"
+    "学生端不含参考答案。"
+)
+
+
+def forbidden_text() -> str:
+    """The one shared "do not" line every prompt and card carries verbatim."""
+
+    return "；".join(MUST_NOT_INFER)

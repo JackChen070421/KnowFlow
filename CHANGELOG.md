@@ -10,6 +10,19 @@
 
 ---
 
+## 2026-11-25 — 交互契约：行为红线同源 + 受众（第二档）
+
+**本机未提交** · `feat/contract-behavior-audience`
+
+- 行为红线单一来源：`MUST_NOT_INFER`（5 条）与 `BOUNDARY_NOTE` 迁到 `llm/contract.py`；`summary.py`、`prompt.py`、`chat.py` 三处经 `forbidden_text()` 同源注入，两条路径的“出门声明”收拢到一处。
+- 推荐路径补受众：`build_issue_summary` / `explain_student` 增 `audience`（默认 teacher），写进 `llm_summary`（schema 增 `audience` 枚举）；prompt 按 audience 决定语气与是否给答案。
+- 新增 `tests/diagnosis/test_contract.py`：红线共享、材料漂移、answer_key 权限、audience 透传。
+- 验证：`pytest` 283 项、`ruff` 通过；真实 `explain` 返回 `source=llm`、`attempts=1`、summary 带 `audience=teacher`。
+- 未验证：`audience=student` 的真实调用（仅单测）；`explain` 独立工具仍按“解释单题”给出全部相关材料（无计划可漂移，属预期）。
+- 回退：还原 `contract.py`/`summary.py`/`prompt.py`/`chat.py`/`explain.py` 与 schema、`test_contract.py`。
+
+---
+
 ## 2026-11-25 — 建议语言层：决策/语言边界与契约修复（第一档）
 
 **本机未提交** · `fix/recommend-text-boundary`

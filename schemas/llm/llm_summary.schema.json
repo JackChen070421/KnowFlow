@@ -24,6 +24,11 @@
       "type": "string",
       "const": "zh-CN"
     },
+    "audience": {
+      "type": "string",
+      "enum": ["teacher", "student"],
+      "description": "读者身份：决定 reason 的语气与是否给最终答案"
+    },
     "facts": {
       "type": "object",
       "additionalProperties": false,

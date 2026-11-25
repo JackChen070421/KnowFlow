@@ -15,6 +15,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from knowflow.contracts import build_registry, repo_root
 
+from .contract import MUST_NOT_INFER
+
 STATUS_VALUES = {
     "confirmed_weak",
     "likely_weak",
@@ -23,13 +25,6 @@ STATUS_VALUES = {
     "confirmed_mastered",
     "mixed_performance",
 }
-
-MUST_NOT_INFER = [
-    "不得把未记录或未作答说成未掌握",
-    "不得新增摘要白名单之外的数字",
-    "不得推断姓名、学号或原始作答内容",
-    "不得改变诊断状态或掌握度",
-]
 
 
 @lru_cache(maxsize=1)
@@ -109,6 +104,7 @@ def build_issue_summary(
     allowed_numbers: set[float],
     allowed_ids: set[str],
     material_titles: dict[str, str] | None = None,
+    audience: str = "teacher",
 ) -> dict:
     """Build one schema-valid summary for a single issue.
 
@@ -149,6 +145,7 @@ def build_issue_summary(
         "scope": "issue",
         "ref_id": issue["issue_id"],
         "locale": "zh-CN",
+        "audience": audience,
         "facts": facts,
         "constraints": {
             "must_not_infer": list(MUST_NOT_INFER),

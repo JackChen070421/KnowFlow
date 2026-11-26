@@ -22,6 +22,7 @@ import time
 from typing import Any
 
 from knowflow.config import get_settings
+from knowflow.diagnosis.statuses import LABELS, SUPPORT
 
 from .client import ChatClient, LLMError, build_client
 from .contract import forbidden_text
@@ -43,7 +44,7 @@ SYSTEM_PROMPT = f"""你是「AI 学伴」，一位耐心的初中数学老师。
 两类信息，规则不同：
 A. 学习者数据（人数、比例、掌握度、覆盖率、知识点/材料/计划编号）只能来自 FACTS。
    FACTS 没有的就直说“这份数据里没有”，不要估算、不要编造；不要把“证据不足”说成“未掌握”；
-   不要改动诊断结论、掌握度或建议顺序。
+   不要改动诊断结论、掌握度或建议顺序。状态名称按 status_label：掌握、较好、较差、薄弱；较好不等于全对，较差不等于零分，颜色不参与判断。
 B. 学科知识（概念、方法、例题思路）可以正常讲，可以用 FACTS.sources 里的课标原文、学习卡与题面。
    但不能借学科知识编造任何学生数据、分数或排名。
 
@@ -84,7 +85,7 @@ def _collect(value: Any, numbers: set[float], ids: set[str]) -> None:
 
 
 def _weak(state: dict) -> bool:
-    return state.get("status") in {"confirmed_weak", "likely_weak", "mixed_performance"}
+    return state.get("status") in SUPPORT
 
 
 def _audience(snapshot: dict) -> str:
@@ -150,7 +151,7 @@ def build_facts(
     if class_profile:
         distribution = sorted(
             class_profile["knowledge_distribution"],
-            key=lambda item: (item["weak_count"] + item["insufficient_count"]),
+            key=lambda item: (item["weak_count"] + item.get("sparse_poor_count", 0), item["insufficient_count"]),
             reverse=True,
         )
         facts["class"] = {
@@ -163,6 +164,8 @@ def build_facts(
                     "name": names.get(item["knowledge_id"], item["knowledge_id"]),
                     "weak": item["weak_count"],
                     "insufficient": item["insufficient_count"],
+                    "sparse_good": item.get("sparse_good_count", 0),
+                    "sparse_poor": item.get("sparse_poor_count", 0),
                     "mastered": item["mastered_count"],
                     "observed": item["observed_student_count"],
                     "mean_mastery": item["mean_mastery"],
@@ -183,7 +186,7 @@ def build_facts(
     profile = snapshot["profiles"].get(node_id, {}).get(student_id) if student_id else None
     if profile:
         states = profile["knowledge_states"]
-        chosen = ([state for state in states if _weak(state)] + states)[:6]
+        chosen = sorted(states, key=lambda state: not _weak(state))[:6]
         # A named knowledge point must bring its own state even when it is not
         # among the six the card shows by default — otherwise "K-07 我掌握得怎么样"
         # gets answered from the course content alone.
@@ -210,11 +213,13 @@ def build_facts(
             "needs_coverage": [
                 item["knowledge_id"] for item in profile["lists"].get("needs_coverage", [])
             ][:5],
+            "status_counts": {label: sum(LABELS.get(s["status"]) == label for s in states) for label in dict.fromkeys(LABELS.values())},
             "states": [
                 {
                     "id": state["knowledge_id"],
                     "name": names.get(state["knowledge_id"], state["knowledge_id"]),
                     "status": state["status"],
+                    "status_label": LABELS.get(state["status"], "待核验"),
                     "mastery": state["mastery"],
                     "evidence": state["evidence_count"],
                 }
@@ -390,7 +395,7 @@ def _unit_follows(text: str, index: int) -> bool:
 # about the subject is teaching.  Only the first kind is checked against FACTS.
 DATA_WORDS = (
     "人", "名", "位", "学生", "同学", "孩子", "率", "％", "%", "掌握", "覆盖",
-    "薄弱", "待观察", "证据", "得分", "评分", "巩固", "平均", "占比", "排名", "比例",
+    "薄弱", "较好", "较差", "待评分／核验", "证据", "得分", "评分", "巩固", "平均", "占比", "排名", "比例",
 )
 _APPROX = ("约", "大约", "大概", "近", "左右", "超过", "不到")
 _SENTENCE = re.compile(r"[^。！？!?；;\n]+")
@@ -495,7 +500,7 @@ def build_trace(
                 "detail": (
                     f"观测覆盖 {coverage['observed']}/{coverage['applicable']}；"
                     f"建议巩固 {len(student['needs_consolidation'])} 个，"
-                    f"待观察 {len(student['needs_observation'])} 个，"
+                    f"待评分／核验 {len(student['needs_observation'])} 个，"
                     f"未覆盖 {len(student.get('needs_coverage') or [])} 个"
                 ),
             }
@@ -558,7 +563,7 @@ def build_trace(
                     "kind": "class_state",
                     "id": item["id"],
                     "text": f"{names.get(item['id'], item['id'])} · 薄弱 {item['weak']} 人 / "
-                    f"待观察 {item['insufficient']} 人",
+                    f"较好 {item['sparse_good']} 人，较差 {item['sparse_poor']} 人，待评分／核验 {item['insufficient']} 人",
                 }
             )
         for issue in class_facts.get("common_issues", [])[:3]:
@@ -665,13 +670,13 @@ def rules_answer(facts: dict, mode: str = "concise") -> str:
                 f"结论：{student['id']} 当前优先巩固 "
                 + "、".join(f"{names.get(k, k)}" for k in needs[:2])
                 if needs
-                else f"结论：{student['id']} 当前证据不足，先补观测，不急着判断。"
+                else f"结论：{student['id']} 当前没有列入巩固清单的知识点；结合已有状态安排复核。"
             )
             coverage = student["coverage"]
             basis = [
                 f"观测覆盖 {coverage['observed']}/{coverage['applicable']}"
                 f"（{_ratio(coverage['ratio'])}）",
-                f"建议巩固 {len(needs)} 个，待观察 {len(student.get('needs_observation') or [])} 个，"
+                f"建议巩固 {len(needs)} 个，待评分／核验 {len(student.get('needs_observation') or [])} 个，"
                 f"未覆盖 {len(student.get('needs_coverage') or [])} 个",
             ]
             if plan:
@@ -684,18 +689,19 @@ def rules_answer(facts: dict, mode: str = "concise") -> str:
         if needs:
             parts.append("先处理 " + "、".join(names.get(k, k) for k in needs[:2]) + "。")
         else:
-            parts.append("证据还不够，先补几次观测再判断。")
+            parts.append("没有列入巩固清单的知识点，可结合已有状态轻量复核。")
         if plan:
             parts.append(_pick(NEXT_STEPS, student["id"] + mode))
         if student.get("needs_observation"):
-            parts.append("有 1～2 条评分但方向不明的知识点，再测一次就能定性。")
+            parts.append("有知识点评分或信息待核验，先完成评分或核验，不把缺失当作答错。")
         if student.get("needs_coverage"):
             parts.append("还有些知识点一条评分都没有，先布置基线题；未覆盖不等于没掌握。")
         return "".join(parts)
 
     class_facts = facts.get("class") or {}
     if class_facts:
-        weak = class_facts.get("knowledge") or []
+        rows = class_facts.get("knowledge") or []
+        weak = [item for item in rows if item.get("weak", 0) + item.get("sparse_poor", 0) > 0]
         if mode == "evidence":
             conclusion = (
                 "结论：当前班级最需要关注 "
@@ -710,16 +716,16 @@ def rules_answer(facts: dict, mode: str = "concise") -> str:
             ]
             if weak:
                 basis.append(
-                    f"{weak[0]['id']} 薄弱 {weak[0]['weak']} 人 / 待观察 {weak[0]['insufficient']} 人"
+                    f"{weak[0]['id']} 薄弱 {weak[0]['weak']} 人 / 较差 {weak[0].get('sparse_poor', 0)} 人 / 待评分／核验 {weak[0]['insufficient']} 人"
                 )
             return conclusion + "\n依据：" + "；".join(basis) + "。"
         if weak:
             return (
                 f"{class_facts['id']} 当前先关注 "
                 + "、".join(f"{item['name']}" for item in weak[:2])
-                + "；先补观测，再安排巩固。"
+                + "；针对已有失分安排练习，待评分先评分，未覆盖再补基线题。"
             )
-        return f"{class_facts['id']} 当前没有足够证据指出薄弱知识点，先扩大观测。"
+        return f"{class_facts['id']} 当前汇总未列出薄弱或较差知识点；按已有状态复核，未覆盖项再补基线题。"
 
     if knowledge:
         first = knowledge[0]
@@ -771,7 +777,7 @@ LENGTH_PROMPTS = {
 
 INSUFFICIENT_PROMPTS = {
     "prompt": "若 FACTS 显示证据不足，直接说明信息不足，不要推测。",
-    "probe": "若 FACTS 显示证据不足，建议先做一次摸底测试来补充证据。",
+    "probe": "若 FACTS 显示未覆盖，建议做基线题；若待评分／核验，先评分或核验，不追加练习。",
 }
 
 

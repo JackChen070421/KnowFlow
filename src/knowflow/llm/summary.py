@@ -24,6 +24,8 @@ STATUS_VALUES = {
     "insufficient_evidence",
     "unobserved",
     "likely_mastered",
+    "sparse_good",
+    "sparse_poor",
     "confirmed_mastered",
     "mixed_performance",
 }

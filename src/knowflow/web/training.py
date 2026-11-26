@@ -13,6 +13,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from knowflow.config import get_settings
+from knowflow.diagnosis.statuses import LABELS, training_priority
 from knowflow.llm.client import build_client
 
 
@@ -67,10 +68,10 @@ class TrainingStore:
             if not profile:
                 raise ValueError('当前学生在该测验没有画像。')
             states = profile['knowledge_states']
-            priority = {'weak': 0, 'likely_weak': 0, 'mixed_performance': 1, 'insufficient_evidence': 2, 'unobserved': 3}
-            selected = sorted(states, key=lambda s: priority.get(s['status'], 3))[:count]
+            eligible = [s for s in states if s['status'] not in {'not_applicable', 'insufficient_evidence'}]
+            selected = sorted(eligible, key=lambda s: training_priority(s['status']))[:count]
             summary = [{'knowledge_id': s['knowledge_id'], 'name': knowledge[s['knowledge_id']],
-                        'status': s['status']} for s in selected]
+                        'status': s['status'], 'status_label': LABELS.get(s['status'], '待核验')} for s in selected]
         else:
             sid = None
             summary = []
@@ -100,7 +101,7 @@ class TrainingStore:
         if client is None:
             raise ValueError('请先在设置中启用并配置 LLM API，再生成变式训练。')
         raw = client.complete(
-            '你是数学教师。根据汇总知识状态生成中文变式训练，弱项优先，证据不足用基础诊断题。'
+            '你是数学教师。根据汇总知识状态生成中文变式训练：薄弱（weak/confirmed_weak/likely_weak）与较差（sparse_poor）优先，较好（sparse_good）轻量复核，掌握用迁移题；未覆盖用基线题，待评分先等评分，不判薄弱。'
             '不要声称复刻原题。只返回 JSON 对象 questions 数组，每题含 knowledge_id、prompt、answer、explanation。'
             'knowledge_id 必须来自输入白名单。使用纯文本数学符号，不使用 Markdown 或 LaTex。'
             '题目完整、答案明确、解析可核对，不包含姓名或个人信息。',
@@ -238,8 +239,8 @@ class TrainingStore:
         if paper.get('generator') == 'local_demo':
             story.insert(2, Paragraph(f"本地模拟生成 · 面向 {paper['student_count']} 位学生 · {len(paper['questions'])} 题 · 每题 10 分 · 共 {len(paper['questions'])*10} 分", style))
             if answers:
-                story.append(Paragraph('出题依据：'+escape('；'.join(f"{b['knowledge_id']}：薄弱或表现不稳定 {b['focus_count']} 人，安排 {b['question_count']} 题" for b in paper['basis'])), style))
-                story.append(Paragraph('证据不足与未覆盖不计入薄弱人数，基础题用于补充观察。', style))
+                story.append(Paragraph('出题依据：'+escape('；'.join(f"{b['knowledge_id']}：{b.get('focus_label', '旧口径：薄弱／表现混合')} {b['focus_count']} 人，安排 {b['question_count']} 题" for b in paper['basis'])), style))
+                story.append(Paragraph('待评分／核验、未覆盖和较好不计入优先巩固人数；无评分不当作答错。', style))
         for index, q in enumerate(paper['questions']):
             if paper.get('generator') == 'local_demo' and not answers and index and index % 4 == 0:
                 story.extend([PageBreak(), Paragraph('全体学生变式训练 · Demo（续）', heading)])

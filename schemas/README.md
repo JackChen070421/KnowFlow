@@ -90,7 +90,7 @@ assert errors == [], errors
 
 ### 为什么 `mastery` 允许 `null`？
 
-无观测不能写 0。`null` 表达“不知道”，对应 `unobserved`（有题但没评分）或 `insufficient_evidence`（评分不足）；这是“缺少记录不等于未掌握”的字段级体现。两者分开是因为动作不同：前者要布置基线题，后者要再测一次。
+无观测不能写 0。`null` 表达“不知道”，对应 `unobserved`（有题但没评分）或 `insufficient_evidence`（待评分／核验）；这是“缺少记录不等于未掌握”的字段级体现。两者分开是因为动作不同：前者要布置基线题，后者先评分或核验。有评分但不足门槛时，全对为 sparse_good（较好），有错误或扣分为 sparse_poor（较差）；两者保留已有估计与低置信度。
 
 ### 为什么 `knowledge_base` 用 `$ref`？
 
@@ -113,3 +113,5 @@ assert errors == [], errors
 - ❌ 复用 `$id`。
 - ❌ 把真实数据写进 `examples/` 或 `tests/fixtures/`。
 - ❌ 用 `additionalProperties: true` 绕过契约。
+
+2026-11-26 补充：达到证据门槛但未归入掌握或薄弱的知识点，按全对题数与错误或扣分题数比较：对数≥错数为 sparse_good（较好），否则为 sparse_poor（较差）。例如 2 对 1 错、1 对 1 错为较好，1 对 2 错为较差；原有具体失分点和巩固建议继续保留。较好显示橙色、较差显示绿色。mixed_performance 保留用于历史兼容及混合主题汇总。

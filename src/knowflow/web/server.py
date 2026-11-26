@@ -32,8 +32,6 @@ ASSETS = {
     "/knowledge-map.js": "text/javascript",
     "/course-stories.mjs": "text/javascript",
     "/analytics.mjs": "text/javascript",
-    "/explore-labs.mjs": "text/javascript",
-    "/explore-more.mjs": "text/javascript",
     "/theme-boot.js": "text/javascript",
     "/map-layout.mjs": "text/javascript",
     "/styles.css": "text/css",

@@ -1,7 +1,9 @@
 import {describe, distribution, aggregateRecords, topics} from './analytics.mjs';
 import { mountMap } from './knowledge-map.js';
 import { openTraining } from './training.js';
+import { mountLearning, learningRequest } from './learning.js';
 let unmountMap;
+let unmountLearning;
 let trainingData=null;
 import {
   esc,
@@ -62,7 +64,8 @@ const state = {
   chatMode: 'concise',
   studentSort: 'id',
   allHeatmap: false,
-  settingsTab: params.get('settingsTab') || 'profile'
+  settingsTab: params.get('settingsTab') || 'profile',
+  focus: params.get('focus') || ''
 };
 const $ = s => document.querySelector(s);
 
@@ -360,7 +363,8 @@ function saveURL() {
     report: state.report,
     profile: state.profileTab,
     panel: state.studentPanel,
-    settingsTab: state.settingsTab
+    settingsTab: state.settingsTab,
+    focus: state.focus || ''
   });
   history.replaceState(null, '', `/${state.role}?${q}`);
 }
@@ -398,7 +402,7 @@ function navItems() {
   ] : [
     ['overview', '学习总览', 'overview'],
     ['course', '我的知识地图', 'map'],
-    ['plan', '练习与建议', 'book'],
+    ['plan', '学习空间', 'book'],
     ['explore', '跨域探索', 'spark']
   ];
 }
@@ -689,6 +693,7 @@ function knowledgeList(list, fallback) {
 }
 
 function plans(sid, teacher = false) {
+  if (!teacher && state.role === 'student') return `<div class="learn-home-entry"><p>按知识点补测、学习和练习，错题与收藏会保存在你的账号下。</p><button class="button primary" data-view="plan">进入学习空间</button></div>`;
   const r = D.recommendations[state.node][sid];
   if (!r.plan.length) return empty('此节点没有生成新计划。若参与范围不明，请先确认范围；表现较好时也不强行加练。');
   const history = r.history || [];
@@ -750,7 +755,7 @@ function requirements() {
 function studentHome() { return personalPage(false); }
 
 function studentPlans() {
-  return `${hero('LEARNING INTO ACTION / 04','练习与建议','查看练习、完成标准与提交情况。')}${filters(true)}<section class="panel">${panelHead(`${esc(state.student)} 的学习建议`,`${esc(state.node)} · 预计用时供参考`,'<span class="pill">学习计划</span>')}${plans(state.student)}</section><section class="panel section-gap">${panelHead('想把学会的知识用起来？','试试自编互动实验，把抽象关系变成可观察的变化。')}<p class="panel-sub">先用数轴理解负数乘法的方向变化，再用预算方案练习建立数量关系。探索结果不计入正式评分。</p><button class="button light section-gap" data-view="explore">进入跨域探索 ${icon('arrow',15)}</button></section>`;
+  return `${filters(true)}<div id="learning-root"></div>`;
 }
 
 function collapsePanel(title, body, extraClass = '') {
@@ -970,6 +975,15 @@ async function openMaterial(id, seq = null, owner = null) {
     const canSubmit = plan && state.role === 'student';
     const form = canSubmit ? `<form class="answer-form" id="practice-form"><label for="practice-answer">${m.material_type==='assessment'?'写下你的答案与解题过程':'写下阅读收获与需要继续确认的问题'}</label><textarea id="practice-answer" required maxlength="20000" placeholder="保留你的思路，方便教师随后评阅。">${esc(saved?.answer||'')}</textarea><small>仅保存于本机浏览器；提交不代表答对或已经掌握。${saved?'再次提交会更新此项本机记录。':''}</small><button type="submit" class="button primary">${saved?'更新本机提交':'提交本机练习'} ${icon('arrow',14)}</button></form>` : '';
     showDrawer(esc(m.title), `<div class="evidence-chain"><span>${esc(id)}</span><span>${esc(m.objective_id||'参考材料')}</span>${plan?`<span>${esc(owner)}</span><span>计划 ${plan.seq}</span>`:''}</div>${plan?`<div class="notice"><strong>本次目标：</strong>${esc(plan.activity)}<br><strong>验证标准：</strong>${esc(plan.check)}</div>`:''}<div class="plain-text">${esc(m.body||'此材料正文见原始资料文件。')}</div>${options}${m.document_url?`<a class="button light section-gap" href="${esc(m.document_url)}" target="_blank" rel="noopener">打开原始 PDF ${icon('arrow',14)}</a>`:''}${rubric}<div id="submission-status">${saved?`<div class="feedback">已于 ${esc(new Date(saved.submitted_at).toLocaleString('zh-CN'))} 本机提交 · 待教师评阅<br>历史画像尚未改变。</div>`:''}</div>${state.role==='teacher'&&saved?`<h3>学生本机提交</h3><div class="plain-text">${esc(saved.answer)}</div>`:''}${form}${!plan&&state.role==='student'?'<div class="notice">这是资料浏览。要记录计划完成情况，请从“练习与建议”中的指定材料进入。</div>':''}${m.answer_key||m.explanation?`<details class="drawer-section section-gap"><summary class="text-button">${state.role==='teacher'?'查看参考答案与解析':'完成思考后，展开参考答案与解析'}</summary><div class="plain-text section-gap">${esc(m.answer_key||'')}\n\n${esc(m.explanation||'')}</div></details>`:''}`, 'LEARNING MATERIAL');
+    if (state.role === 'student' && m.material_type === 'assessment') {
+      const ctx = {student:owner || state.student,node:state.node};
+      const save = document.createElement('button'); save.type='button'; save.className='button light section-gap';
+      save.textContent='☆ 收藏题目'; save.setAttribute('aria-pressed','false');
+      document.querySelector('#drawer-content')?.append(save);
+      learningRequest('question',ctx,{question_id:id}).then(q=>{save.dataset.saved=String(q.favorite);save.textContent=q.favorite?'★ 已收藏':'☆ 收藏题目';save.setAttribute('aria-pressed',String(q.favorite));}).catch(()=>{});
+      save.onclick=async()=>{save.disabled=true;try{const result=await learningRequest('favorite',ctx,{question_id:id,favorite:save.dataset.saved!=='true'});save.dataset.saved=String(result.favorite);save.textContent=result.favorite?'★ 已收藏':'☆ 收藏题目';save.setAttribute('aria-pressed',String(result.favorite));}catch(error){toast(error.message);}finally{save.disabled=false;}};
+    }
+
   } catch (e) {
     if (version === requestVersion) showDrawer('材料读取失败', `<div class="error-box">${esc(e.message)}</div>`);
   }
@@ -1001,6 +1015,7 @@ function navigate(values) {
 window.addEventListener('popstate', () => {
   const q = new URLSearchParams(location.search);
   Object.assign(state, {role:location.pathname === '/student' ? 'student' : 'teacher', view:q.get('view') || 'overview', node:q.get('node'), group:q.get('group') || 'ALL', student:q.get('student'), report:q.get('report') || 'scores', profileTab:q.get('profile') || 'analysis', studentPanel:q.get('panel') || 'list', chartPage:0});
+  state.focus = q.get('focus') || '';
   render();
 });
 
@@ -1022,6 +1037,7 @@ function render() {
   normalize();
   saveURL();
   unmountMap?.();
+  unmountLearning?.();
   document.body.classList.toggle('course-mode',state.view==='course');
   document.body.classList.remove('module-mode');
   $('#app').innerHTML = shell();
@@ -1033,10 +1049,19 @@ function render() {
   trainingButton.className = 'button light training-entry';
   trainingButton.textContent = '变式训练 · PDF 与扫描回录';
   trainingButton.onclick = () => openTraining({student: state.student, node: state.node, teacher: !isStudentAccount(), students: D.students, onClose: async () => { try { trainingData = await getJSON('/api/training'); render(); } catch (e) { toast(e.message); } }});
-  $('#app .top-actions')?.append(trainingButton);
+  if (state.role === 'teacher') $('#app .top-actions')?.append(trainingButton);
   const map = $('#app [data-interactive-map]');
   if(map&&state.view==='course')map.setAttribute('workspace','');
+  if(map && state.focus) map.dataset.focus = state.focus;
   unmountMap = map ? mountMap(map, kb, openKnowledge, map.dataset.personal ? currentProfile() : null, trainingData) : null;
+  const learningRoot = $('#learning-root');
+  unmountLearning = learningRoot ? mountLearning(learningRoot, {student:state.student, node:state.node, knowledge:kb,
+    onMap:focus => navigate({view:'course',focus})}) : null;
+  if (state.role === 'student' && state.view === 'course' && state.focus) {
+    const back = document.createElement('button'); back.type='button'; back.className='button light';
+    back.textContent='返回学习卡'; back.onclick=()=>navigate({view:'plan'});
+    $('#app .top-actions')?.append(back);
+  }
   document.title = `${viewLabel(state.view)} · KnowFlow`;
   if (chatOpen) bindChatChrome();
   if (state.view === 'settings' && !profileData && !profileError) {

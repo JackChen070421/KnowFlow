@@ -37,6 +37,7 @@ data/progress/**
 
 # 本机教学反馈与补充证据（含学生作答与教师意见）：永不入库。
 data/feedback/**
+data/learning/**
 
 # Defense in depth: any CSV/XLSX/Parquet outside examples is assumed restricted.
 *.csv

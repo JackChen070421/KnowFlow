@@ -225,5 +225,6 @@ root.querySelector('.tools').append(motion,reset);
 $('overview').querySelector('.hint').append(' 拖动节点时邻居弹性跟随；点击节点可添加或隐藏演示连接。');
 const observer=new ResizeObserver(()=>{const oldW=width,oldH=height;if(measure()&&(width!==oldW||height!==oldH)){if(active)selectNode(active);else full()}});observer.observe(svg);
 render();
+if(host.dataset.focus){const target=nodes.find(n=>n.id===host.dataset.focus||n.indicators.includes(host.dataset.focus));if(target)choose(target.id)}
 return ()=>{persist();observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(physicsFrame)};
 }

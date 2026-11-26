@@ -106,6 +106,7 @@ class OpenAICompatClient:
         temperature: float,
         timeout: float,
         max_tokens: int = 1024,
+        json_mode: bool = False,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -114,6 +115,7 @@ class OpenAICompatClient:
         self._temperature = temperature
         self._timeout = timeout
         self._max_tokens = max_tokens
+        self._json_mode = json_mode
 
     @property
     def endpoint(self) -> str:
@@ -139,6 +141,8 @@ class OpenAICompatClient:
             "max_tokens": self._max_tokens,
             "stream": False,
         }
+        if self._json_mode:
+            payload["response_format"] = {"type": "json_object"}
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),

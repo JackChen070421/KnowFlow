@@ -1,5 +1,7 @@
 # schemas/ · 机器契约（第 1 层）
 
+新增学生学习空间独立契约：[learning.md](learning.md)；本机存储格式为 `output/learning_state.schema.json`。不改变 canonical 或正式画像。
+
 > 最后更新：2026-11-16（契约 v0.10，教学反馈闭环）
 > 字段/枚举速查：[`CONTRACT.md`](CONTRACT.md)。**先改 schema，再改代码。**
 

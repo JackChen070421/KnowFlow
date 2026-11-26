@@ -1,229 +1,190 @@
-import {relax} from './map-layout.mjs';
-export function mountMap(host, {materials, knowledge, curriculum_graph: graph}, openKnowledge, profile=null, training=null) {
-const palette={mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#d39b34'],insufficient_evidence:['待观察','#a3afbf'],unobserved:['未覆盖','#8296a8'],not_applicable:['本节点不适用','#cbd3df']};
-const personalStates=new Map((profile?.knowledge_states||[]).map(s=>[s.knowledge_id,s]));
-palette.confirmed_weak=['需加强','#df785c'];palette.confirmed_mastered=['已掌握','#199b79'];
-function nodeState(n){const ss=n.indicators.map(id=>personalStates.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='unobserved')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
-const nodes = (graph?.nodes || []).map(n => ({
- id: n.node_id, name: n.title, topic: n.theme_index, summary: n.summary,
- loc: n.source_locator, book: n.textbook, page: n.pdf_page,
- indicators: n.knowledge_ids, material: n.material_id
-}));
-const edges = (graph?.edges || []).map(e => ({
- id: e.edge_id, from: e.source_node_id, to: e.target_node_id,
- kind: e.relation_type, status: e.review_status
-}));
-if (!nodes.length) {
- host.innerHTML = '<div class="none">本次快照未包含正式课程图谱。请先构建 knowledge/curriculum_graph.json，或使用 --refresh 重新生成展示数据。</div>';
- return () => {};
-}
-const root=host.attachShadow({mode:"open"});
-root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools"><input type="search" id="query" aria-label="查找知识点" placeholder="查知识点、教材章节或编号，如「消元」"><select id="topic" aria-label="主题"><option value="">全部主题</option></select><button class="mode" id="overviewMode" aria-pressed="true">知识总览</button><button class="mode" id="listMode" aria-pressed="false">一览表</button></div>
-<section class="canvas" id="overview"><h2>七年级数学知识网络</h2><p class="hint">拖动圆点调整位置，拖动空白处平移。点击圆点聚焦，滚轮缩放。共 ${nodes.length} 个教材细目、${edges.length} 条关系，其中 ${edges.filter(e=>e.status!=='reviewed').length} 条待人工核验。</p><div class="legend" id="legend"></div>
-<div class="explorer"><div class="stage"><svg id="atlas" role="group" aria-label="可拖动的数学知识图谱"><defs><marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#bacebb"/></marker></defs><g id="world"><g id="lines"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" aria-live="polite"></article></div></section>
-<div id="nodata" class="none" hidden>没有匹配的知识点。请更换关键词或选择其他主题。</div>
-<div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>简要内容与学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
-const themes=['代数式与整式运算','方程与方程组','不等式与不等式组'];
-const $=id=>root.getElementById(id);
-const byId=new Map(nodes.map(n=>[n.id,n]));
-const storageKey='knowflow.map-layout.v2.'+(profile?.student_id||'course');
-let saved={};try{saved=JSON.parse(localStorage.getItem(storageKey)||'{}')||{}}catch{}
-const hiddenEdges=new Set(Array.isArray(saved.hidden)?saved.hidden:[]);
-let active=null,mode='overview';
-function el(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
-themes.forEach((t,i)=>$('topic').add(new Option(t,String(i))));
-function hits(){const q=$('query').value.trim().toLowerCase();return nodes.filter(n=>($('topic').value===''||String(n.topic)===$('topic').value)&&[n.name,n.id,n.summary,n.loc,themes[n.topic]].join(' ').toLowerCase().includes(q))}
+import {radialLayout,relaxCategory,interpolateCamera,resizeCamera} from './map-layout.mjs';
+import {storyContent,mountNodeVisual} from './course-stories.mjs';
 
-function btn(n,cls){let b=el('button',n.name,cls);b.onclick=()=>choose(n.id);return b}
-function pdf(n){
- const url=materials.find(m=>m.material_id===n.material)?.document_url;
- if(!url)return el('small','本机未载入该教材 PDF');
- const a=el('a','打开教材 · PDF 第 '+n.page+' 页 ↗','pdf');
- a.href=url+'#page='+n.page;a.target='_blank';a.rel='noopener';return a;
-}
-const colors=['#7fd4b0','#86bde8','#edb786'];
-(profile?Object.values(palette).filter((v,i,a)=>a.findIndex(x=>x[0]===v[0])===i):themes.map((name,i)=>[name,colors[i]])).forEach(([name,color])=>{const tag=el('span',name),dot=el('i','');dot.style.background=color;tag.prepend(dot);$('legend').append(tag)});
-if(profile){$('overview').querySelector('h2').textContent=profile.student_id+' · 个人知识地图';$('overview').querySelector('.hint').textContent='颜色来自当前测验的个人诊断；一个细目关联多个指标时优先显示需加强或证据不足。点击查看各指标，未覆盖不等于未掌握。'}
-const originalEdges=edges.filter((e,i)=>e.kind==='prerequisite'||!edges.slice(0,i).some(p=>p.kind===e.kind&&p.from===e.to&&p.to===e.from));
-let draftEdges=(Array.isArray(saved.drafts)?saved.drafts:[]).filter(e=>byId.has(e.from)&&byId.has(e.to)&&e.from!==e.to&&['prerequisite','related_to','confusable'].includes(e.kind));
-let uniqueEdges=[];
-// Fixed positions keep each connected component stable while highlighting and filtering.
-const globalPositions=[
- [150,148],[820,156],[348,55],[364,175],[595,185],[485,92],[92,444],
- [743,77],[755,333],[484,215],[65,65],[905,76],[403,305],[568,308],[66,248],
- [887,446],[901,316],[485,398],[734,455],[602,470],[236,237]
-];
-function svgEl(tag,attrs){
- const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
- for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);
- return e;
-}
-const svg=$('atlas'), positions=new Map(), homes=new Map(), groups=new Map(), segments=[];
-let camera={x:495,y:267,k:1}, width=990,height=534, frame=0, gesture=null, suppressClick=false;
-let shown=new Set(nodes.map(n=>n.id));
-let physicsFrame=0,energy=0,dynamic=true;
-const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-function persist(){try{localStorage.setItem(storageKey,JSON.stringify({positions:Object.fromEntries(positions),drafts:draftEdges,hidden:[...hiddenEdges]}))}catch{}}
-function rebuildEdges(){
-uniqueEdges=[...originalEdges.filter(e=>!hiddenEdges.has(e.id)),...draftEdges];
-$('lines').replaceChildren();segments.length=0;
-for(const edge of uniqueEdges){
- const line=svgEl('line',{class:'edge',stroke:'#a8c5b6','stroke-width':1.5});
- if(edge.status==='local')line.setAttribute('stroke','#7a8ee0');
- if(edge.kind==='prerequisite')line.setAttribute('marker-end','url(#tip)');else line.setAttribute('stroke-dasharray','4 4');
- $('lines').append(line);segments.push({edge,line});
-}
-}
-rebuildEdges();
-for(const [i,n] of nodes.entries()){
- const [x,y]=globalPositions[i]||[100+(i%6)*150,80+Math.floor(i/6)*120];homes.set(n.id,{x,y});
- const stored=saved.positions?.[n.id];positions.set(n.id,stored&&Number.isFinite(stored.x)&&Number.isFinite(stored.y)&&Math.abs(stored.x)<10000&&Math.abs(stored.y)<10000?stored:{x,y});
- const g=svgEl('g',{class:'point','data-id':n.id,tabindex:0,role:'button','aria-label':n.name+'，'+n.loc});
- const title=svgEl('title',{});title.textContent=n.name+' · '+n.loc;
- const label=svgEl('text',{'text-anchor':'middle',y:31});label.textContent=n.name;
- const status=nodeState(n)?.status||'insufficient_evidence';
- if(profile)title.textContent+=' · '+(palette[status]||palette.insufficient_evidence)[0];
- g.append(title,svgEl('circle',{r:22,fill:'transparent',style:'stroke:none'}),svgEl('circle',{r:10,fill:profile?(palette[status]||palette.insufficient_evidence)[1]:colors[n.topic]}),label);
- g.onclick=()=>{if(!suppressClick)selectNode(n.id)};
- g.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();selectNode(n.id)}};
- $('dots').append(g);groups.set(n.id,g);
-}
-function neighbors(id){return uniqueEdges.filter(e=>e.from===id||e.to===id).map(e=>({id:e.from===id?e.to:e.from,status:e.status,role:e.kind==='prerequisite'?(e.to===id?'基础知识':'后续应用'):(e.kind==='related_to'?'相关方法':'易混对照')}))}
-function paint(){
- $('world').setAttribute('transform','translate('+width/2+' '+height/2+') scale('+camera.k+') translate('+(-camera.x)+' '+(-camera.y)+')');
- for(const [id,g] of groups){const p=positions.get(id);g.setAttribute('transform','translate('+p.x+' '+p.y+')')}
- for(const {edge,line} of segments){
-  const a=positions.get(edge.from),b=positions.get(edge.to),dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
-  const r=Math.min(13,d/2);
-  for(const [key,val] of Object.entries({x1:a.x+r*dx/d,y1:a.y+r*dy/d,x2:b.x-r*dx/d,y2:b.y-r*dy/d}))line.setAttribute(key,val);
+export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openKnowledge,profile=null,training=null){
+ const nodes=(graph?.nodes||[]).map(n=>({id:n.node_id,name:n.title,topic:n.theme_index,summary:n.summary,loc:n.source_locator,page:n.pdf_page,indicators:n.knowledge_ids,material:n.material_id}));
+ if(!nodes.length){host.textContent='本次快照未包含课程图谱，请刷新展示数据。';return()=>{}}
+ const themes=['代数式与整式运算','方程与方程组','不等式与不等式组'];
+ const colors=['#268a72','#4a83bd','#bc7d42'];
+ const states=new Map((profile?.knowledge_states||[]).map(s=>[s.knowledge_id,s]));
+ const palette={confirmed_mastered:['已掌握','#199b79'],mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],confirmed_weak:['需加强','#df785c'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#b58b31'],insufficient_evidence:['待观察','#a3afbf'],unobserved:['未覆盖','#8296a8'],not_applicable:['本节点不适用','#cbd3df']};
+ const byId=new Map(nodes.map(n=>[n.id,n])),edges=graph.edges||[];
+ const root=host.attachShadow({mode:'open'});
+ root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
+ const $=id=>root.getElementById(id),svg=$('atlas'),world=$('world');
+ function el(tag,text='',cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
+ function se(tag,attrs={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
+ function svgText(parent,text,x,y,cls){const t=se('text',{x,y,'text-anchor':'middle',class:cls});t.textContent=text;parent.append(t)}
+ function action(group,fn){group.setAttribute('role','button');group.setAttribute('tabindex','0');group.onclick=()=>{if(!suppressClick)fn()};group.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();fn()}}}
+ function nodeState(n){const ss=n.indicators.map(id=>states.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='unobserved')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
+ const layout=radialLayout(nodes);
+ const chapterSpeed=(Math.random()<.5?-1:1)*Math.PI*2/(480000+Math.random()*180000);
+ const chapterOrbits=new Map([...layout.hubs.keys()].map(topic=>[topic,{time:0,phase:Math.random()*Math.PI*2,period:45000+Math.random()*30000,amplitude:.035+Math.random()*.025,radial:5+Math.random()*5}]));
+ const categoryOrbits=new Map([...layout.hubs.keys()].map(topic=>[topic,{speed:(Math.random()<.5?-1:1)*Math.PI*2/(300000+Math.random()*180000)}]));
+ const nodeOrbits=new Map(nodes.map(n=>[n.id,{time:0,phase:Math.random()*Math.PI*2,period:18000+Math.random()*24000,amplitude:.012+Math.random()*.018}]));
+ const points=new Map([['course',layout.center],...[...layout.hubs].map(([id,p])=>['category-'+id,p]),...layout.positions]);
+ const homes=new Map([...points].map(([id,p])=>[id,{...p}]));
+ const springs=[...[...layout.hubs.keys()].map(id=>({from:'course',to:'category-'+id})),...nodes.map(n=>({from:'category-'+n.topic,to:n.id}))];
+ const segments=[],hubGroups=new Map();
+ let drawKey=null,renderPoints=[],lastCamera='',paintFrame=0,geometryDirty=false;
+ let physicsFrame=0,energy=0,pinned=null,dynamic=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let orbitFrame=0,orbitLast=0,orbitHover=false;
+ let cameraFrame=0,cameraReady=false,animateNext=false;
+ let mode='overview',active=null,shown=nodes,groups=new Map(),camera={x:0,y:0,k:1},width=900,height=650,gesture=null,suppressClick=false,frame=0,disposed=false;
+ themes.forEach((name,i)=>{$('topic').add(new Option(name,String(i)));const item=el('span',name),dot=el('i');dot.style.background=colors[i];item.prepend(dot);$('legend').append(item)});
+ if(profile)$('legend').append(el('span','节点圆点表示个人学情；边框表示类别'));
+ function curve(a,b,color,main=false){const path=se('path',{fill:'none',stroke:color,'stroke-width':main?5:2.2,class:'category-branch'});$('branches').append(path);segments.push({a,b,path})}
+ function draw(){
+  const key=shown.map(n=>n.id).join('|');
+  if(drawKey===key){highlight();syncViewport();paint(true);return}
+  drawKey=key;
+  groups=new Map();segments.length=0;hubGroups.clear();$('branches').replaceChildren();$('hubs').replaceChildren();$('dots').replaceChildren();
+  const center=se('g',{class:'course-hub','aria-label':'七年级数学，查看全部类别'});
+  center.append(se('circle',{r:82}));svgText(center,'七年级',0,-5,'center-title');svgText(center,'数学',0,28,'center-title');action(center,full);$('hubs').append(center);
+  center.dataset.dragId='course';hubGroups.set('course',center);
+  for(const [topic,hub] of layout.hubs){
+   const category=shown.filter(n=>n.topic===topic);if(!category.length)continue;curve(layout.center,hub,colors[topic],true);
+   const g=se('g',{transform:`translate(${hub.x} ${hub.y})`,class:'category-hub','aria-label':themes[topic]+'，聚焦本类',style:`--branch:${colors[topic]}`});
+   g.append(se('rect',{x:-120,y:-34,width:240,height:68,rx:22}));svgText(g,themes[topic],0,-2,'category-title');svgText(g,category.length+' 个知识点',0,22,'category-count');action(g,()=>{stopCamera();animateNext=true;pinned=null;$('topic').value=String(topic);render()});$('hubs').append(g);
+   g.dataset.dragId='category-'+topic;hubGroups.set('category-'+topic,g);
+   for(const n of category){
+    const p=layout.positions.get(n.id);curve(hub,p,colors[topic]);
+    const item=se('g',{transform:`translate(${p.x} ${p.y})`,class:'point radial-node','data-id':n.id,style:`--branch:${colors[topic]}`,'aria-label':n.name+'，打开图解','aria-pressed':n.id===active});
+    item.append(se('circle',{r:32,class:'node-halo'}));const title=se('title');title.textContent=n.name+' · '+n.loc;item.append(title);
+    const status=nodeState(n)?.status;item.append(se('circle',{r:21,class:'node-core',fill:profile?(palette[status]||palette.insufficient_evidence)[1]:colors[topic]}));
+    const split=Math.ceil(n.name.length/2),chunks=n.name.length>7?[n.name.slice(0,split),n.name.slice(split)]:[n.name];chunks.forEach((chunk,i)=>svgText(item,chunk,0,(p.y<hub.y-20?-37-(chunks.length-1)*25:49)+i*25,'node-label'));action(item,()=>choose(n.id));$('dots').append(item);groups.set(n.id,item);
+    item.dataset.dragId=n.id;
+   }
+  }renderPoints=[...groups,...hubGroups].map(([id,element])=>({point:points.get(id),element,x:NaN,y:NaN}));highlight();syncViewport();paint(true);
  }
-}
-function wake(){
- if(!dynamic||reduced)return;
- energy=1;if(physicsFrame)return;
- function tick(){
-  const ps=[...shown].map(id=>({id,...positions.get(id)}));
-  relax(ps,uniqueEdges,gesture?.id||active,energy);
-  for(const p of ps)positions.set(p.id,{x:p.x,y:p.y});
-  paint();energy*=.976;
-  if(gesture?.id)energy=Math.max(energy,.5);
-  if(energy>.025)physicsFrame=requestAnimationFrame(tick);else{physicsFrame=0;persist()}
+ function highlight(){for(const [id,g] of groups){g.classList.toggle('selected',id===active);g.classList.toggle('dim',!!active&&byId.get(id).topic!==byId.get(active).topic);g.setAttribute('aria-pressed',String(id===active))}}
+ function paint(geometry=false){
+  const transform=`translate(${width/2} ${height/2}) scale(${camera.k}) translate(${-camera.x} ${-camera.y})`;
+  if(transform!==lastCamera){world.setAttribute('transform',transform);lastCamera=transform}
+  if(!geometry)return;
+  for(const item of renderPoints){const p=item.point;if(p.x===item.x&&p.y===item.y)continue;item.element.setAttribute('transform',`translate(${p.x} ${p.y})`);item.x=p.x;item.y=p.y;const n=byId.get(item.element.dataset.id);if(n){const hub=layout.hubs.get(n.topic),labels=item.element.querySelectorAll('.node-label');labels.forEach((label,i)=>label.setAttribute('y',String((p.y<hub.y-20?-37-(labels.length-1)*25:49)+i*25)))}}
+  for(const segment of segments){const {a,b,path}=segment;const d=`M ${a.x} ${a.y} Q ${a.x} ${b.y} ${b.x} ${b.y}`;if(d!==segment.d){path.setAttribute('d',d);segment.d=d}}
  }
- physicsFrame=requestAnimationFrame(tick);
-}
-function layoutTo(targets,end){
- cancelAnimationFrame(frame);
- cancelAnimationFrame(physicsFrame);physicsFrame=0;
- const from=new Map(positions),start={...camera},t0=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:620;
- function step(t){
-  const u=duration?Math.min(1,(t-t0)/duration):1,m=u*u*u*(u*(u*6-15)+10);
-  for(const [id,p] of targets){const a=from.get(id);positions.set(id,{x:a.x+(p.x-a.x)*m,y:a.y+(p.y-a.y)*m})}
-  for(const key of ['x','y','k'])camera[key]=start[key]+(end[key]-start[key])*m;
-  paint();if(u<1)frame=requestAnimationFrame(step);else wake();
- }
- frame=requestAnimationFrame(step);
-}
-function styleMap(){
- const near=new Set(active?[active,...neighbors(active).map(n=>n.id)]:[]);
- for(const [id,g] of groups){
-  g.style.display=shown.has(id)?'':'none';g.classList.toggle('dim',!!active&&!near.has(id));
-  g.classList.toggle('selected',id===active);g.setAttribute('aria-pressed',id===active);
- }
- for(const {edge,line} of segments){
-  line.style.display=shown.has(edge.from)&&shown.has(edge.to)?'':'none';
-  line.classList.toggle('dim',!!active&&edge.from!==active&&edge.to!==active);
- }
-}
-function showDetail(){
- const d=$('detail');d.replaceChildren();
- d.classList.toggle('empty',!active);
- if(active){const close=el('button','收起详情');close.onclick=full;d.append(close)}
- if(!active){d.append(el('div','知识点索引','meta'),el('h2',shown.size+' 个知识点'),el('p','选择圆点，查看学习要求、教材位置和直接联系。'),el('h3','关系线'),el('p','实线箭头从基础指向应用。虚线连接易混性质或相关方法；标“待核验”的关系尚未人工确认，不参与学习顺序。'));return}
- const n=byId.get(active);
- d.append(el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name),el('h3','学习要求'),el('p',n.summary),el('h3','教材位置'),el('p',n.loc),pdf(n));
- d.append(el('h3','对应观察指标'));
- for(const id of n.indicators){
-  const k=knowledge.find(item=>item.knowledge_id===id);
-  if(profile){const s=personalStates.get(id);d.append(el('p',k?.name+'：'+(palette[s?.status]||palette.insufficient_evidence)[0]+(s?.evidence_count?' · '+s.evidence_count+' 条评分证据':' · 暂无评分，未覆盖')));
-   const scores=[];for(const scan of training?.scans||[]){if(scan.status!=='reviewed'||scan.student_id!==profile.student_id||scan.node_id!==profile.node_id)continue;const paper=training.papers.find(p=>p.id===scan.paper_id);for(const q of paper?.questions||[]){if(q.knowledge_id===id)scores.push(scan.scores[q.question_id])}}
-   if(scores.length)d.append(el('p','补充训练：'+scores.length+' 题 · 平均得分 '+Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*100)+'%（独立证据，未覆盖原始诊断）'));
+ function requestPaint(geometry=false){geometryDirty=geometryDirty||geometry;if(paintFrame)return;paintFrame=requestAnimationFrame(()=>{paintFrame=0;if(disposed)return;const dirty=geometryDirty;geometryDirty=false;paint(dirty)})}
+ // Slow, varied category orbits with bounded individual drift to preserve spacing.
+ // Random parameters stay fixed for this mount; never add per-frame jitter.
+ function orbit(now){
+  if(disposed)return;
+  orbitFrame=requestAnimationFrame(orbit);
+  if(!orbitLast){orbitLast=now;return}
+  const elapsed=now-orbitLast;if(elapsed<33)return;orbitLast=now;
+  if(!dynamic||document.hidden||mode!=='overview'||active||gesture||orbitHover||physicsFrame||cameraFrame||frame||svg.querySelector(':focus'))return;
+  const dt=Math.min(elapsed,70);
+  // Keep chapters spaced around the course while adding gentle, independent drift.
+  // Move every child with its hub; pause this outer orbit in filtered views.
+  if(shown.length===nodes.length){
+   for(const [topic,hub] of layout.hubs){
+    const motion=chapterOrbits.get(topic),before=motion.phase+motion.time/motion.period*Math.PI*2;
+    motion.time+=dt;
+    const after=motion.phase+motion.time/motion.period*Math.PI*2;
+    const angle=chapterSpeed*dt+motion.amplitude*(Math.sin(after)-Math.sin(before));
+    const dx=hub.x-layout.center.x,dy=hub.y-layout.center.y,radius=Math.hypot(dx,dy);
+    const radial=motion.radial*(Math.sin(after*.73)-Math.sin(before*.73));
+    const scale=radius>1?Math.max(1,radius+radial)/radius:1,c=Math.cos(angle),s=Math.sin(angle);
+    const x=layout.center.x+(dx*c-dy*s)*scale,y=layout.center.y+(dx*s+dy*c)*scale;
+    for(const n of nodes){if(n.topic!==topic)continue;const p=layout.positions.get(n.id);p.x+=x-hub.x;p.y+=y-hub.y}
+    hub.x=x;hub.y=y;
+   }
   }
-  if(k){const b=el('button',k.name+' · 学情与材料');b.onclick=()=>openKnowledge(id);d.append(b)}
+  for(const n of shown){
+   const motion=nodeOrbits.get(n.id),before=motion.phase+motion.time/motion.period*Math.PI*2;
+   motion.time+=dt;
+   const after=motion.phase+motion.time/motion.period*Math.PI*2;
+   const angle=categoryOrbits.get(n.topic).speed*dt+motion.amplitude*(Math.sin(after)-Math.sin(before)),c=Math.cos(angle),s=Math.sin(angle);
+   const p=layout.positions.get(n.id),hub=layout.hubs.get(n.topic),dx=p.x-hub.x,dy=p.y-hub.y;p.x=hub.x+dx*c-dy*s;p.y=hub.y+dx*s+dy*c;
+  }
+  requestPaint(true);
  }
- const ns=neighbors(active);d.append(el('h3','直接联系 · '+ns.length));
- for(const other of ns){const b=el('button',other.role+(other.status==='local'?' · 演示关系':other.status==='reviewed'?' · 已核对':' · 待核验')+' · '+byId.get(other.id).name);b.onclick=()=>choose(other.id);d.append(b)}
- d.append(el('h3','调整演示关系'),el('p','本浏览器保存的演示连接，不改变正式课程关系。'));
- const target=el('select','');target.setAttribute('aria-label','连接目标');
- for(const other of nodes.filter(v=>v.id!==active))target.add(new Option(other.name,other.id));
- const type=el('select','');type.setAttribute('aria-label','关系类型');
- for(const [value,label] of [['related_to','相关方法'],['prerequisite','基础 → 应用'],['confusable','易混对照']])type.add(new Option(label,value));
- const add=el('button','添加连接');add.onclick=()=>{
-  if(!uniqueEdges.some(e=>e.from===active&&e.to===target.value&&e.kind===type.value))draftEdges.push({id:'local-'+crypto.randomUUID(),from:active,to:target.value,kind:type.value,status:'local'});
-  rebuildEdges();styleMap();showDetail();persist();wake();
- };
- d.append(target,type,add);
- for(const edge of uniqueEdges.filter(e=>e.from===active||e.to===active)){
-  const remove=el('button','隐藏连接 · '+byId.get(edge.from===active?edge.to:edge.from).name);
-  remove.onclick=()=>{if(edge.status==='local')draftEdges=draftEdges.filter(e=>e.id!==edge.id);else hiddenEdges.add(edge.id);rebuildEdges();styleMap();showDetail();persist();wake()};d.append(remove);
+ svg.addEventListener('pointerover',e=>{orbitHover=!!e.target.closest('[data-drag-id]')});
+ svg.addEventListener('pointerout',e=>{orbitHover=!!e.relatedTarget?.closest?.('[data-drag-id]')});
+ svg.addEventListener('pointerleave',()=>{orbitHover=false});
+ function wake(){
+  if(!dynamic||disposed||mode!=='overview'||!shown.length)return;energy=1;if(physicsFrame)return;
+  const visible=new Set(['course',...shown.map(n=>'category-'+n.topic),...shown.map(n=>n.id)]);
+  const ps=[...points].filter(([id])=>visible.has(id)).map(([id,p])=>({id,...p,point:p,homeX:homes.get(id).x,homeY:homes.get(id).y}));
+  const links=springs.filter(e=>visible.has(e.from)&&visible.has(e.to));let lastTick=-Infinity,quiet=0;
+  function tick(now){
+   if(disposed)return;
+   if(now-lastTick<32){physicsFrame=requestAnimationFrame(tick);return}lastTick=now;
+   for(const p of ps){p.x=p.point.x;p.y=p.point.y}
+   relaxCategory(ps,links,gesture?.node||pinned,energy);let movement=0;
+   for(const p of ps){movement=Math.max(movement,Math.abs(p.x-p.point.x)+Math.abs(p.y-p.point.y));p.point.x=p.x;p.point.y=p.y}
+   requestPaint(true);energy*=.89;quiet=movement<.06?quiet+1:0;if(gesture?.node)energy=Math.max(.5,energy);
+   if((energy>.025&&quiet<3)||gesture?.node)physicsFrame=requestAnimationFrame(tick);else{physicsFrame=0}
+  }
+  physicsFrame=requestAnimationFrame(tick);
  }
-}
-function selectNode(id){
- active=id;styleMap();showDetail();
- const p=positions.get(id),near=neighbors(id).filter(n=>shown.has(n.id));
- const k=Math.min(1.35,Math.max(.74,width/630));
- const targets=new Map(positions);
- // Foreground nodes stay selectable even when unrelated regions overlap.
- for(const n of [...near,{id}])$('dots').append(groups.get(n.id));
- layoutTo(targets,{x:p.x,y:p.y,k});
-}
-function full(){
- active=null;styleMap();showDetail();
- const ps=[...shown].map(id=>positions.get(id));if(!ps.length)return;
- const xs=ps.map(p=>p.x),ys=ps.map(p=>p.y),left=Math.min(...xs)-83,right=Math.max(...xs)+83,top=Math.min(...ys)-40,bottom=Math.max(...ys)+76;
- layoutTo(new Map(positions),{x:(left+right)/2,y:(top+bottom)/2,k:Math.min(width/(right-left),height/(bottom-top),1.45)});
-}
-function local(e){const b=svg.getBoundingClientRect();return {x:e.clientX-b.left,y:e.clientY-b.top}}
-function zoom(f,p={x:width/2,y:height/2}){
- cancelAnimationFrame(frame);const k=Math.min(4,Math.max(.18,camera.k*f));
- camera.x+=(p.x-width/2)*(1/camera.k-1/k);camera.y+=(p.y-height/2)*(1/camera.k-1/k);camera.k=k;paint()
-}
-svg.onwheel=e=>{e.preventDefault();zoom(Math.exp(-Math.sign(e.deltaY)*.14),local(e))};
-svg.onpointerdown=e=>{
- if(e.button!==0||gesture)return;
- cancelAnimationFrame(frame);suppressClick=false;
- const id=e.target.closest('.point')?.dataset.id;
- const target=id?groups.get(id):svg;
- gesture={pointer:e.pointerId,id,origin:local(e),start:id?{...positions.get(id)}:{...camera},moved:false};
- if(svg.hasPointerCapture(e.pointerId)||e.isTrusted)target.setPointerCapture(e.pointerId);
-};
-svg.onpointermove=e=>{
- if(!gesture||gesture.pointer!==e.pointerId)return;
- const p=local(e),dx=p.x-gesture.origin.x,dy=p.y-gesture.origin.y;
- if(!gesture.moved&&Math.hypot(dx,dy)<4)return;
- gesture.moved=true;svg.classList.add('dragging');
- const {id,start}=gesture;
- if(id){const pos={x:start.x+dx/camera.k,y:start.y+dy/camera.k};positions.set(id,pos);wake()}
- else{camera.x=start.x-dx/camera.k;camera.y=start.y-dy/camera.k}
- paint();
-};
-function endGesture(e){if(gesture?.pointer!==e.pointerId)return;suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');persist();wake();setTimeout(()=>suppressClick=false,0)}
-svg.onpointerup=svg.onpointercancel=endGesture;
-function choose(id){if(!shown.has(id)){$('query').value='';$('topic').value=''}if(mode==='list'||!shown.has(id)){mode='overview';render()}selectNode(id)}
-function measure(){const b=svg.getBoundingClientRect();if(!b.width||!b.height)return false;width=b.width;height=b.height;svg.setAttribute('viewBox','0 0 '+width+' '+height);return true}
-function render(){
- const results=hits();shown=new Set(results.map(n=>n.id));
- $('nodata').hidden=!!results.length;$('overview').hidden=mode==='list'||!results.length;$('list').hidden=mode!=='list'||!results.length;
- $('overviewMode').setAttribute('aria-pressed',mode==='overview');$('listMode').setAttribute('aria-pressed',mode==='list');
- if(mode==='list'){const body=$('rows');body.replaceChildren();for(const n of results){const tr=el('tr',''),name=el('td',''),loc=el('td',n.loc);name.append(btn(n,''));loc.append(el('br',''),pdf(n));tr.append(name,el('td',n.summary),loc);body.append(tr)}}else if(measure())full();
-}
-$('query').oninput=$('topic').onchange=render;
-$('overviewMode').onclick=()=>{mode='overview';render()};$('listMode').onclick=()=>{mode='list';render()};
-$('home').onclick=full;$('plus').onclick=()=>zoom(1.25);$('minus').onclick=()=>zoom(.8);
-const motion=el('button','动态布局：开');motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0;persist()}};
-const reset=el('button','重置布局与关系');reset.onclick=()=>{draftEdges=[];hiddenEdges.clear();for(const [id,p] of homes)positions.set(id,{...p});rebuildEdges();persist();full()};
-root.querySelector('.tools').append(motion,reset);
-$('overview').querySelector('.hint').append(' 拖动节点时邻居弹性跟随；点击节点可添加或隐藏演示连接。');
-const observer=new ResizeObserver(()=>{const oldW=width,oldH=height;if(measure()&&(width!==oldW||height!==oldH)){if(active)selectNode(active);else full()}});observer.observe(svg);
-render();
-return ()=>{persist();observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(physicsFrame)};
+ function syncViewport(){
+  const box=svg.getBoundingClientRect();if(!box.width||!box.height)return false;
+  if(cameraReady&&(box.width!==width||box.height!==height)){camera=resizeCamera(camera,width,height,box.width,box.height);if(cameraFrame){cancelAnimationFrame(cameraFrame);cameraFrame=0;animateNext=true}}
+  width=box.width;height=box.height;svg.setAttribute('viewBox',`0 0 ${width} ${height}`);return true;
+ }
+ function fit(){
+  if(disposed||mode!=='overview'||!shown.length||!syncViewport())return;
+  // Freeze geometry during camera travel: only one transform changes per frame.
+  cancelAnimationFrame(physicsFrame);physicsFrame=0;
+  const focus=active?byId.get(active).topic:$('topic').value===''?null:Number($('topic').value);
+  const points=shown.filter(n=>focus===null||n.topic===focus).map(n=>layout.positions.get(n.id));
+  if(focus===null)points.push(layout.center,...layout.hubs.values());else points.push(layout.hubs.get(focus));
+  if(!active){for(const [topic,hub] of layout.hubs){const visible=shown.filter(n=>n.topic===topic);if(!visible.length)continue;const radius=Math.max(...visible.map(n=>{const p=layout.positions.get(n.id);return Math.hypot(p.x-hub.x,p.y-hub.y)}));points.push({x:hub.x-radius,y:hub.y-radius},{x:hub.x+radius,y:hub.y+radius})}}
+  if(!active&&shown.length===nodes.length){
+   const radius=Math.max(...nodes.map(n=>{const hub=layout.hubs.get(n.topic),p=layout.positions.get(n.id);return Math.hypot(hub.x-layout.center.x,hub.y-layout.center.y)+Math.hypot(p.x-hub.x,p.y-hub.y)+20}));
+   points.push({x:layout.center.x-radius,y:layout.center.y-radius},{x:layout.center.x+radius,y:layout.center.y+radius});
+  }
+  const left=Math.min(...points.map(p=>p.x))-130,right=Math.max(...points.map(p=>p.x))+130,top=Math.min(...points.map(p=>p.y))-85,bottom=Math.max(...points.map(p=>p.y))+95;
+  const selected=active?layout.positions.get(active):null;
+  const target=selected?{x:selected.x,y:selected.y,k:Math.max(.75,Math.min(1.25,width/480,height/440))}:{x:(left+right)/2,y:(top+bottom)/2,k:Math.min((width-28)/(right-left),(height-70)/(bottom-top),1.4)};
+  if(!active&&shown.length===nodes.length)target.k*=1.12;
+  const animate=cameraReady&&(animateNext||cameraFrame!==0)&&!matchMedia('(prefers-reduced-motion: reduce)').matches;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
+  if(!animate){camera=target;paint();return}
+  const start={...camera},t0=performance.now();
+  function step(now){if(disposed)return;const progress=Math.min(1,(now-t0)/420);camera=interpolateCamera(start,target,progress);paint();if(progress<1)cameraFrame=requestAnimationFrame(step);else cameraFrame=0}
+  cameraFrame=requestAnimationFrame(step);
+ }
+ function scheduleFit(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;fit()})}
+ function pdf(n){const url=materials.find(m=>m.material_id===n.material)?.document_url;if(!url)return el('small','本机未载入该教材 PDF');const a=el('a','打开教材 · PDF 第 '+n.page+' 页 ↗','pdf');a.href=url+'#page='+n.page;a.target='_blank';a.rel='noopener';return a}
+ let disposeVisual=()=>{};
+ function showDetail(){
+  disposeVisual();disposeVisual=()=>{};
+  const d=$('detail');d.replaceChildren();d.hidden=!active;root.querySelector('.explorer').classList.toggle('has-detail',!!active);if(!active)return;
+  const n=byId.get(active),c=storyContent[n.id];d.scrollTop=0;
+  const close=el('button','收起讲解','detail-close');close.onclick=()=>{animateNext=true;active=null;pinned=null;showDetail();syncViewport();highlight();paint();scheduleFit()};d.append(close,el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name));
+  if(c){
+   d.append(el('p',c.question,'story-question'));disposeVisual=mountNodeVisual(d,n.id,el,se)||(()=>{});d.append(el('h3','要点'),el('p',c.idea),el('div',c.example,'story-example'));
+   if(c.life)d.append(el('h3','联系生活'),el('p',c.life));
+   d.append(el('h3','相关知识'));
+   for(const [target] of c.next){if(byId.has(target)){const b=el('button',byId.get(target).name,'story-link');b.onclick=()=>choose(target);d.append(b)}}
+  }else d.append(el('p',n.summary));
+  const source=el('details','','story-sources');source.append(el('summary','教材与学情'),pdf(n));
+  for(const id of n.indicators){const k=knowledge.find(v=>v.knowledge_id===id);if(!k)continue;
+   if(profile){const s=states.get(id);source.append(el('p',k.name+'：'+(palette[s?.status]||palette.insufficient_evidence)[0]+' · '+(s?.evidence_count||0)+' 条评分证据'));
+    const scores=[];for(const scan of training?.scans||[]){if(scan.status!=='reviewed'||scan.student_id!==profile.student_id||scan.node_id!==profile.node_id)continue;const paper=training?.papers?.find(p=>p.id===scan.paper_id);for(const q of paper?.questions||[]){const score=scan.scores?.[q.question_id];if(q.knowledge_id===id&&Number.isFinite(score))scores.push(score)}}
+    if(scores.length)source.append(el('p','补充训练：'+scores.length+' 题 · 平均得分 '+Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*100)+'%'));
+   }
+   const b=el('button',k.name+' · 学情与材料','story-link');b.onclick=()=>openKnowledge(id);source.append(b);
+  }d.append(source);
+ }
+ function choose(id){if(!byId.has(id))return;stopCamera();animateNext=true;pinned=id;if(!shown.some(n=>n.id===id)){$('query').value='';$('topic').value='';shown=nodes}mode='overview';active=id;render(false)}
+ function full(){stopCamera();animateNext=true;pinned=null;$('query').value='';$('topic').value='';active=null;mode='overview';render()}
+ function render(clear=true){
+  if(clear)active=null;const q=$('query').value.trim().toLowerCase();shown=nodes.filter(n=>($('topic').value===''||String(n.topic)===$('topic').value)&&[n.name,n.id,n.summary,n.loc,...Object.values(storyContent[n.id]||{}).flat(2)].join(' ').toLowerCase().includes(q));
+  $('nodata').hidden=!!shown.length;$('overview').hidden=mode!=='overview'||!shown.length;$('list').hidden=mode!=='list'||!shown.length;$('overviewMode').setAttribute('aria-pressed',String(mode==='overview'));$('listMode').setAttribute('aria-pressed',String(mode==='list'));
+  motion.hidden=reset.hidden=mode!=='overview';cancelAnimationFrame(physicsFrame);physicsFrame=0;if(mode!=='overview')stopCamera();
+  if(mode==='list'){$('rows').replaceChildren();for(const n of shown){const tr=el('tr'),name=el('td'),b=el('button',n.name),loc=el('td',n.loc);b.onclick=()=>choose(n.id);name.append(b);loc.append(el('br'),pdf(n));tr.append(name,el('td',n.summary),loc);$('rows').append(tr)}}else{showDetail();draw();scheduleFit()}
+ }
+ function stopCamera(){cancelAnimationFrame(frame);frame=0;cancelAnimationFrame(cameraFrame);cameraFrame=0;animateNext=false}
+ function zoom(f){stopCamera();camera.k=Math.max(.15,Math.min(3,camera.k*f));requestPaint()}
+ $('query').oninput=$('topic').onchange=()=>render();$('overviewMode').onclick=()=>{mode='overview';render()};$('listMode').onclick=()=>{mode='list';render()};$('home').onclick=full;$('plus').onclick=()=>zoom(1.25);$('minus').onclick=()=>zoom(.8);
+ svg.onwheel=e=>{e.preventDefault();zoom(Math.exp(-Math.sign(e.deltaY)*.14))};
+ svg.onpointerdown=e=>{if(e.button!==0)return;stopCamera();suppressClick=false;const node=e.target.closest('[data-drag-id]')?.dataset.dragId;gesture={id:e.pointerId,node,start:node?{...points.get(node)}:null,x:e.clientX,y:e.clientY,camera:{...camera},moved:false}};
+ svg.onpointermove=e=>{if(!gesture||gesture.id!==e.pointerId)return;const dx=e.clientX-gesture.x,dy=e.clientY-gesture.y;if(!gesture.moved&&Math.hypot(dx,dy)>4){gesture.moved=true;svg.setPointerCapture(e.pointerId);svg.classList.add('dragging')}if(!gesture.moved)return;if(gesture.node){pinned=gesture.node;Object.assign(points.get(gesture.node),{x:gesture.start.x+dx/camera.k,y:gesture.start.y+dy/camera.k});wake()}else{camera.x=gesture.camera.x-dx/camera.k;camera.y=gesture.camera.y-dy/camera.k}requestPaint(!!gesture.node)};
+ function end(e){if(gesture?.id!==e.pointerId)return;const movedNode=gesture.moved&&gesture.node,blankClick=!gesture.moved&&!gesture.node&&e.type==='pointerup';suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');if(blankClick)full();else if(movedNode)wake();setTimeout(()=>suppressClick=false,0)}svg.onpointerup=svg.onpointercancel=end;
+ const motion=el('button','动态布局：'+(dynamic?'开':'关'));motion.id='motion';motion.setAttribute('aria-pressed',String(dynamic));motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');motion.setAttribute('aria-pressed',String(dynamic));if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0}};
+ const reset=el('button','重置布局');reset.id='resetLayout';reset.onclick=()=>{cancelAnimationFrame(physicsFrame);physicsFrame=0;pinned=null;for(const [id,p] of points)Object.assign(p,homes.get(id));full()};root.querySelector('.tools').append(motion,reset);
+ const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
 }

@@ -10,6 +10,16 @@
 
 ---
 
+## 2026-11-27 — PDF板块更新
+
+- 优化训练工作区双栏布局、试卷状态卡片及窄屏显示。
+- 题卷/答案通过权限过滤后的 JSON 与 HTML 排版，独立打印页调用浏览器原生打印保存 PDF，不依赖 Python PDF 生成库。
+- 保留后端访问权限与扫描流程；HTML 预览不承诺与打印分页完全一致。
+- 验证：契约、合成样例、完整 pytest 与 24 项前端测试通过；浏览器确认布局及题卷预览。最终保存 PDF 未实测。
+- 回退：还原 training.js、pdf-viewer.js、pdf-print 三文件、styles.css、对应测试及说明。
+
+---
+
 ## 2026-11-26 — 动画默认开启，不再由系统「减少动效」拦截
 
 - 根因：原实现把系统设置当总开关——Windows 关闭「动画效果」→ 浏览器上报 `prefers-reduced-motion: reduce` → 三处各自关闭：`knowledge-map.js` 的 `dynamic`（空闲漂移/相机补间/拖拽物理）、`styles.css` 的全局 `animation/transition: none !important`、`motion.css` 整份包在 `@media (no-preference)` 里。演示机上因此整页静态，且界面上没有任何入口能打开。
@@ -19,6 +29,17 @@
 - 无障碍代价：偏好「减少动效」的用户现在也会看到动画，需要自己关一次（本机记住）。这是为演示可见性做的取舍，不是遗漏。
 - 验证：`node --test tests/web/*.test.mjs` 29 项通过（含 9 项动效策略）；`pytest` 454 项、`ruff` 通过。真实浏览器（Edge headless，系统动画关闭、`reduce=true`）实测：全新环境不登录直接进导图即 `kf-force-motion`、`::before` 为 `map-ambient-glow`、节点 2.5s 位移约 14px；设置点「关闭」后 `transform` 两次采样完全相同、动画名 `none`、`localStorage=off`；再点「始终开启（默认）」恢复移动并清空存储。
 - 回退：还原 6 个静态文件、`server.py` 的登录跳转与 `tests/web/motion-override.test.mjs`。
+
+---
+
+## 2026-11-26 — 两个思维导图
+
+- 增加「按章节分类 / 按逻辑」胶囊切换，逻辑图按已有先修边分层，节点独立轻微移动。
+- 关系采用彩色箭头，颜色说明放入右上角竖排图例；点击节点展示直接邻居及关系详情。
+- 节点重排与镜头同步过渡；拖动、缩放可中断动画，避免动画覆盖手动操作。
+- 保留原关系审核状态，不改正式推荐口径、schema 或原始数据。
+- 验证：契约、合成样例、完整 pytest、23 项前端测试通过；浏览器验证切换、聚焦、返回全图与图例。
+- 回退：还原 knowledge-map.js/css、map-layout.mjs 与对应测试。
 
 ---
 

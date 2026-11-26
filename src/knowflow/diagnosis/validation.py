@@ -379,7 +379,7 @@ def validate_student(
             continue
         buckets[
             "strengths"
-            if state["status"] in MASTERED
+            if state["status"] in MASTERED | {"sparse_good"}
             else "needs_coverage"
             if state["status"] == "unobserved"
             else "needs_observation"
@@ -548,6 +548,8 @@ def validate_class(
         for field, values in [
             ("mastered_count", MASTERED),
             ("weak_count", WEAK),
+            ("sparse_good_count", {"sparse_good"}),
+            ("sparse_poor_count", {"sparse_poor"}),
             ("insufficient_count", {"insufficient_evidence"}),
             ("unobserved_count", {"unobserved"}),
             ("mixed_count", {"mixed_performance"}),

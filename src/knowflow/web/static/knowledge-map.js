@@ -1,3 +1,4 @@
+import {states as statusStyles} from './charts.js';
 import {radialLayout,relaxCategory,interpolateCamera,resizeCamera} from './map-layout.mjs';
 import {storyContent,mountNodeVisual} from './course-stories.mjs';
 
@@ -7,7 +8,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const themes=['代数式与整式运算','方程与方程组','不等式与不等式组'];
  const colors=['#268a72','#4a83bd','#bc7d42'];
  const states=new Map((profile?.knowledge_states||[]).map(s=>[s.knowledge_id,s]));
- const palette={confirmed_mastered:['已掌握','#199b79'],mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],confirmed_weak:['需加强','#df785c'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#b58b31'],insufficient_evidence:['待观察','#a3afbf'],unobserved:['未覆盖','#8296a8'],not_applicable:['本节点不适用','#cbd3df']};
+ const palette=Object.fromEntries(Object.entries(statusStyles).map(([status,style])=>[status,[style.label,style.color]]));
  const byId=new Map(nodes.map(n=>[n.id,n])),edges=graph.edges||[];
  const root=host.attachShadow({mode:'open'});
  root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
@@ -16,7 +17,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function se(tag,attrs={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
  function svgText(parent,text,x,y,cls){const t=se('text',{x,y,'text-anchor':'middle',class:cls});t.textContent=text;parent.append(t)}
  function action(group,fn){group.setAttribute('role','button');group.setAttribute('tabindex','0');group.onclick=()=>{if(!suppressClick)fn()};group.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();fn()}}}
- function nodeState(n){const ss=n.indicators.map(id=>states.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='unobserved')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
+ function nodeState(n){const ss=n.indicators.map(id=>states.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='sparse_poor')||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='unobserved')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
  const layout=radialLayout(nodes);
  const chapterSpeed=(Math.random()<.5?-1:1)*Math.PI*2/(480000+Math.random()*180000);
  const chapterOrbits=new Map([...layout.hubs.keys()].map(topic=>[topic,{time:0,phase:Math.random()*Math.PI*2,period:45000+Math.random()*30000,amplitude:.035+Math.random()*.025,radial:5+Math.random()*5}]));
@@ -31,8 +32,17 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  let orbitFrame=0,orbitLast=0,orbitHover=false;
  let cameraFrame=0,cameraReady=false,animateNext=false;
  let mode='overview',active=null,shown=nodes,groups=new Map(),camera={x:0,y:0,k:1},width=900,height=650,gesture=null,suppressClick=false,frame=0,disposed=false;
- themes.forEach((name,i)=>{$('topic').add(new Option(name,String(i)));const item=el('span',name),dot=el('i');dot.style.background=colors[i];item.prepend(dot);$('legend').append(item)});
- if(profile)$('legend').append(el('span','节点圆点表示个人学情；边框表示类别'));
+ themes.forEach((name,i)=>{$('topic').add(new Option(name,String(i)));if(!profile){const item=el('span',name),dot=el('i');dot.style.background=colors[i];item.prepend(dot);$('legend').append(item)}});
+ if(profile){
+  $('legend').setAttribute('aria-label','个人掌握程度图例');
+  $('legend').classList.add('personal-legend');
+  $('legend').append(el('strong','节点颜色 · 掌握程度'));
+  const entries=el('div','','status-legend-items');
+  const keys=['mastered','sparse_good','sparse_poor','weak','insufficient_evidence','unobserved','not_applicable'];
+  if(nodes.some(n=>nodeState(n)?.status==='mixed_performance'))keys.push('mixed');
+  keys.forEach(key=>{const style=statusStyles[key],item=el('span',style.label),dot=el('i');dot.style.background=style.color;item.prepend(dot);entries.append(item)});
+  $('legend').append(entries,el('small','连线与外圈表示章节类别'));
+ }
  function curve(a,b,color,main=false){const path=se('path',{fill:'none',stroke:color,'stroke-width':main?5:2.2,class:'category-branch'});$('branches').append(path);segments.push({a,b,path})}
  function draw(){
   const key=shown.map(n=>n.id).join('|');

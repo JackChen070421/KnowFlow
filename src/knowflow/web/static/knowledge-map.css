@@ -31,6 +31,8 @@ button:hover:not(:disabled){border-color:var(--teal,#176b56)}button:focus-visibl
 .stage::after{inset:-32px;background-image:radial-gradient(circle,rgba(75,139,122,.22) .8px,transparent 1.2px);background-size:32px 32px;opacity:.36;mask-image:radial-gradient(ellipse at center,transparent 12%,#000 78%);animation:map-ambient-dots 40s ease-in-out infinite alternate}
 #atlas{position:relative;z-index:1}
 .legend,.maptools{z-index:2}
+.personal-legend .status-legend-items{display:grid;grid-template-columns:repeat(2,max-content);gap:7px 14px}
+.personal-legend strong{font-size:12px}.personal-legend small{font-size:11px}
 @keyframes map-ambient-glow{from{transform:translate(-2%,-1%) scale(1);opacity:.72}50%{opacity:1}to{transform:translate(3%,2%) scale(1.06);opacity:.82}}
 @keyframes map-ambient-dots{from{transform:translate(0,0)}to{transform:translate(14px,-18px)}}
 @media(prefers-reduced-motion:reduce){.stage::before,.stage::after{animation:none}}

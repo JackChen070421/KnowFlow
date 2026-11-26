@@ -145,14 +145,21 @@ def test_guide_block_does_not_stack_secondary_guides():
 def test_fact_card_separates_weak_evidence_from_missing_evidence(snapshot, knowledge):
     facts = build_facts(snapshot, "这个班哪些知识点最薄弱？", {"node_id": "N02"}, knowledge)
     class_facts = facts["class"]
-    assert all(row["weak"] > 0 for row in class_facts["weak_signal"])
+    # 需要支持的一侧是「薄弱 + 较差」（PR #33 的 SUPPORT 口径）；两者仍是分开报的数字，
+    # 所以这里断言的是和支持相关的桶，而不是单看 weak。
+    assert all(
+        (row["weak"] + row["sparse_poor"]) > 0 for row in class_facts["weak_signal"]
+    )
     assert all(
         row["insufficient"] + row["unobserved"] > 0 for row in class_facts["evidence_gap"]
     )
-    # A knowledge point with zero weak students must never appear in weak_signal,
-    # however large its evidence gap is.
+    # 只有缺口、既无薄弱又无较差的知识点不能混进 weak_signal。
     weak_ids = {row["id"] for row in class_facts["weak_signal"]}
-    gap_only = {row["id"] for row in class_facts["evidence_gap"] if row["weak"] == 0}
+    gap_only = {
+        row["id"]
+        for row in class_facts["evidence_gap"]
+        if row["weak"] == 0 and row["sparse_poor"] == 0
+    }
     assert not (weak_ids & gap_only)
 
 

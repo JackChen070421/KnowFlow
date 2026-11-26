@@ -19,7 +19,7 @@ MAX_PROBE_PER_ISSUE = 3
 MAX_PROBE_ITEMS = 12
 # 建议文案里的"达到几次评分再复核"必须与诊断门槛同源，否则会在文案里写错数字。
 MIN_EVIDENCE = DiagnosisConfig().min_evidence
-WEAK_STATUSES = {"confirmed_weak", "likely_weak", "mixed_performance"}
+WEAK_STATUSES = {"confirmed_weak", "likely_weak", "sparse_poor"}
 GAP_TYPES = {"score_point_gap", "performance_gap"}
 
 
@@ -63,7 +63,7 @@ def _prior_risk(profile: dict, catalog: dict, knowledge_id: str) -> tuple[int, s
         ):
             weak_prereqs.append(source)
     if weak_prereqs:
-        reasons.append(f"先修 {'、'.join(weak_prereqs)} 薄弱")
+        reasons.append(f"先修 {'、'.join(weak_prereqs)} 为薄弱或较差")
 
     siblings = [
         s
@@ -119,7 +119,7 @@ def _effective_type(issue: dict, view: dict) -> str:
 
     if issue["type"] == "insufficient_evidence":
         return "insufficient_evidence"
-    if view["review"] and view["status"] == "insufficient_evidence":
+    if view["review"] and view["status"] in {"insufficient_evidence", "sparse_good", "sparse_poor"}:
         return "insufficient_evidence"
     return issue["type"]
 
@@ -261,7 +261,7 @@ def _prerequisite(issue: dict, profile: dict, catalog: dict, review: dict | None
         view = _planning_view(profile, entry["source_knowledge_id"], review)
         if view["status"] in {"confirmed_weak", "likely_weak"}:
             missing.append(entry["source_knowledge_id"])
-        elif view["status"] in {"insufficient_evidence", "unobserved"}:
+        elif view["status"] in {"insufficient_evidence", "unobserved", "sparse_good", "sparse_poor"}:
             pending.append(entry["source_knowledge_id"])
     draft_edges = [entry["edge_id"] for entry in catalog.get("pending_prerequisites", {}).get(target, [])]
     draft_edges += catalog.get("pending_node_relations", {}).get(target, [])
@@ -294,6 +294,8 @@ def _dependency_issues(
             "likely_weak",
             "insufficient_evidence",
             "unobserved",
+            "sparse_good",
+            "sparse_poor",
         }:
             continue
         dependency = issues_by_knowledge.get(source)
@@ -385,14 +387,13 @@ def _reason(
         note = f"（已排除 {len(view['review']['disputed_record_ids'])} 条存疑评分，待人工复核）"
 
     if sparse == "sparse_weak":
-        state = _state(profile, issue["knowledge_id"]) or {}
-        weak_p = int(round((state.get("weak_probability") or 0.0) * 100))
+        errors = n - int(view["full_credit"])
         criteria = list(dict.fromkeys(item["criterion"] for item in issue.get("rubric_evidence", [])))
         loss = f"，失分集中在「{'、'.join(criteria)}」" if criteria else ""
         lead = f"先用 {explain_id} 重建" if explain_id else "先看原题解析"
         return (
-            f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分、未达最低观测数，"
-            f"但后验显示约 {weak_p}% 概率薄弱{loss}；先按薄弱做低置信度巩固：{lead}，"
+            f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」有 {n} 次有效评分，"
+            f"其中 {errors} 次错误或扣分，当前表现较差{loss}；先做低置信度巩固：{lead}，"
             f"再用 {'、'.join(assessment_ids)} 定向确认。{note}"
         )
 
@@ -415,11 +416,9 @@ def _reason(
                 f"未覆盖不等于未掌握，拿到评分前不写掌握度。{note}"
             )
         if sparse == "sparse_mastered":
-            state = _state(profile, issue["knowledge_id"]) or {}
-            mastered_p = int(round((state.get("mastered_probability") or 0.0) * 100))
             return (
-                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分且表现良好，"
-                f"后验显示约 {mastered_p}% 概率已掌握；做 1 次轻量复核即可确认。"
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」有 {n} 次有效评分，"
+                f"其中 {view['full_credit']} 次全对，当前表现较好；通过轻量复核继续确认掌握情况。"
             )
         if sparse == "sparse_mixed":
             return (
@@ -453,7 +452,7 @@ def _check(
         lead = f"完成 {explain_id} 学习卡 + " if explain_id else "完成 "
         return (
             f"{lead}{'、'.join(assessment_ids)}；若 1 题全对则可能是偶发错误、继续观测，"
-            f"若仍错则确认薄弱、进入巩固。"
+            f"若仍错则继续针对错误巩固，达到证据门槛后重新判定。"
         )
     if issue["type"] == "insufficient_evidence":
         return (
@@ -646,7 +645,7 @@ def _finalize_plan(
 
 def _is_gap(issue: dict, profile: dict, review: dict | None = None) -> bool:
     view = _planning_view(profile, issue["knowledge_id"], review)
-    if view["review"] and view["status"] == "insufficient_evidence":
+    if view["review"] and view["status"] in {"insufficient_evidence", "sparse_good", "sparse_poor"}:
         return False
     if issue["type"] in GAP_TYPES:
         return True
@@ -687,7 +686,7 @@ def _review_required(
         only_disputed = not issue["rubric_evidence"] and bool(
             issue.get("disputed_rubric_evidence")
         )
-        too_little = view["status"] == "insufficient_evidence"
+        too_little = view["status"] in {"insufficient_evidence", "sparse_good", "sparse_poor"}
         if not (only_disputed or too_little):
             continue
         count = len(block["disputed_record_ids"])

@@ -144,7 +144,10 @@ def test_a_correct_reference_uses_the_fact_row(snapshot, knowledge):
 
     answer = rules_answer(facts)
     assert "一元一次方程" in answer
-    assert "1 人证据不足" in answer
+    # PR #33 重新划分了稀疏评分：K-02 这一行现在是 1 较好 / 1 较差 / 3 无作答记录 / 1 已掌握。
+    # 断言的是"数字来自该行本身"，所以不沿用旧回答里的"1 人证据不足"。
+    assert "1 人较好" in answer
+    assert "3 人没有作答记录" in answer
     # Numbers come from the row, not from the old answer's wording.
     assert facts["lookup"] is None or facts["lookup"].get("value") is not None
 

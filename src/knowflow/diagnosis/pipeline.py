@@ -640,7 +640,7 @@ def run_diagnosis(
         "",
         "mastery为当前题目范围内满分成功率的Beta后验估计；部分得分另见performance。"
         "不能将其解释为整体能力百分比。",
-        "未知参与范围的覆盖率为null；未覆盖的知识点区分证据不足与不适用。",
+        "未知参与范围的覆盖率为null；已评分分为掌握、较好、较差、薄弱，无评分区分未覆盖、待评分／核验与不适用。",
         "",
         "原始记录定位：个人画像issues/evidence中的record_id → record_sources 的 csv_record_number "
         "→ 原始CSV逻辑行号（含表头，不是物理文本行）。",

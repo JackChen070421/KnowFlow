@@ -102,11 +102,16 @@ def _status_bucket(status: str) -> str:
     return {
         "confirmed_weak": "weak",
         "likely_weak": "weak",
+        "weak": "weak",
         "mixed_performance": "mixed",
+        # PR #33：0<n<证据门槛时全对为较好、有错为较差，二者各自成桶。
+        "sparse_good": "sparse_good",
+        "sparse_poor": "sparse_poor",
         "insufficient_evidence": "insufficient",
         "unobserved": "unobserved",
         "confirmed_mastered": "mastered",
         "likely_mastered": "mastered",
+        "mastered": "mastered",
         "not_applicable": "not_applicable",
     }[status]
 
@@ -115,6 +120,8 @@ def _recompute(profiles: dict, knowledge_id: str) -> dict:
     counts = {
         "weak": 0,
         "mixed": 0,
+        "sparse_good": 0,
+        "sparse_poor": 0,
         "insufficient": 0,
         "unobserved": 0,
         "mastered": 0,
@@ -145,6 +152,8 @@ def test_data_knowledge_counts_match_the_student_states(snapshot, knowledge):
         for key in (
             "weak",
             "mixed",
+            "sparse_good",
+            "sparse_poor",
             "insufficient",
             "unobserved",
             "mastered",
@@ -206,13 +215,15 @@ def test_data_lookup_for_a_knowledge_point_uses_that_row(snapshot, knowledge):
 
 
 def test_metric_status_buckets_partition_each_knowledge_point(snapshot, knowledge):
-    """每个学生在一个知识点上只有一个状态；六个桶必须正好加总到班级人数。"""
+    """每个学生在一个知识点上只有一个状态；各状态桶必须正好加总到班级人数。"""
 
     facts = facts_for(snapshot, knowledge, "这个班学情如何？")
     for row in facts["class"]["knowledge"]:
         total = (
             row["weak"]
             + row["mixed"]
+            + row["sparse_good"]
+            + row["sparse_poor"]
             + row["insufficient"]
             + row["unobserved"]
             + row["mastered"]

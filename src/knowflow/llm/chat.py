@@ -34,6 +34,7 @@ import time
 from typing import Any
 
 from knowflow.config import get_settings
+from knowflow.diagnosis.statuses import LABELS, SUPPORT
 
 from . import audit as _audit
 from .client import ChatClient, LLMError, build_client
@@ -56,19 +57,19 @@ MAX_HISTORY_ITEM = 600
 SYSTEM_PROMPT = f"""你是 KnowFlow 的「AI 学伴」，一位懂初中数学、也带过班的老师。教师或学生拿着这份学情来问你，你要像一个了解课堂的人那样回答，而不是把统计表念一遍。
 
 一、事实从哪里来
-A. 学习者数据——人数、比例、掌握度、覆盖率、薄弱与待观察人数、各类计数，以及学生、知识点、题目编号——只能来自 FACTS。FACTS 里没有就直说“这份数据里没有”，不估算、不推算、不编造。也不要把已经算好的掌握度、覆盖率再算一遍或换个说法重报：程序负责数字，你负责解释。
+A. 学习者数据——人数、比例、掌握度、覆盖率、薄弱／较好／较差／待评分／核验人数、各类计数，以及学生、知识点、题目编号——只能来自 FACTS。FACTS 里没有就直说“这份数据里没有”，不估算、不推算、不编造。也不要把已经算好的掌握度、覆盖率再算一遍或换个说法重报：程序负责数字，你负责解释。状态名称以 status_label 为准：掌握、较好、较差、薄弱；较好不等于全对，较差不等于零分，颜色不参与判断。
 B. 学科知识——概念、方法、例题思路——可以正常讲，可以用 FACTS.sources 里的课标原文、学习卡和题面；但不能借学科知识编造任何学生数据、分数或排名。
 
 二、怎么分析（先想清楚，再动笔）
 1. 分清三类内容：事实（数据里明确记录的）、推断（由几条事实合理推导，要用“这可能说明”“从现有记录看”“一个值得注意的信号是”这类说法）、未知（证据不够，要明确说缺什么）。
 2. 下面几组不能混为一谈：
    - 覆盖率低，不等于学生能力差；
-   - 证据不足，不等于没有掌握；
+   - 待评分／核验，不等于没有掌握；
    - 薄弱人数多，不等于全班都要补课；
    - 某个知识点没有评分记录，不等于学生没学过；
    - 有答题记录，也不等于掌握情况已经可靠；
    - “有评分但太少”（FACTS 里的 insufficient）和“一条记录都没有”（unobserved）都不是“没掌握”，但两者也不是一回事，需要分清时就说清是哪一种；
-   - 一个知识点的“薄弱”状态和“证据不足”状态是两件事，不能合成一句“都比较薄弱”。
+   - 一个知识点的“薄弱／较差”状态和“待评分／核验”状态是两件事，不能合成一句“都比较薄弱”。
 3. 不要用单一指标推出超出证据的结论。数据撑不住一个判断时，把话说回来：“目前能确定的是……，暂时还不能据此判断……，需要补的是……”。
 4. FACTS.intent 说明这次问的是哪一类问题，FACTS.focus 是问题点名的对象。FACTS.class.weak_signal 与 FACTS.class.evidence_gap 已经把“有薄弱证据”和“只是缺记录”分开了，别让它们在同一句里混着说。FACTS.lookup 是程序已经定位好的一次数据查询，直接把那个数说出来。
 
@@ -110,7 +111,7 @@ def _collect(value: Any, numbers: set[float], ids: set[str]) -> None:
 
 
 def _weak(state: dict) -> bool:
-    return state.get("status") in {"confirmed_weak", "likely_weak", "mixed_performance"}
+    return state.get("status") in SUPPORT
 
 
 def _audience(snapshot: dict) -> str:
@@ -167,6 +168,10 @@ def _knowledge_rows(names: dict[str, str], distribution: list[dict]) -> list[dic
             "short": _short_name(names.get(item["knowledge_id"], item["knowledge_id"])),
             "weak": item["weak_count"],
             "mixed": item.get("mixed_count", 0),
+            # PR #33 的稀疏评分状态：0<n<证据门槛时全对为较好、有错为较差。
+            # 二者与 weak/mixed 互斥，单独成桶，不能并进"薄弱"里说。
+            "sparse_good": item.get("sparse_good_count", 0),
+            "sparse_poor": item.get("sparse_poor_count", 0),
             "insufficient": item["insufficient_count"],
             "unobserved": item.get("unobserved_count", 0),
             "mastered": item["mastered_count"],
@@ -567,9 +572,12 @@ def build_facts(
                 strict=False,
             )
         }
+        # 较差（sparse_poor）按 PR #33 的口径也属于"需要支持"的状态：排序与
+        # weak_signal 都用 SUPPORT（薄弱 + 较差），否则"2 对 1 错"这类知识点会被
+        # 只按 weak 数的旧排序挤到后面。
         weak_signal = sorted(
-            (row for row in rows.values() if row["weak"] > 0),
-            key=lambda row: (-row["weak"], -row["observed"]),
+            (row for row in rows.values() if (row["weak"] + row["sparse_poor"]) > 0),
+            key=lambda row: (-(row["weak"] + row["sparse_poor"]), -row["observed"]),
         )[:3]
         evidence_gap = sorted(
             (
@@ -617,7 +625,7 @@ def build_facts(
     profile = snapshot["profiles"].get(node_id, {}).get(student_id) if student_id else None
     if profile:
         states = profile["knowledge_states"]
-        chosen = ([state for state in states if _weak(state)] + states)[:6]
+        chosen = sorted(states, key=lambda state: not _weak(state))[:6]
         # A named knowledge point must bring its own state even when it is not
         # among the six the card shows by default — otherwise "K-07 我掌握得怎么样"
         # gets answered from the course content alone.
@@ -640,6 +648,9 @@ def build_facts(
                 "ratio": profile["coverage"]["ratio"],
                 "scope_known": profile["coverage"]["scope_known"],
             },
+            # 原始状态名计数（confirmed_weak / sparse_poor / …）：``_state_counts``
+            # 与 ``audit.has_evidence_gaps`` 都按这个口径读，中文标签在 states[].status_label。
+            # 合并 PR #33 时同一键曾出现两处定义（中文标签版在后、会静默覆盖），已合并为一处。
             "status_counts": {key: value for key, value in status_counts.items() if value},
             "needs_consolidation": [
                 item["knowledge_id"] for item in profile["lists"]["needs_consolidation"]
@@ -655,6 +666,7 @@ def build_facts(
                     "id": state["knowledge_id"],
                     "name": names.get(state["knowledge_id"], state["knowledge_id"]),
                     "status": state["status"],
+                    "status_label": LABELS.get(state["status"], "待核验"),
                     "mastery": state["mastery"],
                     "evidence": state["evidence_count"],
                 }
@@ -857,9 +869,10 @@ def _ratio(value: Any) -> str:
 def _state_counts(facts: dict) -> dict:
     counts = (facts.get("student") or {}).get("status_counts") or {}
     return {
-        "weak": counts.get("confirmed_weak", 0)
-        + counts.get("likely_weak", 0)
-        + counts.get("mixed_performance", 0),
+        "weak": counts.get("confirmed_weak", 0) + counts.get("likely_weak", 0),
+        "sparse_poor": counts.get("sparse_poor", 0),
+        "sparse_good": counts.get("sparse_good", 0),
+        "mixed": counts.get("mixed_performance", 0),
         "insufficient": counts.get("insufficient_evidence", 0),
         "unobserved": counts.get("unobserved", 0),
         "mastered": counts.get("confirmed_mastered", 0) + counts.get("likely_mastered", 0),
@@ -918,7 +931,7 @@ def build_trace(
                 "detail": (
                     f"观测覆盖 {coverage['observed']}/{coverage['applicable']}；"
                     f"建议巩固 {len(student['needs_consolidation'])} 个，"
-                    f"待观察 {len(student['needs_observation'])} 个，"
+                    f"待评分／核验 {len(student['needs_observation'])} 个，"
                     f"未覆盖 {len(student.get('needs_coverage') or [])} 个"
                 ),
             }
@@ -928,8 +941,9 @@ def build_trace(
             {
                 "label": "区分证据",
                 "detail": (
-                    f"薄弱 {counts['weak']} 个、待观察 {counts['insufficient']} 个、"
-                    f"未覆盖 {counts['unobserved']} 个；证据不足不等于没掌握"
+                    f"薄弱 {counts['weak']} 个、较差 {counts['sparse_poor']} 个、"
+                    f"待评分／核验 {counts['insufficient']} 个、"
+                    f"未覆盖 {counts['unobserved']} 个；待评分／核验不等于没掌握"
                 ),
             }
         )
@@ -981,7 +995,7 @@ def build_trace(
                 "label": "读取现状",
                 "detail": (
                     f"{class_facts['students']} 名学生；平均覆盖 {_ratio(coverage.get('mean_ratio'))}；"
-                    f"{coverage.get('students_with_insufficient_evidence', 0)} 人证据不足"
+                    f"{coverage.get('students_with_insufficient_evidence', 0)} 人待评分／核验"
                 ),
             }
         )
@@ -1012,7 +1026,8 @@ def build_trace(
                     "kind": "class_state",
                     "id": item["id"],
                     "text": f"{item['name']} · 薄弱 {item['weak']} 人 / "
-                    f"待观察 {item['insufficient']} 人 / 已观察 {item['observed']} 人",
+                    f"较好 {item['sparse_good']} 人 / 较差 {item['sparse_poor']} 人 / "
+                    f"待评分／核验 {item['insufficient']} 人 / 已观察 {item['observed']} 人",
                 }
             )
         for issue in class_facts.get("common_issues", [])[:3]:
@@ -1128,6 +1143,27 @@ def _label(row: dict) -> str:
     return row.get("short") or row.get("name") or row.get("id", "")
 
 
+def _support(row: dict) -> int:
+    """How many students this knowledge point needs support for.
+
+    PR #33 的口径：``SUPPORT = WEAK | {"sparse_poor"}``——薄弱与较差都该排进
+    "先处理"的一侧，但它们在报告里仍是两个状态，不能合成一个"薄弱"数字。
+    """
+
+    return (row.get("weak") or 0) + (row.get("sparse_poor") or 0)
+
+
+def _support_phrase(row: dict) -> str:
+    """``薄弱 3 人、较差 2 人`` — only the buckets that are actually non-zero."""
+
+    parts = []
+    if row.get("weak"):
+        parts.append(f"薄弱 {row['weak']} 人")
+    if row.get("sparse_poor"):
+        parts.append(f"较差 {row['sparse_poor']} 人")
+    return "、".join(parts)
+
+
 def _lookup_answer(facts: dict) -> str:
     lookup = facts["lookup"]
     kind = lookup["kind"]
@@ -1139,7 +1175,8 @@ def _lookup_answer(facts: dict) -> str:
         row = lookup["knowledge"]
         labels = {
             "weak": "薄弱",
-            "insufficient": "证据不足",
+            "sparse_poor": "较差",
+            "insufficient": "待评分／核验",
             "mastered": "已掌握",
             "observed": "有作答记录",
         }
@@ -1178,10 +1215,10 @@ def _gap_sentence(gaps: list[dict], no_record: list[dict]) -> str:
     if zero and (primary is None or zero["unobserved"] > primary["insufficient"]):
         text = f"{_label(zero)}有 {zero['unobserved']} 人完全没有作答记录"
         if primary and primary["id"] != zero["id"]:
-            text += f"，{_label(primary)}有 {primary['insufficient']} 人证据不足"
+            text += f"，{_label(primary)}有 {primary['insufficient']} 人待评分／核验"
         return text
     if primary:
-        text = f"{_label(primary)}有 {primary['insufficient']} 人证据不足"
+        text = f"{_label(primary)}有 {primary['insufficient']} 人待评分／核验"
         if primary["unobserved"]:
             text += f"、{primary['unobserved']} 人没有作答记录"
         return text
@@ -1192,7 +1229,10 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
     class_facts = facts.get("class") or {}
     coverage = class_facts.get("coverage") or {}
     students = class_facts.get("students", 0)
-    weak = class_facts.get("weak_signal") or []
+    weak = class_facts.get("weak_signal")
+    if weak is None:
+        # 只有 knowledge 行的裁剪事实卡（上游或测试）也要能找出需要支持的知识点。
+        weak = [row for row in (class_facts.get("knowledge") or []) if _support(row) > 0]
     gaps = class_facts.get("evidence_gap") or []
     no_record = class_facts.get("no_record") or []
     insufficient = coverage.get("students_with_insufficient_evidence")
@@ -1210,24 +1250,28 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
         detail = []
         if row["mastered"]:
             detail.append(f"{row['mastered']} 人已掌握")
+        if row.get("sparse_good"):
+            detail.append(f"{row['sparse_good']} 人较好")
         if row["weak"]:
             detail.append(f"{row['weak']} 人薄弱")
+        if row.get("sparse_poor"):
+            detail.append(f"{row['sparse_poor']} 人较差")
         if row["insufficient"]:
-            detail.append(f"{row['insufficient']} 人证据不足")
+            detail.append(f"{row['insufficient']} 人待评分／核验")
         counts = "，其中 " + "、".join(detail) if detail else ""
         if row["unobserved"]:
             counts += f"，另有 {row['unobserved']} 人没有作答记录"
         return [
             f"不是。{_label(row)}目前 {parts[0]}{counts}。",
-            "证据不足说明还没测出来，不等于没有掌握；要把“全班都没掌握”说清楚，得先补齐这些记录。",
+            "待评分／核验说明还没测出来，不等于没有掌握；要把“全班都没掌握”说清楚，得先补齐这些记录。",
         ]
 
     if primary == "strategy":
         parts = []
         if weak:
             parts.append(
-                f"可以按“先补证据、再巩固”来排：{_label(weak[0])}已经有 {weak[0]['weak']} 人"
-                "表现出薄弱，可以直接安排针对性练习。"
+                f"可以按“先补证据、再巩固”来排：{_label(weak[0])}{_support_phrase(weak[0])}"
+                "，可以直接安排针对性练习。"
             )
         if gaps or no_record:
             parts.append(f"{_gap_sentence(gaps, no_record)}，先用一节课做基线题，别急着讲难题。")
@@ -1240,7 +1284,7 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
         if students and insufficient is not None:
             lead = (
                 f"现在直接按掌握度分层，证据还不够：{students} 人里 {below_half} 人覆盖率不到一半，"
-                f"{insufficient} 人证据不足，而覆盖率低并不等于水平低。"
+                f"{insufficient} 人待评分／核验，而覆盖率低并不等于水平低。"
             )
         else:
             lead = "现在直接按掌握度分层，证据还不够。"
@@ -1248,7 +1292,7 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
         if weak:
             parts.append(
                 "能先做的是按薄弱知识点分组："
-                + "、".join(f"{_label(item)} {item['weak']} 人" for item in weak[:2])
+                + "、".join(f"{_label(item)} {_support(item)} 人" for item in weak[:2])
                 + "，这属于按知识点补差，不是能力分层。"
             )
         if groups.get("differences"):
@@ -1276,15 +1320,15 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
     if primary == "knowledge":
         if weak:
             lead = (
-                f"按现有证据，最明确的薄弱点是{_label(weak[0])}（{weak[0]['weak']} 人）"
-                + (f"，{names_of(weak[1:])}也有薄弱学生" if len(weak) > 1 else "")
+                f"按现有证据，最需要关注的是{_label(weak[0])}（{_support_phrase(weak[0])}）"
+                + (f"，{names_of(weak[1:])}也有偏弱学生" if len(weak) > 1 else "")
             )
         else:
-            lead = "现有数据里还没有能确认的薄弱知识点"
+            lead = "现有数据里还没有能确认的薄弱或较差知识点"
         parts = [lead + "。"]
         if gaps or no_record:
             parts.append(f"{_gap_sentence(gaps, no_record)}，这些是缺记录，还不能算薄弱。")
-        parts.append("要排出“最薄弱”，先把证据不足的这几块补测一轮。")
+        parts.append("要排出“最薄弱”，先把待评分／核验的这几块补测一轮。")
         return parts
 
     # 默认：整体学情
@@ -1298,14 +1342,14 @@ def _class_paragraphs(facts: dict, primary: str | None) -> list[str]:
     parts = [lead]
     if weak:
         parts.append(
-            f"已经有薄弱证据的是{_label(weak[0])}，{weak[0]['weak']} 人"
+            f"已经需要支持的是{_label(weak[0])}：{_support_phrase(weak[0])}"
             + (f"；{names_of(weak[1:])}也偏弱" if len(weak) > 1 else "")
             + "。"
         )
     if gaps or no_record:
         parts.append(f"{_gap_sentence(gaps, no_record)}，不能当成没学会。")
     if weak:
-        parts.append(f"下一步先把基线题补齐，再单独巩固{_label(weak[0])}这 {weak[0]['weak']} 人。")
+        parts.append(f"下一步先把基线题补齐，再单独巩固{_label(weak[0])}这 {_support(weak[0])} 人。")
     else:
         parts.append("下一步先补齐基线题，再看哪些知识点真的需要巩固。")
     return parts
@@ -1318,30 +1362,56 @@ def _student_paragraphs(facts: dict) -> list[str]:
         for item in (facts.get("knowledge") or [])
     }
     needs = student.get("needs_consolidation") or []
+    pending = student.get("needs_observation") or []
+    uncovered = student.get("needs_coverage") or []
     counts = _state_counts(facts)
+    coverage = student.get("coverage") or {}
+    if not coverage.get("applicable"):
+        # "已观察到 0/0 个可测知识点" is arithmetic noise, not a finding: the node
+        # has nothing measurable for this student, so say what is actually missing
+        # instead of "没有明显薄弱点".  A caller that passes only the lists (no
+        # coverage) also lands here.
+        gap = f"，{counts['unobserved']} 个知识点都没有覆盖" if counts["unobserved"] else ""
+        head = f"{student['id']} 在这个节点还没有可判断的记录{gap}；先补一次完整作答再判断。"
+        return [head, *_student_actions(needs, pending, uncovered)]
     if needs:
         first = names.get(needs[0], needs[0])
         head = f"{student['id']} 现在最需要补的是{first}。"
-    elif counts["insufficient"] or counts["unobserved"]:
+    elif counts["insufficient"] or counts["unobserved"] or pending or uncovered:
         head = f"{student['id']} 目前的记录还不够，先补一次完整作答再判断。"
     else:
         head = f"{student['id']} 目前没有明显的薄弱点。"
-    coverage = student["coverage"]
-    if not coverage.get("applicable"):
-        # "已观察到 0/0 个可测知识点" is arithmetic noise, not a finding: the node
-        # has nothing measurable for this student, so say that instead.
-        gap = f"，{counts['unobserved']} 个知识点都没有覆盖" if counts["unobserved"] else ""
-        return [
-            f"{student['id']} 在这个节点还没有可判断的记录{gap}；先补一次完整作答再判断。"
-        ]
-    parts = [head]
-    parts.append(
-        f"已观察到 {coverage['observed']}/{coverage['applicable']} 个可测知识点，"
-        f"薄弱 {counts['weak']} 个、待观察 {counts['insufficient']} 个、"
-        f"未覆盖 {counts['unobserved']} 个；待观察和未覆盖的先补测，不急着下结论。"
-    )
+    buckets = []
+    if counts["weak"]:
+        buckets.append(f"薄弱 {counts['weak']} 个")
+    if counts["sparse_poor"]:
+        buckets.append(f"较差 {counts['sparse_poor']} 个")
+    if counts["insufficient"]:
+        buckets.append(f"待评分／核验 {counts['insufficient']} 个")
+    if counts["unobserved"]:
+        buckets.append(f"未覆盖 {counts['unobserved']} 个")
+    detail = "、".join(buckets) or "没有待评分／核验或未覆盖的知识点"
+    parts = [
+        head,
+        f"已观察到 {coverage['observed']}/{coverage['applicable']} 个可测知识点，{detail}。",
+        *_student_actions(needs, pending, uncovered),
+    ]
     if student.get("plan"):
         parts.append("下一步按计划走：先看学习卡，再做同类练习，最后用计划里的验证标准自查。")
+    return parts
+
+
+def _student_actions(needs: list[str], pending: list[str], uncovered: list[str]) -> list[str]:
+    """What to do next, one line per gap kind — pending work is not a wrong answer."""
+
+    parts = []
+    if pending:
+        parts.append("有待评分／核验的知识点，先完成评分或核验，不追加练习。")
+    if uncovered:
+        parts.append("还有些知识点一条评分都没有，先布置基线题；未覆盖不等于没掌握。")
+    if not needs and not pending and not uncovered:
+        # 「没有列入巩固清单」不等于「证据不足」：说复核，不要说补测。
+        parts.append("没有列入巩固清单的知识点，可结合已有状态轻量复核。")
     return parts
 
 
@@ -1401,10 +1471,14 @@ def _counts_of(row: dict) -> str:
     parts = []
     if row["weak"]:
         parts.append(f"{row['weak']} 人薄弱")
+    if row.get("sparse_good"):
+        parts.append(f"{row['sparse_good']} 人较好")
+    if row.get("sparse_poor"):
+        parts.append(f"{row['sparse_poor']} 人较差")
     if row["mixed"]:
         parts.append(f"{row['mixed']} 人表现混合")
     if row["insufficient"]:
-        parts.append(f"{row['insufficient']} 人证据不足")
+        parts.append(f"{row['insufficient']} 人待评分／核验")
     if row["unobserved"]:
         parts.append(f"{row['unobserved']} 人没有作答记录")
     if row["mastered"]:
@@ -1459,8 +1533,10 @@ def _conflict_paragraphs(facts: dict, conflict: dict) -> list[str]:
     if row is None:
         return [f"你说的 {said} 人和现有记录对不上，先按记录里的数看，或者说明这 {said} 人的来源。"]
     detail = [f"{row['weak']} 人薄弱"] if row["weak"] else []
+    if row.get("sparse_poor"):
+        detail.append(f"{row['sparse_poor']} 人较差")
     if row["insufficient"]:
-        detail.append(f"{row['insufficient']} 人证据不足")
+        detail.append(f"{row['insufficient']} 人待评分／核验")
     if row["unobserved"]:
         detail.append(f"{row['unobserved']} 人没有作答记录")
     actual = "、".join(detail) or "还没有可核对的记录"
@@ -1562,8 +1638,8 @@ LENGTH_PROMPTS = {
 }
 
 INSUFFICIENT_PROMPTS = {
-    "prompt": "若 FACTS 显示证据不足，直接说明信息不足，不要推测。",
-    "probe": "若 FACTS 显示证据不足，建议先做一次摸底测试来补充证据。",
+    "prompt": "若 FACTS 显示待评分／核验或未覆盖，直接说明信息不足，不要推测。",
+    "probe": "若 FACTS 显示未覆盖，建议做基线题；若待评分／核验，先评分或核验，不追加练习。",
 }
 
 

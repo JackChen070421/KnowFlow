@@ -90,6 +90,8 @@
           "student_count",
           "mastered_count",
           "weak_count",
+          "sparse_good_count",
+          "sparse_poor_count",
           "insufficient_count",
           "unobserved_count",
           "mixed_count",
@@ -102,6 +104,8 @@
           "student_count": {"type": "integer", "minimum": 0},
           "mastered_count": {"type": "integer", "minimum": 0},
           "weak_count": {"type": "integer", "minimum": 0},
+          "sparse_good_count": {"type": "integer", "minimum": 0},
+          "sparse_poor_count": {"type": "integer", "minimum": 0},
           "insufficient_count": {"type": "integer", "minimum": 0},
           "unobserved_count": {
             "type": "integer",

@@ -205,7 +205,7 @@ def test_sparse_posterior_splits_probe_and_low_confidence_consolidate(bundle):
     consolidates = [item for item in rec["plan"] if item["activity_type"] == "consolidate"]
     # 1 次失分、后验约 64% 概率薄弱 → 低置信度巩固，而不是一律“补观测”
     assert consolidates, "S004 的 K-03 有 1 次失分，应为低置信度巩固"
-    assert "概率薄弱" in consolidates[0]["reason"]
+    assert "当前表现较差" in consolidates[0]["reason"]
     assert "低置信度" in consolidates[0]["reason"]
     # 0 观测知识点仍走补观测，且理由仍不把“未观测”说成“未掌握”
     assert probes, "仍有 0 观测知识点需要补观测"
@@ -261,7 +261,7 @@ def test_prior_risk_borrows_strength_from_siblings_and_prerequisites():
     # K-03 的先修 K-01 薄弱 → high 先验
     score, reason = _prior_risk(profile, catalog, "K-03")
     assert score == 2
-    assert "先修 K-01 薄弱" in reason
+    assert "先修 K-01 为薄弱或较差" in reason
     # K-02 的同主题 K-01 平均偏低 → medium 先验
     score2, reason2 = _prior_risk(profile, catalog, "K-02")
     assert score2 == 1

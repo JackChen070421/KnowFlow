@@ -1,14 +1,12 @@
-"""分级动作：稀疏观测下"该做哪一件事"的唯一出处。
+"""已有诊断状态到学习动作的统一映射。
 
-状态（``status``）回答"能不能下结论"，动作（``evidence_action``）回答"下一步
-做什么"。两者不是一回事：同样是 ``insufficient_evidence``，"交了没评分"和
-"做了两道但方向不明"的教师动作完全不同。诊断层、建议层和语言层都读这一个
-函数，避免各写一套阈值后互相打架。
+较好轻量复核、较差针对失分巩固；未覆盖补基线题，待评分先等待。
+历史 insufficient_evidence 产物保留后验分支兼容；新产物按对错计数分类。
 """
 
 from __future__ import annotations
 
-# 稀疏观测（低于 min_evidence）下，后验概率达到这些门槛就把"证据不足"拆成梯度判断。
+# 仅用于历史 insufficient_evidence 产物兼容。
 SPARSE_WEAK_P = 0.6
 SPARSE_MASTERED_P = 0.4
 
@@ -16,8 +14,8 @@ ACTIONS = (
     "probe",  # 没有任何记录：先布置基线题
     "not_attempted",  # 记录存在但未作答：可能是难度或动机
     "pending",  # 已作答待评分：本轮不追加练习
-    "sparse_weak",  # 评分少但后验偏弱：低置信度巩固
-    "sparse_mastered",  # 评分少但都对：一次轻量复核
+    "sparse_weak",  # 较差：针对失分巩固
+    "sparse_mastered",  # 较好：轻量复核
     "sparse_mixed",  # 评分少且表现中间：继续补观测
 )
 
@@ -30,6 +28,10 @@ def evidence_action(state: dict) -> str | None:
     inference happens here.
     """
 
+    if state.get("status") in {"sparse_good", "sparse_poor"}:
+        if state.get("review"):
+            return "probe"
+        return "sparse_mastered" if state["status"] == "sparse_good" else "sparse_weak"
     if state.get("status") not in {"insufficient_evidence", "unobserved"}:
         return None
 

@@ -1,6 +1,8 @@
 """Deterministic, labelled demo paper selected using aggregate observed states."""
 from collections import Counter
 
+from knowflow.diagnosis.statuses import SUPPORT
+
 
 def question(kid, variant):
     a = variant + 2
@@ -33,7 +35,7 @@ def build_demo(summary, count):
         raise ValueError('演示题模板仅支持当前七年级数学知识指标。')
     def priority(s):
         c = s.get('status_counts', {})
-        return sum(c.get(k, 0) for k in ('weak', 'confirmed_weak', 'likely_weak', 'mixed_performance'))
+        return sum(c.get(k, 0) for k in SUPPORT)
     ranked = sorted(eligible, key=lambda s: (-priority(s), s['knowledge_id']))
     selected = ranked[:count]
     while len(selected) < count:
@@ -46,4 +48,4 @@ def build_demo(summary, count):
         occurrence[kid] += 1
         q.update(question_id=f'Q{index+1:02}', max_score=10)
         questions.append(q)
-    return questions, [dict(s, focus_count=priority(s), question_count=occurrence[s['knowledge_id']]) for s in ranked]
+    return questions, [dict(s, focus_label='薄弱／较差', focus_count=priority(s), question_count=occurrence[s['knowledge_id']]) for s in ranked]

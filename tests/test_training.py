@@ -94,6 +94,37 @@ def test_demo_uses_all_students_without_calling_api(store):
     assert len({q['question_id'] for q in p['questions']}) == 12
 
 
+def test_demo_prioritizes_poor_without_counting_good_or_missing():
+    from knowflow.web.demo_training import build_demo
+
+    summary = [
+        {'knowledge_id': 'K-01', 'status_counts': {'sparse_good': 30, 'unobserved': 20}},
+        {'knowledge_id': 'K-02', 'status_counts': {'sparse_poor': 4, 'confirmed_weak': 2}},
+    ]
+    questions, basis = build_demo(summary, 1)
+    assert questions[0]['knowledge_id'] == 'K-02'
+    assert basis[0]['focus_count'] == 6
+    assert basis[0]['focus_label'] == '薄弱／较差'
+    assert basis[1]['focus_count'] == 0
+
+
+def test_personal_training_orders_all_four_levels_and_skips_pending(store):
+    values = ['confirmed_mastered', 'sparse_good', 'sparse_poor', 'confirmed_weak', 'not_applicable', 'insufficient_evidence']
+    states = [{'knowledge_id': f'K-{i:02}', 'status': status} for i, status in enumerate(values, 1)]
+    store.snapshot['knowledge_base']['knowledge'] = [{'knowledge_id': s['knowledge_id'], 'name': s['knowledge_id']} for s in states]
+    store.snapshot['profiles']['N01']['S001']['knowledge_states'] = states
+
+    class OrderedClient:
+        def complete(self, system, user):
+            summary = json.loads(user)['llm_summary']
+            assert [s['knowledge_id'] for s in summary] == ['K-04', 'K-03', 'K-02', 'K-01']
+            assert [s['status_label'] for s in summary] == ['薄弱', '较差', '较好', '掌握']
+            return json.dumps({'questions': [{'knowledge_id': s['knowledge_id'], 'prompt': '求解 x=1。', 'answer': '1', 'explanation': '直接得到。'} for s in summary]})
+
+    result = store.generate({'student_id': 'S001', 'node_id': 'N01', 'count': 4}, OrderedClient())
+    assert len(result['questions']) == 4
+
+
 def test_print_pdf_and_multipage_scan(store):
     pytest.importorskip('reportlab')
     fitz = pytest.importorskip('fitz')

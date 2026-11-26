@@ -1165,7 +1165,7 @@ def test_thresholds_change_mastery_status():
     strict = estimate_mastery(8, 10, DiagnosisConfig(weak_threshold=0.6, mastered_threshold=0.85))
     assert default["status"] != strict["status"]
     assert default["status"] in {"likely_mastered", "confirmed_mastered"}
-    assert strict["status"] == "mixed_performance"
+    assert strict["status"] == "sparse_good"
 
 
 def test_policy_thresholds_are_read_from_the_teacher_account(tmp_path):

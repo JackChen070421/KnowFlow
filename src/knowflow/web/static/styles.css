@@ -760,13 +760,13 @@ select {
 }
 
 .status-mastered {
-  background: #e7f3ee;
-  color: #227967
+  background: #fbefe2;
+  color: #af723f
 }
 
 .status-weak {
-  background: #fbefe2;
-  color: #af723f
+  background: #e7f3ee;
+  color: #227967
 }
 
 .status-mixed {
@@ -3179,14 +3179,14 @@ dialog::backdrop {
 
 .status-confirmed_mastered,
 .status-likely_mastered {
-  background: #e7f3ee;
-  color: #227967
+  background: #fbefe2;
+  color: #af723f
 }
 
 .status-confirmed_weak,
 .status-likely_weak {
-  background: #fbefe2;
-  color: #af723f
+  background: #e7f3ee;
+  color: #227967
 }
 
 .status-mixed_performance {
@@ -4405,3 +4405,6 @@ body.module-mode{height:100dvh;overflow:hidden}
 .knowledge-students.has-class-summary{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
 .knowledge-class-summary{flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .knowledge-student-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 0 14px;scrollbar-gutter:stable}
+
+.status-sparse_good{color:#89501f;background:#fff0df}
+.status-sparse_poor{color:#286451;background:#e1f0e8}

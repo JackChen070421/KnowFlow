@@ -63,6 +63,8 @@
             "insufficient_evidence",
             "unobserved",
             "mixed_performance",
+            "sparse_good",
+            "sparse_poor",
             "likely_mastered",
             "confirmed_mastered"
           ]

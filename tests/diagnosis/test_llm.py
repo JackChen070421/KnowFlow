@@ -131,6 +131,8 @@ def test_summary_is_schema_valid_and_carries_no_raw_text(bundle):
         "insufficient_evidence",
         "unobserved",
         "mixed_performance",
+        "sparse_good",
+        "sparse_poor",
         "likely_mastered",
         "confirmed_mastered",
     }

@@ -114,12 +114,14 @@
               "likely_weak",
               "insufficient_evidence",
               "unobserved",
+              "sparse_good",
+              "sparse_poor",
               "likely_mastered",
               "confirmed_mastered",
               "mixed_performance",
               "not_applicable"
             ],
-            "description": "判读顺序见 CONTRACT §5.5；mixed_performance = 中间或混合表现；insufficient_evidence = 有有效评分但不足最低观测数（默认 2 条），或已作答待评分；unobserved = 本节点有可测题但一条已评分作答都没有；not_applicable = 本节点无该知识点可测题目"
+            "description": "判读顺序见 CONTRACT §5.5；mixed_performance = 中间或混合表现；sparse_good = 门槛以下全对，或门槛以上未归入掌握/薄弱且对数不少于错数；sparse_poor = 门槛以下有错误，或门槛以上未归入掌握/薄弱且错数更多；insufficient_evidence = 待评分或复核后无可用评分；unobserved = 本节点有可测题但一条已评分作答都没有；not_applicable = 本节点无该知识点可测题目"
           },
           "evidence_action": {
             "type": ["string", "null"],
@@ -273,6 +275,8 @@
                   "likely_weak",
                   "insufficient_evidence",
                   "unobserved",
+                  "sparse_good",
+                  "sparse_poor",
                   "likely_mastered",
                   "confirmed_mastered",
                   "mixed_performance",
@@ -287,6 +291,8 @@
                   "likely_weak",
                   "insufficient_evidence",
                   "unobserved",
+                  "sparse_good",
+                  "sparse_poor",
                   "likely_mastered",
                   "confirmed_mastered",
                   "mixed_performance",
@@ -325,9 +331,12 @@
               "confirmed_weak",
               "likely_weak",
               "insufficient_evidence",
+              "sparse_good",
+              "sparse_poor",
               "likely_mastered",
               "confirmed_mastered",
               "mixed_performance",
+              "unobserved",
               "not_applicable"
             ]
           },

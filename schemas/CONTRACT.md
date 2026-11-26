@@ -34,7 +34,7 @@ ID 不复用、不回收、不手敲新增；跨文件引用必须能解析。�
 | `cognitive_type` | `concept` / `procedure` / `application` |
 | `material_type` | `reference` / `explain` / `example` / `practice` / `assessment` / `probe` |
 | `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `pending` / `unobserved` |
-| `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `unobserved` / `likely_mastered` / `confirmed_mastered` / `mixed_performance` / `not_applicable` |
+| `status` | `confirmed_weak` / `likely_weak` / `sparse_good` / `sparse_poor` / `insufficient_evidence` / `unobserved` / `likely_mastered` / `confirmed_mastered` / `mixed_performance` / `not_applicable` |
 | `confidence` | `low` / `medium` / `high` |
 | `issue_type` | `concept_confusion` / `procedure_gap` / `reading_error` / `prerequisite_gap` / `transfer_gap` / `insufficient_evidence` / `performance_gap` / `score_point_gap` |
 | `edge_type` | `prerequisite` / `contains` / `confusable` / `related` |
@@ -50,7 +50,7 @@ v0.5 新增值的含义（消费方必须显式处理，不许落到 `else` 分�
 
 v0.6 新增值：
 
-- `unobserved`：该节点**有**该知识点的可测题目，但一条已评分作答都没有（`evidence_count=0` 且 `pending=0`）。它不是"证据不足"，也不是"未掌握"；它要的动作是**布置基线题**，而 `insufficient_evidence`（有评分但不足门槛、或已作答待评分）要的动作是**再测一次**。两者分别进 `lists.needs_coverage` 与 `lists.needs_observation`。
+- `unobserved`：该节点**有**该知识点的可测题目，但一条已评分作答都没有（`evidence_count=0` 且 `pending=0`）。它不是"证据不足"，也不是"未掌握"；它要的动作是**布置基线题**，而 `insufficient_evidence`（已作答待评分或剔除存疑记录后无可用评分）要的动作是**先评分或核验**。两者分别进 `lists.needs_coverage` 与 `lists.needs_observation`。
 - `knowledge_states[].evidence_action`：动作与状态解耦。`probe`（无任何记录）/ `not_attempted`（已布置未作答）/ `pending`（已作答待评分）/ `sparse_weak`（评分少但后验偏弱，低置信度巩固）/ `sparse_mastered`（评分少但都对，一次复核）/ `sparse_mixed`（评分少且中间，继续补观测）；非稀疏状态为 `null`。语言层据此写动作，不得因 `status` 一律降级成"补充观测"。
 
 ---
@@ -113,7 +113,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | 已布置 + 未作答 | `assigned_not_attempted` | 否 | 否 |
 | 未布置 / 无记录 | `unobserved` | 否 | 否 |
 
-- 无观测：`mastery=null`，`status` 为 `unobserved`（有题但 0 条评分）或 `insufficient_evidence`（0<n<门槛，或已作答待评分），**不要写 0**。
+- 无观测：`mastery=null`，`status` 为 `unobserved`（有题但 0 条评分）或 `insufficient_evidence`（无可用评分、待评分或待核验），**不要写 0**。
 - `pending` 是“已作答但没分”：既不是对也不是错，**不得计入 n、不得判为 wrong、不得静默丢弃**。
 - 未作答不等于答错；未记录不等于未掌握。
 - 同一学生同一材料**同一节点**多条记录：按 `attempt_no` → `submitted_at` → `record_id` 取最后一条，并记录去重数。
@@ -163,13 +163,13 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 
 1. 该节点没有该知识点的可测题目 → `not_applicable`（`mastery=null`，不进分母）；
 2. 有可测题、有效评分 `n=0` 且无待评分 → `unobserved`（未覆盖，进 `needs_coverage`）；
-3. 有效题数 `0 < n < min_evidence`，或 `n=0` 但有已作答待评分 → `insufficient_evidence`（进 `needs_observation`；`mastery` 可为 null，但不得写 0）；
+3. 有效题数 `0 < n < min_evidence`：错误数 `n - full_credit = 0` → `sparse_good`（较好），否则 → `sparse_poor`（较差），均为 low confidence，保留 Beta 估计；部分得分属于错误或扣分。`n=0` 但有待评分 → `insufficient_evidence`（待评分／核验），不得判好坏；
 4. `P(p < 薄弱阈值) ≥ 确认门槛` → `confirmed_weak`；
 5. `P(p > 掌握阈值) ≥ 确认门槛` → `confirmed_mastered`；
 6. 均值 `< 薄弱阈值` → `likely_weak`；均值 `≥ 掌握阈值` → `likely_mastered`；
-7. 其余 → `mixed_performance`。
+7. 其余知识点按全对题数与错误/扣分题数比较：对数≥错数 → `sparse_good`，否则 → `sparse_poor`；`mixed_performance` 仅保留历史兼容及不同知识点的主题汇总。
 
-`min_evidence` 与"覆盖缺失线"是两个独立设置：前者决定判读门槛（默认 2 条），后者只影响看板上的覆盖率标注。门槛只决定"要不要给方向性结论"，不决定"能不能说已确认"：2 条证据在任何组合下都达不到 `confirmation_probability`（默认 0.9），最多得到 `likely_*` / `mixed_performance`。题量本身少于门槛的知识点，`status_reason` 必须写明"题目不足"，而不是归因于学生。
+`min_evidence` 与"覆盖缺失线"是两个独立设置：前者决定判读门槛（默认 2 条），后者只影响看板上的覆盖率标注。门槛决定"按稀疏表现还是正式分类判定"，不决定"能不能说已确认"：2 条证据在任何组合下都达不到 `confirmation_probability`（默认 0.9），最多得到 `likely_*` / `mixed_performance`。题量本身少于门槛的知识点，`status_reason` 必须写明"题目不足"，而不是归因于学生。
 
 `mastery = (k+1)/(n+2)`，`k` 为满分题数，`n` 为有效评分题数。它估计的是**当前材料范围内的满分成功率**，不是"整体能力百分比"；部分得分另看 `performance.mean_score_ratio`。
 
@@ -341,7 +341,7 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 - `knowledge_states[].review`（仅有存疑记录时出现）同时给出 `official_*` 与 `usable_*`（去掉存疑记录后）；`disputed_record_ids` 列出被排除的记录。
 - 顶层 `mastery/status` 由 `--review-policy` 决定：`official`（默认）取官方口径，`exclude_flagged` 取 `usable_*`。两种取值都写进 `run_manifest.review`，可审计。
 - `issues[].rubric_evidence` 只放**可用**失分；存疑失分放 `issues[].disputed_rubric_evidence`，不参与措辞与建议。
-- 若可用证据因此低于 `min_evidence`，仍输出 `insufficient_evidence`，**不补造结论**。
+- 若可用评分为 0，输出 `insufficient_evidence`；若可用评分为 0<n<门槛，按可用错误数输出 `sparse_good` / `sparse_poor`。建议层对带复核块的稀疏状态仍先补观测，不使用存疑评分安排巩固。
 
 **建议层**
 
@@ -501,3 +501,16 @@ v0.6 把任务3的**规则版**写进契约。仍不接 LLM；`llm.enabled=false
 | **v0.3** | 新增 `nodes.csv` 与 `records.node_id`；`records` 增 `rubric_scores_json`/`steps_json`，`materials` 增 `item_format`/`explanation`/`rubric_json`；`materials.objective_id`、`materials.difficulty`、`qmatrix.difficulty` 允许 `null`；去重改为节点内；§5.3 明确 applicable 数据源；§7 增 ID 映射附录 | **minor**：只加可选字段/新增表/放宽 required；无字段删除、无已有取值语义变更；消费方需处理 `null` |
 | **v0.2** | 新增 `pending` 态；`state_counts` / `records_by_state` 增加 `pending` 记账字段（必填）；明确 `assigned` / `attempted` 判定与 `applicable` 口径；§7 四项结案；新增两条不变式 | **minor**：无字段删除、无既有取值语义变更；M0 阶段无生产方与历史产物 |
 | v0.1 | 初版 | — |
+
+### 2026-11-26 稀疏评分表现分类
+
+- `sparse_good`（较好）进入 strengths；`sparse_poor`（较差）进入 needs_consolidation。两者不计入 mastered_count / weak_count，分别计入必填的 sparse_good_count / sparse_poor_count，班级分布各类人数之和必须等于学生人数。
+- 达到 min_evidence 后仍使用原有 Beta 阈值与概率规则；较好不等于已确认掌握，较差不等于已确认薄弱。
+- 稀疏表现的问题 type 仍使用 insufficient_evidence，表示尚未达到正式判定门槛；evidence_action 分别为 sparse_mastered（轻量复核）和 sparse_weak（低置信度巩固）。待评分不追加练习。
+- 消费方：诊断画像/验证器、班级汇总、先修排序、学习建议、LLM 摘要与 Web 图表均接受新增状态；旧产物需重建，不能仅换标签。原始五态账本、评分和 canonical 合约不变。
+
+2026-11-26 补充：达到证据门槛但未归入掌握或薄弱的知识点，按全对题数与错误或扣分题数比较：对数≥错数为 sparse_good（较好），否则为 sparse_poor（较差）。例如 2 对 1 错、1 对 1 错为较好，1 对 2 错为较差；原有具体失分点和巩固建议继续保留。较好显示橙色、较差显示绿色。mixed_performance 保留用于历史兼容及混合主题汇总。
+
+展示与消费方补充：掌握/较好为深浅橙色，薄弱/较差为深浅绿色；显示名称不暴露 likely/confirmed 内部枚举，但保留 status_reason 和 confidence。变式训练及 AI 汇总把 sparse_poor 纳入优先支持范围，班级四档计数仍分开，不把较差加到 weak_count。旧训练卷依据保留旧口径。设置预览读取现有状态，保存后由服务端重建，不在前端另算一套诊断。
+
+主题汇总补充：存在待评分／核验知识点时为 insufficient_evidence；否则存在未覆盖知识点时为 unobserved。两者不可互换；不同知识点表现混合显示“知识点表现不一”，不解释成同一知识点随时间波动。

@@ -10,24 +10,26 @@ export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
 export const pct = value => value == null || !Number.isFinite(value) ? '—' : `${value > 0 && value < .01 ? (value * 100).toFixed(1) : Math.round(value * 100)}%`;
 export const states = {
   mastered: {
-    label: '掌握倾向',
-    color: '#238778',
+    label: '掌握',
+    color: '#d78b51',
     short: '掌'
   },
   weak: {
-    label: '偏弱倾向',
-    color: '#d78b51',
-    short: '固'
+    label: '薄弱',
+    color: '#238778',
+    short: '弱'
   },
   mixed: {
-    label: '表现不稳定',
+    label: '知识点表现不一',
     color: '#a28bc7',
-    short: '波'
+    short: '异'
   },
+  sparse_good: {label: '较好', color: '#edb985', short: '好'},
+  sparse_poor: {label: '较差', color: '#81b9a5', short: '差'},
   insufficient_evidence: {
-    label: '待观察',
+    label: '待评分／核验',
     color: '#c9d4dc',
-    short: '观'
+    short: '待'
   },
   unobserved: {
     label: '未覆盖',
@@ -40,32 +42,32 @@ export const states = {
     short: '—'
   },
   confirmed_mastered: {
-    label: '已确认掌握',
-    color: '#238778',
+    label: '掌握',
+    color: '#d78b51',
     short: '掌'
   },
   likely_mastered: {
-    label: '较可能掌握',
-    color: '#238778',
+    label: '掌握',
+    color: '#d78b51',
     short: '掌'
   },
   confirmed_weak: {
-    label: '已确认薄弱',
-    color: '#d78b51',
-    short: '固'
+    label: '薄弱',
+    color: '#238778',
+    short: '弱'
   },
   likely_weak: {
-    label: '较可能偏弱',
-    color: '#d78b51',
-    short: '固'
+    label: '薄弱',
+    color: '#238778',
+    short: '弱'
   },
   mixed_performance: {
-    label: '表现不稳定',
+    label: '知识点表现不一',
     color: '#a28bc7',
-    short: '波'
+    short: '异'
   }
 };
-export const categories = ['mastered', 'weak', 'mixed', 'insufficient_evidence', 'unobserved', 'not_applicable'];
+export const categories = ['mastered', 'sparse_good', 'sparse_poor', 'weak', 'mixed', 'insufficient_evidence', 'unobserved', 'not_applicable'];
 export const statusGroup = status => ({
   confirmed_mastered: 'mastered',
   likely_mastered: 'mastered',
@@ -102,8 +104,8 @@ export function badge(status) {
   };
   return `<span class="badge status-${esc(status)}"><i style="background:${s.color}"></i>${esc(s.label)}</span>`;
 }
-export function legend() {
-  return `<div class="legend">${categories.map(k=>states[k]).map(s=>`<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
+export function legend(includeMixed=false) {
+  return `<div class="legend">${categories.filter(k=>includeMixed||k!=='mixed').map(k=>states[k]).map(s=>`<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
 }
 export function donut(items, center, caption) {
   const sum = items.reduce((a, x) => a + x.value, 0),
@@ -121,6 +123,8 @@ export function donut(items, center, caption) {
 export function stateBars(rows, nameFor) {
   const fields = {
     mastered: 'mastered_count',
+    sparse_good: 'sparse_good_count',
+    sparse_poor: 'sparse_poor_count',
     weak: 'weak_count',
     mixed: 'mixed_count',
     insufficient_evidence: 'insufficient_count',
@@ -164,5 +168,5 @@ export function comparisonBars(rows, series) {
   return `<div class="comparison-chart">${rows.map(row=>`<div class="comparison-row"><div class="comparison-label"><strong>${esc(row.label)}</strong>${row.detail?`<small>${esc(row.detail)}</small>`:''}</div><div class="comparison-series">${series.map(s=>{const value=row.values[s.key];return `<div class="comparison-line"><span class="comparison-track"><i style="width:${Number.isFinite(value)?value*100:0}%;background:${s.color}"></i></span><strong>${pct(value)}</strong></div>`;}).join('')}</div></div>`).join('')}<div class="comparison-scale"><span>0%</span><span>50%</span><span>100%</span></div></div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join('')}</div>`;
 }
 export function masteryBars(items, nameFor) {
-  return `<div class="mastery-bars">${items.map(k=>`<button class="mastery-row" data-knowledge="${esc(k.knowledge_id)}"><span>${esc(k.knowledge_id)}<b>${esc(nameFor(k.knowledge_id))}</b></span><span class="estimate-track">${k.credible_interval?`<i class="interval" style="left:${k.credible_interval[0]*100}%;width:${(k.credible_interval[1]-k.credible_interval[0])*100}%"></i>`:''}${k.mastery!=null?`<i class="estimate-dot" style="left:${k.mastery*100}%;background:${states[k.status]?.color||'#238778'}"></i>`:''}</span><strong>${pct(k.mastery)}</strong><small>${k.evidence_count} 条</small></button>`).join('')}</div><p class="chart-note">圆点为满分成功概率的模型估计，淡色区间表示不确定性；“—”表示无法估计。估计值不等于考试成绩或能力百分比。</p>`;
+  return `<div class="mastery-bars">${items.map(k=>`<button class="mastery-row" data-knowledge="${esc(k.knowledge_id)}"><span>${esc(k.knowledge_id)}<b>${esc(nameFor(k.knowledge_id))}</b></span><span class="estimate-track">${k.credible_interval?`<i class="interval" style="left:${k.credible_interval[0]*100}%;width:${(k.credible_interval[1]-k.credible_interval[0])*100}%"></i>`:''}${k.mastery!=null?`<i class="estimate-dot" style="left:${k.mastery*100}%;background:${states[k.status]?.color||'#d78b51'}"></i>`:''}</span><strong>${pct(k.mastery)}</strong><small>${k.evidence_count} 条</small></button>`).join('')}</div><p class="chart-note">圆点为满分成功概率的模型估计，淡色区间表示不确定性；“—”表示无法估计。估计值不等于考试成绩或能力百分比。</p>`;
 }

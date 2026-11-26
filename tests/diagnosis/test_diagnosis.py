@@ -62,7 +62,7 @@ def test_pending_is_counted_but_not_graded(bundle):
     }
     assert k["evidence_count"] == 1
     assert math.isclose(k["mastery"], 2 / 3, abs_tol=1e-6)
-    assert k["status"] == "insufficient_evidence"
+    assert k["status"] == "sparse_good"
 
 
 def test_assigned_not_attempted_is_not_wrong(bundle):
@@ -106,7 +106,7 @@ def test_partial_credit_becomes_score_point_evidence(bundle):
     state = next(s for s in p["knowledge_states"] if s["knowledge_id"] == "K-02")
     assert state["performance"]["partial_credit"] == 0
     assert state["performance"]["zero_credit"] == 1
-    assert state["status"] == "mixed_performance"
+    assert state["status"] == "sparse_good"
     issue = next(i for i in p["issues"] if i["knowledge_id"] == "K-02")
     assert issue["type"] == "score_point_gap"
     assert {p["point_id"] for p in issue["rubric_evidence"]} == {"M-004P1", "M-004P2"}
@@ -117,13 +117,17 @@ def test_partial_credit_becomes_score_point_evidence(bundle):
     ("correct", "n", "status"),
     [
         (0, 0, "insufficient_evidence"),
-        (0, 1, "insufficient_evidence"),
+        (0, 1, "sparse_poor"),
+        (1, 1, "sparse_good"),
         (0, 2, "likely_weak"),
         (0, 3, "likely_weak"),
         (3, 3, "likely_mastered"),
         (0, 8, "confirmed_weak"),
         (12, 12, "confirmed_mastered"),
-        (4, 8, "mixed_performance"),
+        (4, 8, "sparse_good"),
+        (2, 3, "sparse_good"),
+        (1, 2, "sparse_good"),
+        (1, 3, "sparse_poor"),
     ],
 )
 def test_beta_statuses(correct, n, status):
@@ -135,6 +139,49 @@ def test_beta_statuses(correct, n, status):
         assert 0 <= low < result["mastery"] < high <= 1
     else:
         assert result["mastery"] is None
+
+
+@pytest.mark.parametrize("threshold", [2, 3, 5])
+def test_sparse_performance_uses_errors_until_configured_threshold(threshold):
+    config = DiagnosisConfig(min_evidence=threshold)
+    for n in range(1, threshold):
+        for correct in range(n + 1):
+            estimate = estimate_mastery(correct, n, config)
+            assert estimate["status"] == ("sparse_good" if correct == n else "sparse_poor")
+            assert estimate["confidence"] == "low"
+            assert f"{n - correct}项错误或扣分" in estimate["status_reason"]
+    assert estimate_mastery(threshold, threshold, config)["status"] not in {"sparse_good", "sparse_poor"}
+    assert estimate_mastery(0, threshold, config)["status"] not in {"sparse_good", "sparse_poor"}
+
+
+def test_sparse_partial_credit_and_pending_do_not_count_as_correct(bundle):
+    import copy
+
+    data = copy.deepcopy(bundle)
+    record = next(r for r in data["records"] if r["student_id"] == "S001" and r["node_id"] == "N01" and r["is_correct"])
+    record["score"] = record["max_score"] / 2
+    record["is_correct"] = False
+    p = profile(data, nid="N01")
+    state = p["knowledge_states"][0]
+    assert state["performance"]["partial_credit"] == 1
+    assert state["state_counts"]["pending"] == 1
+    assert state["evidence_count"] == 1
+    assert state["status"] == "sparse_poor"
+    assert state["evidence_action"] == "sparse_weak"
+    assert state["knowledge_id"] in {i["knowledge_id"] for i in p["lists"]["needs_consolidation"]}
+
+
+def test_sparse_good_is_a_strength_but_not_confirmed_mastery(bundle):
+    p = profile(bundle, nid="N01")
+    state = p["knowledge_states"][0]
+    assert state["status"] == "sparse_good"
+    assert state["evidence_action"] == "sparse_mastered"
+    assert state["knowledge_id"] in {i["knowledge_id"] for i in p["lists"]["strengths"]}
+    c = build_class_profile([p], "ALL", bundle, "N01")
+    row = c["knowledge_distribution"][0]
+    assert row["sparse_good_count"] == 1
+    assert row["mastered_count"] == 0
+    assert validate_class(c, [p], bundle) == []
 
 
 def test_two_observations_never_reach_a_confirmed_status():
@@ -178,6 +225,8 @@ def test_class_distribution_counts_sum_to_population(bundle):
         total = (
             row["mastered_count"]
             + row["weak_count"]
+            + row["sparse_good_count"]
+            + row["sparse_poor_count"]
             + row["insufficient_count"]
             + row["unobserved_count"]
             + row["mixed_count"]
@@ -283,9 +332,9 @@ def test_apply_evidence_status_separates_uncovered_from_insufficient():
     assert apply_evidence_status(empty, observed=0, pending=0)["status"] == "unobserved"
     # 交了但没评分：仍然算证据不足，因为已经有作答在等结果。
     assert apply_evidence_status(empty, observed=0, pending=1)["status"] == "insufficient_evidence"
-    # 有 1~2 条评分：不足以定性，但确实看过了。
+    # 已有评分不足门槛：全部答对为较好，不能当作已确认掌握。
     sparse = estimate_mastery(1, 1, DiagnosisConfig())
-    assert apply_evidence_status(sparse, observed=1, pending=0)["status"] == "insufficient_evidence"
+    assert apply_evidence_status(sparse, observed=1, pending=0)["status"] == "sparse_good"
 
 
 def test_unobserved_knowledge_goes_to_the_coverage_list(bundle):

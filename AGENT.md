@@ -22,7 +22,7 @@ KnowFlow 是“智慧学伴”赛道的学情诊断与个性化学习智能体�
 1. **契约先行**：`schemas/` 是接口；改字段/枚举/ID 先改 schema + `CONTRACT.md`，再改代码。
 2. **数字由代码算**：`mastery`、正确率、覆盖度、排名只能由确定性代码产出；LLM 不改数字。
 3. **原始数据不出本机**：`data/raw`、`data/interim` 不进 Git、不进 LLM；LLM 只接收 `llm_summary`。
-4. **缺失不等于未掌握**：无记录 = `unobserved`（未覆盖），有 1~2 条评分才叫 `insufficient_evidence`；两者都不推断成 0 或“不会”，但动作不同：前者先布置基线题，后者再测一次。
+4. **缺失不等于未掌握**：无记录 = `unobserved`（未覆盖），已有评分不足门槛时全对为 `sparse_good`（较好）、有错误或扣分为 `sparse_poor`（较差）；无可用评分的待评分／核验状态保留 `insufficient_evidence`，不把缺失当作答错。
 5. **证据链闭合**：结论带 `record_id`/`material_id`/`knowledge_id`；建议带 `issue_id` 与可验证的 `check`。
 6. **小步可回滚**：一任务一分支一 PR；不顺手大重构；不 force-push `main`。
 7. **先验证后提交**：schema/引用/一致性/隐私检查通过才算完成；没有输出就不说“已完成”。
@@ -313,3 +313,5 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 | v0.4 | 2026-11-09 | 补 `scripts/ingest_raw.py` 与 §4「复现当前结构」四步：解决 `git pull` 不携带数据、新组员无法重建 `data/raw/official-v1/` 的缺口；新增**入库**的纯指纹 `data/manifests/official-v1.structure.json`（路径 + `sha256` + 行数，无数据内容），`--check` 默认以它为基准 |
 | v0.3 | 2026-11-09 | M1-a 契约补丁：`evidence_state` 增 `pending`；`state_counts`/`records_by_state` 增 `pending` 记账；写明 `assigned`/`attempted` 判定与 `applicable` 口径；受限目录检查改为 `git check-ignore`；落地 `data/raw/official-v1/` |
 | v0.1 | 2026-11-08 | 初版地基 |
+
+2026-11-26 补充：达到证据门槛但未归入掌握或薄弱的知识点，按全对题数与错误或扣分题数比较：对数≥错数为 sparse_good（较好），否则为 sparse_poor（较差）。例如 2 对 1 错、1 对 1 错为较好，1 对 2 错为较差；原有具体失分点和巩固建议继续保留。较好显示橙色、较差显示绿色。mixed_performance 保留用于历史兼容及混合主题汇总。

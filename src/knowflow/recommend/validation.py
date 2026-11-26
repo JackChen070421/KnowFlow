@@ -17,7 +17,7 @@ from knowflow.recommend.rules import MIN_EVIDENCE, POLICY_VERSION
 
 NUMBER = re.compile(r"(?<![A-Za-z0-9_-])\d+(?:\.\d+)?(?![A-Za-z0-9_-])")
 SCHEMA_ID = "https://knowflow.local/schemas/output/recommendation.schema.json"
-GAP_STATUSES = {"confirmed_weak", "likely_weak", "mixed_performance"}
+GAP_STATUSES = {"confirmed_weak", "likely_weak", "sparse_poor"}
 
 
 @lru_cache(maxsize=4)
@@ -161,7 +161,7 @@ def validate_recommendation(
                 errors.append(f"plan[{index}]: basis_records do not match the issue evidence")
         if (
             block
-            and block["usable_status"] == "insufficient_evidence"
+            and block["usable_status"] in {"insufficient_evidence", "sparse_good", "sparse_poor"}
             and item.get("activity_type") != "probe"
         ):
             errors.append(f"plan[{index}]: usable evidence is insufficient; must be a probe")

@@ -7,6 +7,9 @@ item records a rule-derived value and the run README says so.
 
 from __future__ import annotations
 
+from knowflow.diagnosis.evidence import evidence_action as _shared_action
+from knowflow.diagnosis.mastery import DiagnosisConfig
+
 from . import path as path_module
 from . import probe as probe_module
 
@@ -14,9 +17,69 @@ POLICY_VERSION = "r3-rules-2"
 MAX_PLAN_ITEMS = 3
 MAX_PROBE_PER_ISSUE = 3
 MAX_PROBE_ITEMS = 12
-MIN_EVIDENCE = 3
+# 建议文案里的"达到几次评分再复核"必须与诊断门槛同源，否则会在文案里写错数字。
+MIN_EVIDENCE = DiagnosisConfig().min_evidence
 WEAK_STATUSES = {"confirmed_weak", "likely_weak", "mixed_performance"}
 GAP_TYPES = {"score_point_gap", "performance_gap"}
+
+
+def _sparse_action(state: dict) -> str:
+    """稀疏观测下，后验已经说了什么。
+
+    返回 ``sparse_weak`` / ``sparse_mastered`` / ``sparse_mixed``，或
+    ``pending``（已作答待评分）/ ``not_attempted``（已布置未作答）/ ``probe``
+    （0 次观测、无后验，或已被 review 调整口径）。只有 ``sparse_weak`` 升级为
+    低置信度巩固，其余仍补观测、但文案不同。
+
+    诊断层已经把同一判断写进 ``evidence_action``，这里优先读它，保证建议与
+    画像说的是同一件事。
+    """
+
+    return state.get("evidence_action") or _shared_action(
+        state if state.get("status") else {**state, "status": "insufficient_evidence"}
+    )
+
+
+def _prior_risk(profile: dict, catalog: dict, knowledge_id: str) -> tuple[int, str]:
+    """从先修知识点与同主题表现给 0 观测知识点一个先验风险（层级先验的确定性版）。
+
+    返回 ``(score, reason)``：score 2=高 / 1=中 / 0=无；reason 供文案引用。
+    """
+
+    state = _state(profile, knowledge_id) or {}
+    objective_id = state.get("objective_id") or (
+        (catalog["knowledge"].get(knowledge_id) or {}).get("objective_id")
+    )
+    reasons: list[str] = []
+    weak_prereqs: list[str] = []
+    for entry in catalog.get("reviewed_prerequisites", {}).get(knowledge_id, []):
+        source = entry["source_knowledge_id"]
+        sibling = _state(profile, source)
+        if sibling is None:
+            continue
+        if sibling.get("status") in WEAK_STATUSES or (
+            isinstance(sibling.get("mastery"), (int, float))
+            and sibling["mastery"] < 0.4
+        ):
+            weak_prereqs.append(source)
+    if weak_prereqs:
+        reasons.append(f"先修 {'、'.join(weak_prereqs)} 薄弱")
+
+    siblings = [
+        s
+        for s in profile["knowledge_states"]
+        if s["knowledge_id"] != knowledge_id
+        and s.get("objective_id") == objective_id
+        and isinstance(s.get("mastery"), (int, float))
+    ]
+    if siblings:
+        average = sum(s["mastery"] for s in siblings) / len(siblings)
+        if average < 0.4:
+            reasons.append("同主题平均表现偏低")
+
+    if not reasons:
+        return 0, ""
+    return (2 if weak_prereqs else 1), "；".join(reasons)
 
 
 def _state(profile: dict, knowledge_id: str) -> dict | None:
@@ -68,19 +131,23 @@ def _planning_issue(issue: dict, view: dict) -> dict:
 
 def _priority(issue: dict, profile: dict, catalog: dict, review: dict | None = None) -> tuple:
     view = _planning_view(profile, issue["knowledge_id"], review)
+    state = _state(profile, issue["knowledge_id"]) or {}
+    action = _sparse_action(state)
     status = view.get("status")
     if status in {"confirmed_weak", "likely_weak"}:
         rank = 0
-    elif issue["type"] == "score_point_gap":
+    elif action == "sparse_weak" or issue["type"] == "score_point_gap":
         rank = 1
     elif issue["type"] == "performance_gap":
         rank = 2
     else:
         rank = 3
+    prior_score, _ = _prior_risk(profile, catalog, issue["knowledge_id"])
     knowledge = catalog["knowledge"].get(issue["knowledge_id"], {})
     objective_order = catalog["objective_order"].get(issue["objective_id"], 99)
     return (
         rank,
+        2 - prior_score,  # 0 观测时，先验风险高者优先（数值小在前）
         view["evidence_count"],
         objective_order,
         int(knowledge.get("sort_order") or 0),
@@ -194,7 +261,7 @@ def _prerequisite(issue: dict, profile: dict, catalog: dict, review: dict | None
         view = _planning_view(profile, entry["source_knowledge_id"], review)
         if view["status"] in {"confirmed_weak", "likely_weak"}:
             missing.append(entry["source_knowledge_id"])
-        elif view["status"] == "insufficient_evidence":
+        elif view["status"] in {"insufficient_evidence", "unobserved"}:
             pending.append(entry["source_knowledge_id"])
     draft_edges = [entry["edge_id"] for entry in catalog.get("pending_prerequisites", {}).get(target, [])]
     draft_edges += catalog.get("pending_node_relations", {}).get(target, [])
@@ -222,7 +289,12 @@ def _dependency_issues(
     for entry in catalog.get("reviewed_prerequisites", {}).get(issue["knowledge_id"], []):
         source = entry["source_knowledge_id"]
         view = _planning_view(profile, source, review)
-        if view["status"] not in {"confirmed_weak", "likely_weak", "insufficient_evidence"}:
+        if view["status"] not in {
+            "confirmed_weak",
+            "likely_weak",
+            "insufficient_evidence",
+            "unobserved",
+        }:
             continue
         dependency = issues_by_knowledge.get(source)
         if dependency is not None:
@@ -300,6 +372,8 @@ def _reason(
     explain_id: str | None,
     assessment_ids: list[str],
     review: dict | None = None,
+    sparse: str | None = None,
+    prior_reason: str = "",
 ) -> str:
     view = _planning_view(profile, issue["knowledge_id"], review)
     knowledge = catalog["knowledge"].get(issue["knowledge_id"], {})
@@ -309,12 +383,56 @@ def _reason(
     note = ""
     if view["review"]:
         note = f"（已排除 {len(view['review']['disputed_record_ids'])} 条存疑评分，待人工复核）"
+
+    if sparse == "sparse_weak":
+        state = _state(profile, issue["knowledge_id"]) or {}
+        weak_p = int(round((state.get("weak_probability") or 0.0) * 100))
+        criteria = list(dict.fromkeys(item["criterion"] for item in issue.get("rubric_evidence", [])))
+        loss = f"，失分集中在「{'、'.join(criteria)}」" if criteria else ""
+        lead = f"先用 {explain_id} 重建" if explain_id else "先看原题解析"
+        return (
+            f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分、未达最低观测数，"
+            f"但后验显示约 {weak_p}% 概率薄弱{loss}；先按薄弱做低置信度巩固：{lead}，"
+            f"再用 {'、'.join(assessment_ids)} 定向确认。{note}"
+        )
+
     if issue["type"] == "insufficient_evidence":
+        if sparse == "pending":
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」已作答但尚未评分；"
+                f"先等待评分结果，本轮不追加练习。"
+            )
+        if sparse == "not_attempted":
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」已布置但未作答，"
+                f"可能偏难或需要动机引导；从更简单的入口补一次观测。"
+            )
+        if n == 0:
+            prior = f"（{prior_reason}）" if prior_reason else ""
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」在本节点没有已评分作答"
+                f"{prior}；先完成 {'、'.join(assessment_ids)} 建立基线，"
+                f"未覆盖不等于未掌握，拿到评分前不写掌握度。{note}"
+            )
+        if sparse == "sparse_mastered":
+            state = _state(profile, issue["knowledge_id"]) or {}
+            mastered_p = int(round((state.get("mastered_probability") or 0.0) * 100))
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分且表现良好，"
+                f"后验显示约 {mastered_p}% 概率已掌握；做 1 次轻量复核即可确认。"
+            )
+        if sparse == "sparse_mixed":
+            return (
+                f"{issue['issue_id']} 的 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分、表现中间，"
+                f"尚不能判定；继续补观测。"
+            )
+        prior = f"（{prior_reason}）" if prior_reason else ""
         return (
             f"{issue['issue_id']} 显示 {issue['knowledge_id']}「{name}」仅有 {n} 次有效评分，"
-            f"低于最低观测数 {MIN_EVIDENCE}；用 {'、'.join(assessment_ids)} 补充观测，"
+            f"低于最低观测数 {MIN_EVIDENCE}{prior}；用 {'、'.join(assessment_ids)} 补充观测，"
             f"暂不下“未掌握”结论。{note}"
         )
+
     criteria = list(dict.fromkeys(item["criterion"] for item in issue.get("rubric_evidence", [])))
     loss = f"，失分集中在「{'、'.join(criteria)}」" if criteria else "，具体错因证据不足"
     lead = f"先用 {explain_id} 重建" if explain_id else "先看原题解析"
@@ -329,7 +447,14 @@ def _check(
     catalog: dict,
     explain_id: str | None,
     assessment_ids: list[str],
+    sparse: str | None = None,
 ) -> str:
+    if sparse == "sparse_weak":
+        lead = f"完成 {explain_id} 学习卡 + " if explain_id else "完成 "
+        return (
+            f"{lead}{'、'.join(assessment_ids)}；若 1 题全对则可能是偶发错误、继续观测，"
+            f"若仍错则确认薄弱、进入巩固。"
+        )
     if issue["type"] == "insufficient_evidence":
         return (
             f"完成 {'、'.join(assessment_ids)} 并获得评分；{issue['knowledge_id']} "
@@ -345,6 +470,55 @@ def _check(
     return f"{lead}{'、'.join(assessment_ids)}，至少 2 题全对；否则回到讲解材料重看。"
 
 
+def refresh_item_wording(
+    item: dict,
+    issue: dict,
+    profile: dict,
+    catalog: dict,
+    review: dict | None = None,
+) -> None:
+    """Regenerate reason/check after the decision layer changed the materials.
+
+    A teacher's ``replace_materials`` changes the decision, so the language must
+    follow.  Called with the final material list; the completion ``check`` stays
+    deterministic and only ever cites those materials.
+    """
+
+    materials = [m for m in item["material_ids"] if m in catalog["materials"]]
+    explain_id = next(
+        (
+            m
+            for m in materials
+            if catalog["materials"][m]["material_type"] == "explain"
+        ),
+        None,
+    )
+    assessments = [
+        m
+        for m in materials
+        if catalog["materials"][m]["material_type"] == "assessment"
+    ]
+    view = _planning_view(profile, issue["knowledge_id"], review)
+    planning = _planning_issue(issue, view)
+    sparse = (
+        "sparse_weak"
+        if item.get("activity_type") == "consolidate" and planning["type"] == "insufficient_evidence"
+        else None
+    )
+    if sparse == "sparse_weak":
+        planning = {**planning, "type": "score_point_gap"}
+    if not assessments:
+        names = "、".join(catalog["materials"][m].get("title", m) for m in materials)
+        item["reason"] = (
+            f"{issue['issue_id']} 对应 {issue['knowledge_id']}；"
+            f"按计划先看 {names or '相关材料'}，再按要求自检。"
+        )
+        item["check"] = "完成计划材料并自检。"
+        return
+    item["reason"] = _reason(planning, profile, catalog, explain_id, assessments, review, sparse=sparse)
+    item["check"] = _check(planning, catalog, explain_id, assessments, sparse=sparse)
+
+
 def _plan_item(
     seq: int,
     issue: dict,
@@ -355,9 +529,15 @@ def _plan_item(
     used: set[str],
     review: dict | None = None,
     assessments: list[str] | None = None,
+    action: str | None = None,
+    prior_reason: str = "",
 ) -> dict | None:
     view = _planning_view(profile, issue["knowledge_id"], review)
     planning = _planning_issue(issue, view)
+    sparse_weak = action == "sparse_weak"
+    if sparse_weak:
+        # 后验已偏薄弱：按低置信度 gap 走“学习卡 + 重做同评分点”，而非补观测。
+        planning = {**planning, "type": "score_point_gap"}
     if assessments is None:
         assessments = _select_assessments(planning, catalog, node_available, attempted, used)
     if not assessments:
@@ -377,7 +557,9 @@ def _plan_item(
     used.update(material_ids)
     activity_type = "probe" if planning["type"] == "insufficient_evidence" else "consolidate"
     activity = (
-        "补充观测：未作答题"
+        "建立基线：未作答题"
+        if activity_type == "probe" and action in {"probe", "not_attempted"}
+        else "补充观测：未作答题"
         if activity_type == "probe"
         else "看学习卡 + 同评分点练习"
         if explain_id
@@ -392,8 +574,8 @@ def _plan_item(
         "primary_material_id": primary,
         "objective_id": issue["objective_id"],
         "knowledge_ids": [issue["knowledge_id"]],
-        "reason": _reason(planning, profile, catalog, explain_id, assessments, review),
-        "check": _check(planning, catalog, explain_id, assessments),
+        "reason": _reason(planning, profile, catalog, explain_id, assessments, review, sparse=action, prior_reason=prior_reason),
+        "check": _check(planning, catalog, explain_id, assessments, sparse=action),
         "est_minutes": _minutes(material_ids, catalog),
         "difficulty": _difficulty(issue, assessments, catalog),
         "prerequisite_check": _prerequisite(issue, profile, catalog, review),
@@ -688,10 +870,28 @@ def recommend_profile(
     fresh_issues = [issue for issue in issues if issue["knowledge_id"] not in reserved]
     gaps = []
     probes = []
+    actions: dict[str, str] = {}
+    priors: dict[str, str] = {}
+    pending_deferred: list[dict] = []
     for issue in fresh_issues:
         view = _planning_view(profile, issue["knowledge_id"], review)
-        if _effective_type(issue, view) == "insufficient_evidence":
-            probes.append(issue)
+        kind = _effective_type(issue, view)
+        if kind == "insufficient_evidence":
+            action = _sparse_action(_state(profile, issue["knowledge_id"]) or {})
+            actions[issue["issue_id"]] = action
+            _, prior_reason = _prior_risk(profile, catalog, issue["knowledge_id"])
+            priors[issue["issue_id"]] = prior_reason
+            if action == "sparse_weak":
+                gaps.append(issue)  # 低置信度巩固，不再当作“补观测”
+            elif action == "pending":
+                pending_deferred.append(
+                    {
+                        "issue_id": issue["issue_id"],
+                        "reason": "已作答但尚未评分；先等待评分结果，本轮不追加练习。",
+                    }
+                )
+            else:
+                probes.append(issue)
         elif _is_gap(issue, profile, review):
             gaps.append(issue)
     base_selected = (gaps[:2] + probes[:1]) if gaps else probes[:MAX_PLAN_ITEMS]
@@ -728,14 +928,18 @@ def recommend_profile(
                 "reason": f"教师移除：{entry.get('reason', '')}（事件 {entry.get('event_id')}）",
             }
         )
+    deferred.extend(pending_deferred)
 
     unresolved = {issue["knowledge_id"] for issue in issues}
     probe_candidates: dict[str, list[dict]] = {}
     selected_probe_materials: list[str] = []
     for issue in selected:
         view = _planning_view(profile, issue["knowledge_id"], review)
+        action = actions.get(issue["issue_id"])
         assessments = None
-        if _effective_type(issue, view) == "insufficient_evidence":
+        if action == "sparse_weak":
+            assessments = None  # 走 _plan_item 的 gap 材料选择（重做同评分点）
+        elif _effective_type(issue, view) == "insufficient_evidence":
             assessments, candidates = probe_module.select_probes(
                 issue,
                 profile=profile,
@@ -762,6 +966,8 @@ def recommend_profile(
             used,
             review,
             assessments,
+            action=action,
+            prior_reason=priors.get(issue["issue_id"], ""),
         )
         if item:
             plan.append(item)

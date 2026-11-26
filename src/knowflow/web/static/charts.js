@@ -29,6 +29,11 @@ export const states = {
     color: '#c9d4dc',
     short: '观'
   },
+  unobserved: {
+    label: '未覆盖',
+    color: '#9fb2c0',
+    short: '缺'
+  },
   not_applicable: {
     label: '本节点不适用',
     color: '#e9edf0',
@@ -60,7 +65,7 @@ export const states = {
     short: '波'
   }
 };
-export const categories = ['mastered', 'weak', 'mixed', 'insufficient_evidence', 'not_applicable'];
+export const categories = ['mastered', 'weak', 'mixed', 'insufficient_evidence', 'unobserved', 'not_applicable'];
 export const statusGroup = status => ({
   confirmed_mastered: 'mastered',
   likely_mastered: 'mastered',
@@ -119,6 +124,7 @@ export function stateBars(rows, nameFor) {
     weak: 'weak_count',
     mixed: 'mixed_count',
     insufficient_evidence: 'insufficient_count',
+    unobserved: 'unobserved_count',
     not_applicable: 'not_applicable_count'
   };
   return `<div class="state-bars">${rows.map(r=>`<button class="state-bar-row" data-knowledge="${esc(r.knowledge_id)}"><span class="bar-label"><b>${esc(r.knowledge_id)}</b>${esc(nameFor(r.knowledge_id))}</span><span class="bar-track" aria-label="${esc(Object.entries(fields).map(([k,f])=>states[k].label+' '+r[f]+'人').join('；'))}">${Object.entries(fields).map(([s,f])=>r[f]?`<span class="segment-${s}" style="width:${r[f]/Math.max(1,r.student_count)*100}%;background:${states[s].color}" title="${states[s].label} ${r[f]} 人">${r[f]>=3?r[f]:''}</span>`:'').join('')}</span><span class="bar-end">${r.student_count} 人</span></button>`).join('')}</div>`;

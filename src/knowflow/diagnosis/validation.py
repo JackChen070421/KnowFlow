@@ -13,7 +13,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from knowflow.cleaning.states import STATES, classify_state
 from knowflow.contracts import build_registry, repo_root
-from knowflow.diagnosis.mastery import DiagnosisConfig, estimate_mastery
+from knowflow.diagnosis.evidence import evidence_action
+from knowflow.diagnosis.mastery import DiagnosisConfig, apply_evidence_status, estimate_mastery
 from knowflow.diagnosis.profiles import MASTERED, WEAK, optional_mean, rubric_patterns
 
 BUNDLE_KEYS = {
@@ -282,6 +283,9 @@ def validate_student(
         )
         check(state["applicable_items"] == len(items), f"{kid}: applicable count mismatch")
         expected = estimate_mastery(counts["observed_correct"], len(expected_ids), config)
+        expected = apply_evidence_status(
+            expected, observed=len(expected_ids), pending=counts["pending"]
+        )
         if scope_known and not items:
             expected["status"] = "not_applicable"
         official = dict(expected)
@@ -344,6 +348,10 @@ def validate_student(
             "mastered_probability",
         ]:
             check(state[key] == expected[key], f"{kid}: {key} cannot be reproduced")
+        check(
+            state.get("evidence_action") == evidence_action(state),
+            f"{kid}: evidence action cannot be reproduced",
+        )
         rs = [graded[rid] for rid in expected_ids]
         perf = {
             "full_credit": counts["observed_correct"],
@@ -360,6 +368,29 @@ def validate_student(
         c["total_knowledge"] == sum(s["applicable_items"] > 0 for s in states.values()),
         "applicable knowledge mismatch",
     )
+    buckets: dict[str, set[str]] = {
+        "strengths": set(),
+        "needs_consolidation": set(),
+        "needs_observation": set(),
+        "needs_coverage": set(),
+    }
+    for state in states.values():
+        if state["status"] == "not_applicable":
+            continue
+        buckets[
+            "strengths"
+            if state["status"] in MASTERED
+            else "needs_coverage"
+            if state["status"] == "unobserved"
+            else "needs_observation"
+            if state["status"] == "insufficient_evidence"
+            else "needs_consolidation"
+        ].add(state["knowledge_id"])
+    for key, members in buckets.items():
+        check(
+            sorted(item["knowledge_id"] for item in profile["lists"][key]) == sorted(members),
+            f"{key} does not match the knowledge states",
+        )
     objective_ids = [o["objective_id"] for o in profile["objective_states"]]
     check(
         len(set(objective_ids)) == len(objective_ids)
@@ -518,6 +549,7 @@ def validate_class(
             ("mastered_count", MASTERED),
             ("weak_count", WEAK),
             ("insufficient_count", {"insufficient_evidence"}),
+            ("unobserved_count", {"unobserved"}),
             ("mixed_count", {"mixed_performance"}),
             ("not_applicable_count", {"not_applicable"}),
         ]:
@@ -551,6 +583,11 @@ def validate_class(
         c["students_with_insufficient_evidence"]
         == sum(bool(p["lists"]["needs_observation"]) for p in selected),
         "insufficient population mismatch",
+    )
+    check(
+        c["students_with_coverage_gap"]
+        == sum(bool(p["lists"]["needs_coverage"]) for p in selected),
+        "coverage-gap population mismatch",
     )
     check(
         c["mean_ratio"] == optional_mean(p["coverage"]["ratio"] for p in selected),

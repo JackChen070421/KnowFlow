@@ -11,6 +11,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 from knowflow.contracts import build_registry, repo_root
+from knowflow.llm.contract import material_drift
 from knowflow.recommend.catalog import build_catalog, load_knowledge_base
 from knowflow.recommend.rules import MIN_EVIDENCE, POLICY_VERSION
 
@@ -56,6 +57,12 @@ def allowed_numbers(issue: dict, state: dict) -> set[float]:
         value = state.get(key)
         if isinstance(value, (int, float)):
             allowed.add(float(value))
+    # 稀疏观测下，reason 可以引用后验概率（“约 64% 概率薄弱”）。
+    for key in ("weak_probability", "mastered_probability", "mastery"):
+        value = state.get(key)
+        if isinstance(value, (int, float)):
+            allowed.add(float(value))
+            allowed.add(float(round(value * 100)))
     block = state.get("review") or {}
     for key in ("usable_evidence_count", "usable_full_credit"):
         value = block.get(key)
@@ -184,6 +191,9 @@ def validate_recommendation(
                 errors.append(f"plan[{index}]: {field} contains unlocked numbers {sorted(unknown)}")
         if issue["issue_id"] not in item["reason"]:
             errors.append(f"plan[{index}]: reason does not cite issue_id")
+        drift = material_drift(item["reason"] + " " + item["check"], item)
+        if drift:
+            errors.append(f"plan[{index}]: text cites materials outside the plan: {drift}")
         if not item["check"].strip():
             errors.append(f"plan[{index}]: empty check")
 

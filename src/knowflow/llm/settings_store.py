@@ -9,11 +9,14 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 from knowflow.config import get_settings
 from knowflow.contracts import repo_root
+
+from .client import LLMError, OpenAICompatClient
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "deepseek": {
@@ -67,8 +70,66 @@ def read_llm_settings() -> dict:
         "model": settings.llm_model,
         "base_url": settings.llm_base_url,
         "api_key_set": bool(settings.llm_api_key.strip()),
+        "timeout_seconds": settings.llm_timeout_seconds,
+        "transport": "stdlib",
         "providers": _presets(),
         "env_file": str(env_path()),
+    }
+
+
+def test_llm_connection(payload: dict | None = None, timeout: float = 15.0) -> dict:
+    """One real round trip, so "已启用" is never shown without proof.
+
+    Values in ``payload`` win, so the settings page can test before saving.  The
+    key is never echoed: only a classification and a latency come back.
+    """
+
+    payload = payload if isinstance(payload, dict) else {}
+    settings = get_settings()
+    provider = str(payload.get("provider") or settings.llm_provider or "").strip()
+    if provider not in PROVIDERS:
+        provider = "deepseek"
+    preset = PROVIDERS[provider]
+    model = str(payload.get("model") or settings.llm_model or preset["model"]).strip()
+    base_url = str(payload.get("base_url") or settings.llm_base_url or preset["base_url"]).strip()
+    api_key = str(payload.get("api_key") or "").strip() or settings.llm_api_key.strip()
+    if not api_key:
+        return {"ok": False, "kind": "config", "error": "还没有填写 API Key。"}
+    if not model or not base_url:
+        return {"ok": False, "kind": "config", "error": "自定义厂商需要填写 Base URL 与模型。"}
+    client = OpenAICompatClient(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=0.0,
+        timeout=timeout,
+        max_tokens=16,
+    )
+    started = time.monotonic()
+    try:
+        reply = client.complete("只回复两个字：正常", "连通性测试")
+    except LLMError as exc:
+        return {
+            "ok": False,
+            "kind": exc.kind,
+            "status": exc.status,
+            "error": exc.detail,
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
+    except Exception as exc:  # defensive: an unexpected error must still answer JSON
+        return {
+            "ok": False,
+            "kind": "unknown",
+            "error": f"{type(exc).__name__}: {exc}"[:240],
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
+    return {
+        "ok": True,
+        "kind": "ok",
+        "model": model,
+        "reply": reply[:20],
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
     }
 
 

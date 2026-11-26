@@ -5,7 +5,7 @@
   "description": "LLM 输出契约：只允许文字字段与受限标签；数字/ID 必须来自 llm_summary 白名单。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["kind", "ref_id", "cited_ids", "numbers_used"],
+  "required": ["kind", "ref_id", "cited_ids"],
   "properties": {
     "kind": {
       "type": "string",
@@ -71,7 +71,7 @@
   "anyOf": [
     {"required": ["text"]},
     {"required": ["issue_labels"]},
-    {"required": ["reason", "check"]}
+    {"required": ["reason"]}
   ],
   "allOf": [
     {
@@ -92,7 +92,7 @@
         "required": ["kind"]
       },
       "then": {
-        "required": ["reason", "check"]
+        "required": ["reason"]
       }
     }
   ]

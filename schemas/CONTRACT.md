@@ -34,7 +34,7 @@ ID 不复用、不回收、不手敲新增；跨文件引用必须能解析。�
 | `cognitive_type` | `concept` / `procedure` / `application` |
 | `material_type` | `reference` / `explain` / `example` / `practice` / `assessment` / `probe` |
 | `evidence_state` | `observed_correct` / `observed_wrong` / `assigned_not_attempted` / `pending` / `unobserved` |
-| `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `likely_mastered` / `confirmed_mastered` / `mixed_performance` / `not_applicable` |
+| `status` | `confirmed_weak` / `likely_weak` / `insufficient_evidence` / `unobserved` / `likely_mastered` / `confirmed_mastered` / `mixed_performance` / `not_applicable` |
 | `confidence` | `low` / `medium` / `high` |
 | `issue_type` | `concept_confusion` / `procedure_gap` / `reading_error` / `prerequisite_gap` / `transfer_gap` / `insufficient_evidence` / `performance_gap` / `score_point_gap` |
 | `edge_type` | `prerequisite` / `contains` / `confusable` / `related` |
@@ -47,6 +47,11 @@ v0.5 新增值的含义（消费方必须显式处理，不许落到 `else` 分�
 - `not_applicable`：该节点没有该知识点的可测题目（分母为 0）。它不是"未掌握"，也不进覆盖率分母。
 - `performance_gap`：确实偏弱，但错因没有证据支撑，只报"表现差距"。
 - `score_point_gap`：有官方评分点失分作为依据的差距，证据在 `rubric_evidence[]`。
+
+v0.6 新增值：
+
+- `unobserved`：该节点**有**该知识点的可测题目，但一条已评分作答都没有（`evidence_count=0` 且 `pending=0`）。它不是"证据不足"，也不是"未掌握"；它要的动作是**布置基线题**，而 `insufficient_evidence`（有评分但不足门槛、或已作答待评分）要的动作是**再测一次**。两者分别进 `lists.needs_coverage` 与 `lists.needs_observation`。
+- `knowledge_states[].evidence_action`：动作与状态解耦。`probe`（无任何记录）/ `not_attempted`（已布置未作答）/ `pending`（已作答待评分）/ `sparse_weak`（评分少但后验偏弱，低置信度巩固）/ `sparse_mastered`（评分少但都对，一次复核）/ `sparse_mixed`（评分少且中间，继续补观测）；非稀疏状态为 `null`。语言层据此写动作，不得因 `status` 一律降级成"补充观测"。
 
 ---
 
@@ -108,7 +113,7 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | 已布置 + 未作答 | `assigned_not_attempted` | 否 | 否 |
 | 未布置 / 无记录 | `unobserved` | 否 | 否 |
 
-- 无观测：`mastery=null`、`status=insufficient_evidence`，**不要写 0**。
+- 无观测：`mastery=null`，`status` 为 `unobserved`（有题但 0 条评分）或 `insufficient_evidence`（0<n<门槛，或已作答待评分），**不要写 0**。
 - `pending` 是“已作答但没分”：既不是对也不是错，**不得计入 n、不得判为 wrong、不得静默丢弃**。
 - 未作答不等于答错；未记录不等于未掌握。
 - 同一学生同一材料**同一节点**多条记录：按 `attempt_no` → `submitted_at` → `record_id` 取最后一条，并记录去重数。
@@ -148,20 +153,23 @@ UTF-8、逗号分隔、首行表头、一行一实体。完整字段见对应 sc
 | `data_quality_report`（v0.5 审计） | `input_records == total_records + duplicates_removed + rejected_records`；`decisions` 行数 == `input_records`（官方 CSV 每行恰好一条决策） |
 | `student_profile.knowledge_states[].state_counts` | 五项之和 = 该知识点可测材料数；`evidence_count == observed_correct + observed_wrong` |
 | `student_profile.knowledge_states[].applicable_items` | 等于该条 `state_counts` 五项之和；`not_applicable` 时为 `0` |
-| `class_profile.knowledge_distribution[]` | `mastered + weak + insufficient + mixed + not_applicable == student_count`；`mean_mastery` 的分母是 `observed_student_count` |
+| `class_profile.knowledge_distribution[]` | `mastered + weak + insufficient + unobserved + mixed + not_applicable == student_count`；`mean_mastery` 的分母是 `observed_student_count` |
 | `class_profile.common_issues[].prevalence` | `student_count / denominator`，且 `denominator == student_count`（按全体学生口径） |
 | `class_profile.rubric_patterns[].prevalence` | `affected_student_count / observed_student_count`，分母只算该评分点有可信评分的学生 |
 
-### 5.5 状态判读顺序（v0.5 固定，阈值属算法配置）
+### 5.5 状态判读顺序（v0.6 固定，阈值属算法配置）
 
 契约只固定**顺序与含义**，不固定具体数值；数值由 `DiagnosisConfig` 管，写进运行清单：
 
 1. 该节点没有该知识点的可测题目 → `not_applicable`（`mastery=null`，不进分母）；
-2. 无有效评分，或有效题数 `n < 3` → `insufficient_evidence`（`mastery` 可为 null，但不得写 0）；
-3. `P(p < 薄弱阈值) ≥ 确认门槛` → `confirmed_weak`；
-4. `P(p > 掌握阈值) ≥ 确认门槛` → `confirmed_mastered`；
-5. 均值 `< 薄弱阈值` → `likely_weak`；均值 `≥ 掌握阈值` → `likely_mastered`；
-6. 其余 → `mixed_performance`。
+2. 有可测题、有效评分 `n=0` 且无待评分 → `unobserved`（未覆盖，进 `needs_coverage`）；
+3. 有效题数 `0 < n < min_evidence`，或 `n=0` 但有已作答待评分 → `insufficient_evidence`（进 `needs_observation`；`mastery` 可为 null，但不得写 0）；
+4. `P(p < 薄弱阈值) ≥ 确认门槛` → `confirmed_weak`；
+5. `P(p > 掌握阈值) ≥ 确认门槛` → `confirmed_mastered`；
+6. 均值 `< 薄弱阈值` → `likely_weak`；均值 `≥ 掌握阈值` → `likely_mastered`；
+7. 其余 → `mixed_performance`。
+
+`min_evidence` 与"覆盖缺失线"是两个独立设置：前者决定判读门槛（默认 2 条），后者只影响看板上的覆盖率标注。门槛只决定"要不要给方向性结论"，不决定"能不能说已确认"：2 条证据在任何组合下都达不到 `confirmation_probability`（默认 0.9），最多得到 `likely_*` / `mixed_performance`。题量本身少于门槛的知识点，`status_reason` 必须写明"题目不足"，而不是归因于学生。
 
 `mastery = (k+1)/(n+2)`，`k` 为满分题数，`n` 为有效评分题数。它估计的是**当前材料范围内的满分成功率**，不是"整体能力百分比"；部分得分另看 `performance.mean_score_ratio`。
 

@@ -113,12 +113,26 @@
               "confirmed_weak",
               "likely_weak",
               "insufficient_evidence",
+              "unobserved",
               "likely_mastered",
               "confirmed_mastered",
               "mixed_performance",
               "not_applicable"
             ],
-            "description": "判读顺序见 CONTRACT §5.5；mixed_performance = 中间或混合表现；not_applicable = 本节点无该知识点可测题目"
+            "description": "判读顺序见 CONTRACT §5.5；mixed_performance = 中间或混合表现；insufficient_evidence = 有有效评分但不足最低观测数（默认 2 条），或已作答待评分；unobserved = 本节点有可测题但一条已评分作答都没有；not_applicable = 本节点无该知识点可测题目"
+          },
+          "evidence_action": {
+            "type": ["string", "null"],
+            "enum": [
+              "probe",
+              "not_attempted",
+              "pending",
+              "sparse_weak",
+              "sparse_mastered",
+              "sparse_mixed",
+              null
+            ],
+            "description": "稀疏观测下的下一步动作，与 status 解耦：probe = 无任何记录，先布置基线题；not_attempted = 已布置未作答；pending = 已作答待评分；sparse_* = 后验已达梯度门槛。非稀疏状态为 null"
           },
           "state_counts": {
             "type": "object",
@@ -258,6 +272,7 @@
                   "confirmed_weak",
                   "likely_weak",
                   "insufficient_evidence",
+                  "unobserved",
                   "likely_mastered",
                   "confirmed_mastered",
                   "mixed_performance",
@@ -271,6 +286,7 @@
                   "confirmed_weak",
                   "likely_weak",
                   "insufficient_evidence",
+                  "unobserved",
                   "likely_mastered",
                   "confirmed_mastered",
                   "mixed_performance",
@@ -445,7 +461,7 @@
     "lists": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["strengths", "needs_consolidation", "needs_observation"],
+      "required": ["strengths", "needs_consolidation", "needs_observation", "needs_coverage"],
       "properties": {
         "strengths": {
           "type": "array",
@@ -457,7 +473,13 @@
         },
         "needs_observation": {
           "type": "array",
-          "items": {"$ref": "#/$defs/list_item"}
+          "items": {"$ref": "#/$defs/list_item"},
+          "description": "有 1~2 条有效评分、还看不清方向的知识点；需要的是“再测一次”"
+        },
+        "needs_coverage": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/list_item"},
+          "description": "本节点有可测题但一条已评分作答都没有的知识点；需要的是“先布置基线题”，未覆盖不等于未掌握"
         }
       }
     }

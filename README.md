@@ -80,7 +80,7 @@ Set-Location 'D:\桌面\KnowFlow'
 - 课程地图支持点击知识点查看课程要求、材料出处、评分依据和对应建议；切换“课程要求清单”可阅读目标与课标定位。课程地图直接读正式图谱 `knowledge/curriculum_graph.json`（经知识底座进入快照），未人工核对的关系标“待核验”，不补造。
 - 学生账号登录后查看本人的知识状态、练习与学习建议；教师可从学生列表查看任意学生，或用 `/student?student=S003` 预览单个学生。另有数轴镜像、活动预算两个明确标识的自编互动实验。
 - 侧栏底部齿轮「设置」（教师与学生都有）按顺序分四个分区：**个人信息**（用户名可改、姓名、头像、身份、当前学期如 `2026-2027秋`、任教班级与科目、弹窗修改密码需再次输入用户名）、**教学与 AI 偏好**（学习建议语气、报告长度、数据不足时直接提示或自动摸底，含 LLM 文字层配置）、**显示**（白天 / 黑夜 / 护眼三套主题 + 默认首页）、**数据分析**（覆盖度与掌握度阈值；保存后按新阈值重建诊断，覆盖缺失线同时作为最小证据数）。学生账号只看到个人信息与显示。账号资料与偏好保存在本机 `data/auth/users.json`（Git 忽略）；头像与主题存在浏览器本地。保存即写入本机 `.env`，等同于手工改后端配置；Key 不回显、不进入页面快照。保存后对之后生成的建议生效，已有成果需重建。
-- 左下角「AI 学伴」：对话窗口按当前节点 / 班级 / 学生回答，只发送聚合摘要。配置了 LLM 时回答要过数字与 ID 锁，未配置或连续校验失败会回退本地规则回答；回答里的 `S001` / `K-07` / `M-021` 可点开对应依据。`?chat=1` 可直接展开。
+- 左下角「AI 学伴」：对话窗口按当前节点 / 班级 / 学生回答。**学情数字**只来自聚合事实卡；**课程内容**（课标原文、学习卡、题面与解析）会一并发送，所以它能讲题、能解释知识点，而不只是复述统计。支持连着追问（带最近 6 轮上文），回答里的 `S001` / `K-07` / `M-021` 可点开对应依据。未配置或连续校验失败会回退本地规则回答，并说明具体原因（Key 鉴权 / 超时 / 网络 / 模型名 / 限流），气泡下方可一键「重试这次提问」。`?chat=1` 可直接展开。
 - AI 学伴窗口可拖动标题栏移动、拖拽边缘 / 四角缩放；输入框旁可选「简洁 / 证据」：简洁少列数字、聚焦现状与下一步，证据按“结论 / 依据”分点。每条回答下方「查看推理依据」可展开事实卡步骤与证据（展示可核对依据，不暴露模型隐藏思维链）。
 - 新练习提交保存在同一浏览器的 `localStorage`，教师页可查看，标记为“待评阅”。没有新提交时显示“未记录”，不会自动改写历史成绩或画像。练习记录仍属于当前浏览器，尚未跨设备同步。
 - 图表口径：已评分得分率保留部分分；观测覆盖以节点可测题为分母；历史作答完成以有明确布置记录的题为分母。两个节点题目范围不同，折线只比较已评分记录量，不表示成绩增长。
@@ -88,7 +88,7 @@ Set-Location 'D:\桌面\KnowFlow'
 
 首次启动需要已安装项目依赖、并已按数据说明放入 `data/raw/official-v1`。程序在 **Git 忽略的 `artifacts/web/<时间>/`** 中独立生成 canonical、知识底座、两个节点的画像与建议，经过校验后展示；不会覆盖原有 `data/interim` 和其他成果。后续启动复用缓存；数据或 Python/schema 变化会重建。**启动窗口必须保持打开**：关闭它等于停掉后端，页面保存设置或读取证据都会失败。强制刷新用 `python -m knowflow.web --refresh`，端口占用时用 `--port 8766`；**同一端口只允许一个启动进程**，重复双击会直接报“端口已被占用”，不会让旧进程随机接管请求。想让页面里的建议文字走 LLM，用 `python -m knowflow.web --refresh --llm`（之后普通启动沿用该模式，要关掉用 `--no-llm --refresh`；未配置 Key 或调用失败会自动回退模板，页面照常显示）。也可用 `--run artifacts/web/<时间>` 复用某次已生成成果；该目录中的知识底座、画像和建议必须是同一版本，启动时会复核。
 
-新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。默认只连接本机，不需要 Node/npm、云服务器或模型密钥；只有 `--llm` 才需要 Key。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
+新电脑安装：`python -m venv .venv`，然后 `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`。默认只连接本机，不需要 Node/npm、云服务器或模型密钥；只有 `--llm` 才需要 Key。LLM 走 Python 标准库直连，**不需要额外安装 `openai` SDK**。官方数据不会随 Git 下载；请先按下面的数据落地步骤准备。
 
 新增代码入口：`web/data.py` 连接三项任务并整理图表数据，`web/server.py` 提供本机页面与受限资料接口，`web/static/app.js` 实现双视角交互，`web/static/charts.js` 绘制图表，`web/static/styles.css` 保留基础视图样式，`web/static/workspace.css` 统一配色、文字层级、组件和统计子页面布局。`scripts/start_dashboard.ps1` 是 Windows 启动脚本。回归测试位于 `tests/diagnosis/test_web.py`，只用合成数据。
 
@@ -104,7 +104,7 @@ Set-Location 'D:\桌面\KnowFlow'
 
 - 掌握度、正确率、覆盖度、排名：确定性代码计算，可复算。
 - LLM：只做措辞/错因归类，不碰分数；原始数据不进模型。
-- 缺失：`unobserved` / `insufficient_evidence`，不推断成“未掌握”。
+- 缺失：`unobserved`（有题但一条评分都没有）/ `insufficient_evidence`（评分不足），都不推断成“未掌握”。
 
 ---
 
@@ -450,15 +450,13 @@ uv run python -m knowflow.web
 
 ### 可选：接入 LLM 文字层
 
-默认关闭。打开后只改写任务3的 `reason`/`check`，不碰任何数字、ID 或诊断结论。两种打开方式等价：
+默认关闭。打开后用于任务3的 `reason`/`check` 改写与「AI 学伴」对话，不碰任何数字、ID 或诊断结论。**不需要安装额外依赖**（标准库直连 OpenAI 兼容接口）。两种打开方式等价：
 
-- **网页**：左下角齿轮「设置」→ 打开「LLM 模式」→ 选厂商、填 API Key → 保存（写入本机 `.env`）。
+- **网页**：左下角齿轮「设置」→ 打开「LLM 模式」→ 选厂商、填 API Key → 保存（写入本机 `.env`）→ 点「测试连接」确认真的通。
 - **命令行**：编辑 `.env`，或使用下面的命令。
 
 ```powershell
-# 1) 安装可选依赖，并在 .env 填写 KEY（.env 已被 Git 忽略）
-uv sync --extra llm
-#    开发者同时要保留测试工具：uv sync --extra dev --extra llm
+# 1) 在 .env 填写 KEY（.env 已被 Git 忽略）；不需要装 openai
 #    KNOWFLOW_LLM_ENABLED=true
 #    KNOWFLOW_LLM_API_KEY=...
 
@@ -469,8 +467,10 @@ uv run python -m knowflow.cli recommend --knowledge artifacts/knowledge/official
 uv run python -m knowflow.cli explain --student S001 --knowledge-id K-07
 ```
 
-- 输入只有 `llm_summary`（计数、比率、状态、错误模式 + 数字/ID 白名单），不含原始作答、姓名或自由文本。
-- 输出必须通过 `schemas/llm/llm_response.schema.json` 与 `src/knowflow/llm/guard.py`：schema、数字锁、ID 锁、必须引用 `issue_id` 与至少一个材料。
+- 调用失败会按原因分类（鉴权 / 余额 / 模型名 / 请求 / 限流 / 服务端 / 超时 / 网络 / 空响应），只对超时、网络、5xx、429 重试一次，并写入启动窗口日志；页面上的提示会带上这个原因。
+
+- 输入边界：学情部分仍是 `llm_summary` 级别的聚合事实（计数、比率、状态、ID、计划措辞），不含原始作答、姓名或评分明细；对话另带课程内容（课标原文、学习卡、题面与解析），属于课程资料而非学生数据，教师端才附参考答案。
+- 输出必须通过 `schemas/llm/llm_response.schema.json` 与 `src/knowflow/llm/guard.py`：schema、数字锁、ID 锁、必须引用 `issue_id` 与至少一个材料。对话的数字锁按“数据主张”判定：谈学习者（人数、比例、掌握度、覆盖）必须对得上事实卡，讲做法时出现的教学数字（“做 14 道题”“第 12 周”）放行。
 - 每项最多 3 次（首次 + 重试 2 次），仍不合格就回退模板；`run_manifest.json` 的 `llm` 块记录 `items_used` / `items_fallback` / `attempts` / `errors`。
 - `explain` 把 `llm_summary.json` 与 `explain.json` 写到 `artifacts/explain/`（Git 忽略），可直接作为答辩证据。
 

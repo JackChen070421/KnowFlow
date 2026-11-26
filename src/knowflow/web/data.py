@@ -83,6 +83,7 @@ def threshold_config(thresholds: dict | None = None) -> dict:
     return {
         "coverage_sufficient": int(merged["coverage_sufficient"]),
         "coverage_missing": int(merged["coverage_missing"]),
+        "min_evidence": int(merged["min_evidence"]),
         "mastery_mastered": int(merged["mastery_mastered"]),
         "mastery_weak": int(merged["mastery_weak"]),
     }
@@ -91,13 +92,16 @@ def threshold_config(thresholds: dict | None = None) -> dict:
 def diagnosis_config(thresholds: dict | None = None) -> DiagnosisConfig:
     """Translate the analysis thresholds into the diagnosis configuration.
 
-    ``coverage_missing`` becomes the minimum evidence count, while the mastery
-    percentages become the Beta decision thresholds.
+    ``min_evidence`` and the mastery percentages become the Beta decision
+    thresholds. ``coverage_missing`` is presentation only: it marks how much
+    coverage counts as "严重缺失" on the dashboard and must not silently change
+    how many knowledge points are judged, or one display toggle would turn the
+    whole board into "待观察".
     """
 
     merged = threshold_config(thresholds)
     return DiagnosisConfig(
-        min_evidence=max(1, merged["coverage_missing"]),
+        min_evidence=max(1, merged["min_evidence"]),
         weak_threshold=merged["mastery_weak"] / 100,
         mastered_threshold=merged["mastery_mastered"] / 100,
     )

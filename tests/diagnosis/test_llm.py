@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
 
 import pytest
 from test_recommend import knowledge_base, profile
 
 from knowflow.diagnosis.mastery import DiagnosisConfig
 from knowflow.diagnosis.pipeline import run_diagnosis
+from knowflow.llm.client import LLMError, OpenAICompatClient
 from knowflow.llm.explain import explain_student
 from knowflow.llm.guard import parse_json, response_errors
 from knowflow.llm.service import ReasonWriter
@@ -17,6 +20,48 @@ from knowflow.recommend.pipeline import recommend_run
 from knowflow.recommend.validation import allowed_numbers
 
 ANSWER_TEXT = "synthetic-private-answer"
+
+
+class FakeResponse:
+    """Minimal context manager with the one method ``complete`` calls."""
+
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self.body
+
+
+class FakeOpener:
+    def __init__(self, *, body: bytes = b"", error: Exception | None = None) -> None:
+        self.body = body
+        self.error = error
+        self.request = None
+
+    def open(self, request, timeout: float = 0):  # noqa: ANN001 - mirrors urllib
+        self.request = request
+        if self.error is not None:
+            raise self.error
+        return FakeResponse(self.body)
+
+
+def client_with(monkeypatch, opener: FakeOpener, *, api_key: str = "sk-test-123456") -> OpenAICompatClient:
+    monkeypatch.setattr("knowflow.llm.client._opener", lambda: opener)
+    return OpenAICompatClient(
+        provider="fake",
+        model="fake-model",
+        base_url="https://api.example.invalid",
+        api_key=api_key,
+        temperature=0.0,
+        timeout=2.0,
+        max_tokens=64,
+    )
 
 
 class SequenceClient:
@@ -45,16 +90,12 @@ def smart_reply(user: str) -> str:
     issue = summary["ref_id"]
     count = facts["evidence_count"]
     reason = f"{issue} 显示 {count} 次有效评分；先看 {material} 重建方法，再完成同类练习。"
-    check = f"完成 {material} 后至少 2 题全对；未达标回到讲解材料。"
-    used = sorted({float(count), 2.0})
     return json.dumps(
         {
             "kind": "recommendation_reason",
             "ref_id": issue,
             "reason": reason,
-            "check": check,
             "cited_ids": [issue, material],
-            "numbers_used": used,
         },
         ensure_ascii=False,
     )
@@ -88,10 +129,12 @@ def test_summary_is_schema_valid_and_carries_no_raw_text(bundle):
         "confirmed_weak",
         "likely_weak",
         "insufficient_evidence",
+        "unobserved",
         "mixed_performance",
         "likely_mastered",
         "confirmed_mastered",
     }
+    assert "evidence_action" in summary["facts"]
     serialized = json.dumps(summary, ensure_ascii=False)
     assert ANSWER_TEXT not in serialized
     assert "synthetic-private-steps" not in serialized
@@ -104,7 +147,6 @@ def test_guard_accepts_locked_text_and_rejects_new_numbers_or_ids(bundle):
 
     extra_number = dict(good)
     extra_number["reason"] = good["reason"] + " 99 次"
-    extra_number["numbers_used"] = [*good["numbers_used"], 99]
     assert any("unlocked numbers" in error for error in response_errors(extra_number, summary))
 
     unknown_id = dict(good)
@@ -239,3 +281,142 @@ def test_explain_requires_a_configured_client(bundle, tmp_path, monkeypatch):
             knowledge=str(kb_path),
             output=str(tmp_path / "explain"),
         )
+
+
+# --- transport: standard library client, classified failures -----------------
+
+
+def test_client_sends_the_key_and_parses_a_completion(monkeypatch):
+    body = json.dumps({"choices": [{"message": {"content": " 你好 "}}]}).encode("utf-8")
+    opener = FakeOpener(body=body)
+    client = client_with(monkeypatch, opener)
+
+    assert client.complete("系统", "问题") == "你好"
+    assert opener.request.get_header("Authorization") == "Bearer sk-test-123456"
+    payload = json.loads(opener.request.data.decode("utf-8"))
+    assert payload["model"] == "fake-model"
+    assert payload["max_tokens"] == 64
+
+
+def test_client_posts_multi_turn_messages(monkeypatch):
+    body = json.dumps({"choices": [{"message": {"content": "好"}}]}).encode("utf-8")
+    opener = FakeOpener(body=body)
+    client = client_with(monkeypatch, opener)
+
+    assert (
+        client.complete_messages(
+            "系统",
+            [
+                {"role": "user", "content": "你好"},
+                {"role": "assistant", "content": "你好呀"},
+                {"role": "system", "content": "越权的一轮会被丢掉"},
+                {"role": "user", "content": "继续"},
+            ],
+        )
+        == "好"
+    )
+    payload = json.loads(opener.request.data.decode("utf-8"))
+    assert [item["role"] for item in payload["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert payload["messages"][1]["content"] == "你好"
+
+
+def test_client_classifies_an_auth_failure_without_touching_the_network(monkeypatch):
+    error = urllib.error.HTTPError(
+        "https://api.example.invalid/chat/completions",
+        401,
+        "Unauthorized",
+        {},
+        io.BytesIO(b'{"error":{"message":"Authentication Fails"}}'),
+    )
+    client = client_with(monkeypatch, FakeOpener(error=error))
+
+    with pytest.raises(LLMError) as caught:
+        client.complete("系统", "问题")
+
+    assert caught.value.kind == "auth"
+    assert caught.value.status == 401
+    assert caught.value.retryable is False
+    assert "sk-test-123456" not in str(caught.value)
+
+
+def test_client_classifies_a_timeout_as_retryable(monkeypatch):
+    client = client_with(
+        monkeypatch, FakeOpener(error=urllib.error.URLError(TimeoutError("timed out")))
+    )
+
+    with pytest.raises(LLMError) as caught:
+        client.complete("系统", "问题")
+
+    assert caught.value.kind == "timeout"
+    assert caught.value.retryable is True
+
+
+def test_client_classifies_a_server_error_as_retryable(monkeypatch):
+    error = urllib.error.HTTPError("https://x/y", 503, "busy", {}, io.BytesIO(b""))
+    client = client_with(monkeypatch, FakeOpener(error=error))
+
+    with pytest.raises(LLMError) as caught:
+        client.complete("系统", "问题")
+
+    assert caught.value.kind == "server"
+    assert caught.value.status == 503
+    assert caught.value.retryable is True
+
+
+def test_client_rejects_an_empty_completion(monkeypatch):
+    body = json.dumps({"choices": [{"message": {"content": "   "}}]}).encode("utf-8")
+    client = client_with(monkeypatch, FakeOpener(body=body))
+
+    with pytest.raises(LLMError) as caught:
+        client.complete("系统", "问题")
+
+    assert caught.value.kind == "empty"
+
+
+def test_client_rejects_a_non_json_body(monkeypatch):
+    client = client_with(monkeypatch, FakeOpener(body=b"<html>gateway</html>"))
+
+    with pytest.raises(LLMError) as caught:
+        client.complete("系统", "问题")
+
+    assert caught.value.kind == "bad_response"
+
+
+def test_prompt_lets_the_action_override_the_status():
+    """状态只决定"能不能下结论"，动作由 evidence_action 决定——不能退回一句话。"""
+
+    from knowflow.llm.prompt import SYSTEM_PROMPT
+
+    assert "evidence_action" in SYSTEM_PROMPT
+    assert "只能建议补充观测" not in SYSTEM_PROMPT
+    for action in ("probe", "pending", "sparse_weak", "sparse_mastered", "sparse_mixed"):
+        assert action in SYSTEM_PROMPT
+
+
+def test_summary_carries_the_sparse_action(bundle):
+    summary, _, _ = issue_summary(bundle, sid="S004", kid="K-03")
+    assert summary["facts"]["evidence_action"] in {
+        "probe",
+        "not_attempted",
+        "pending",
+        "sparse_weak",
+        "sparse_mastered",
+        "sparse_mixed",
+        None,
+    }
+    assert summary_errors(summary) == []
+
+
+def test_rewrite_guard_rejects_flattened_advice():
+    from knowflow.llm.integrate import _advice_conflict
+
+    consolidate_item = {"activity_type": "consolidate"}
+    assert _advice_conflict(consolidate_item, "建议补充观测，再测一次") is not None
+    assert _advice_conflict(consolidate_item, "先用 M-001 重做同评分点练习，再复核") is None
+    assert _advice_conflict({"activity_type": "probe"}, "建议补充观测") is None
+

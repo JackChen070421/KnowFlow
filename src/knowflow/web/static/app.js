@@ -1,6 +1,14 @@
 import {describe, distribution, aggregateRecords, topics} from './analytics.mjs';
 import { mountMap } from './knowledge-map.js';
 import { openTraining } from './training.js';
+import {
+  exploreLabs, labById, labModel, exploreKey, emptyExploreRecord,
+  parseExploreStore, labProgress, exploreSummary, EXPLORE_KEY
+} from './explore-labs.mjs';
+import {
+  taskWall, subjectLinks, historyReads, moreSections, taskById,
+  rubricProgress, parseMoreStore, moreRecord, moreSummary, MORE_KEY
+} from './explore-more.mjs';
 let unmountMap;
 let trainingData=null;
 import {
@@ -53,7 +61,8 @@ const state = {
   search: '',
   studentFilter: 'all',
   courseView: 'map',
-  lab: 'axis',
+  lab: params.get('lab') || 'mirror',
+  exploreTab: null,
   profileTab: params.get('profile') || 'analysis',
   report: params.get('report') || 'scores',
   studentPanel: params.get('panel') || 'list',
@@ -357,7 +366,8 @@ function saveURL() {
     report: state.report,
     profile: state.profileTab,
     panel: state.studentPanel,
-    settingsTab: state.settingsTab
+    settingsTab: state.settingsTab,
+    lab: state.lab
   });
   history.replaceState(null, '', `/${state.role}?${q}`);
 }
@@ -382,6 +392,7 @@ function normalize() {
   if (!['analysis', 'knowledge', 'records', 'history', 'plans', 'feedback'].includes(state.profileTab)) state.profileTab = 'analysis';
   if (!['list', 'profile'].includes(state.studentPanel)) state.studentPanel = 'list';
   if (state.role === 'student' && state.profileTab === 'feedback') state.profileTab = 'analysis';
+  if (!labById(state.lab)) state.lab = exploreLabs[0].id;
   const allowedTabs = isStudentAccount() ? ['profile', 'display'] : ['profile', 'teaching', 'display', 'thresholds'];
   if (!allowedTabs.includes(state.settingsTab)) state.settingsTab = 'profile';
 }
@@ -747,7 +758,7 @@ function requirements() {
 function studentHome() { return personalPage(false); }
 
 function studentPlans() {
-  return `${hero('LEARNING INTO ACTION / 04','练习与建议','查看练习、完成标准与提交情况。')}${filters(true)}<section class="panel">${panelHead(`${esc(state.student)} 的学习建议`,`${esc(state.node)} · 预计用时供参考`,'<span class="pill">学习计划</span>')}${plans(state.student)}</section><section class="panel section-gap">${panelHead('想把学会的知识用起来？','试试自编互动实验，把抽象关系变成可观察的变化。')}<p class="panel-sub">先用数轴理解负数乘法的方向变化，再用预算方案练习建立数量关系。探索结果不计入正式评分。</p><button class="button light section-gap" data-view="explore">进入跨域探索 ${icon('arrow',15)}</button></section>`;
+  return `${hero('LEARNING INTO ACTION / 04','练习与建议','查看练习、完成标准与提交情况。')}${filters(true)}<section class="panel">${panelHead(`${esc(state.student)} 的学习建议`,`${esc(state.node)} · 预计用时供参考`,'<span class="pill">学习计划</span>')}${plans(state.student)}</section><section class="panel section-gap">${panelHead('想把学会的知识用起来？','四个自编实验：数轴镜像、活动预算、分段计费、共同空闲。')}<p class="panel-sub">把不等式、方程和一次式放进收费、时间与预算的真实场景，拖动参数看关系怎么变。探索结果与自检只保存在本机，不计入正式评分。</p><button class="button light section-gap" data-view="explore">进入跨域探索 · 已完成 ${exploreDoneCount()} / ${exploreLabs.length} ${icon('arrow',15)}</button></section>`;
 }
 
 function collapsePanel(title, body, extraClass = '') {
@@ -857,16 +868,544 @@ function exportReviews() {
   URL.revokeObjectURL(url);
 }
 
+let exploreStore = null;
+const numText = v => String(Math.round(v * 100) / 100).replace('-', '−');
+
+function readExplore() {
+  if (exploreStore) return exploreStore;
+  try {
+    exploreStore = parseExploreStore(localStorage.getItem(EXPLORE_KEY));
+  } catch {
+    storageOK = false;
+    exploreStore = parseExploreStore(null);
+  }
+  return exploreStore;
+}
+
+function exploreKeyFor(labId) {
+  return exploreKey(D.meta.dataset_id, state.student, labId);
+}
+
+function exploreRecord(labId) {
+  const store = readExplore();
+  const key = exploreKeyFor(labId);
+  if (!store.records[key]) store.records[key] = emptyExploreRecord();
+  return store.records[key];
+}
+
+function saveExplore() {
+  try {
+    localStorage.setItem(EXPLORE_KEY, JSON.stringify(readExplore()));
+    storageOK = true;
+    return true;
+  } catch {
+    storageOK = false;
+    return false;
+  }
+}
+
+function exploreStateText(progress) {
+  if (progress.done) return '已完成';
+  if (!progress.checks && !progress.correct) return '未开始';
+  return `观察 ${progress.checks}/${progress.checksTotal} · 自检 ${progress.correct}/${progress.quizTotal}`;
+}
+
 function explorePage() {
-  return `${hero('EXPLORE & MAKE / 06','跨域探索','两个自编互动实验，不计入正式评分。')}${filters(true)}<div class="lab-tabs"><button data-lab="axis" class="${state.lab==='axis'?'active':''}"><strong>01 / 数轴 × 镜像变换</strong><small>理解负数乘法为什么改变不等号方向</small></button><button data-lab="budget" class="${state.lab==='budget'?'active':''}"><strong>02 / 代数 × 活动预算</strong><small>找出两种方案的交点与适用范围</small></button></div><section class="panel">${state.lab==='axis'?axisLab():budgetLab()}</section>`;
+  const lab = labById(state.lab) || exploreLabs[0];
+  return `<div class="explore-page">
+  ${hero('EXPLORE & MAKE / 06', '跨域探索', '四个自编实验，把代数式、方程与不等式放进真实场景；探索结果不计入正式评分。')}
+  ${filters(true)}
+  ${explorePills()}
+  <section class="panel explore-panel" data-lab="${esc(lab.id)}">${exploreLabPanel(lab)}</section>
+  ${exploreMore()}
+  ${exploreRecords()}
+  </div>`;
 }
 
-function axisLab() {
-  return `${panelHead('当数轴发生镜像，大小关系会怎样？','关联 K-07 · 从几何变换的角度理解代数运算。','<span class="pill purple">自编互动 · 非官方评分</span>')}<div class="grid-half"><div><div class="lab-stage"><div class="lab-label"><span>原关系：3 ＜ 5</span><strong id="factor-label">同乘 −2</strong></div><svg id="number-line" class="number-line" viewBox="0 0 500 100" role="img" aria-label="数轴上变换后的两个数"></svg><div class="lab-equation" id="axis-equation">−6 ＞ −10</div><label class="lab-label" for="factor"><span>拖动乘数 a</span><span>−3 至 3</span></label><input class="lab-range" type="range" id="factor" min="-3" max="3" step="0.5" value="-2"></div><div class="lab-output" id="axis-rule"></div></div><div><div class="eyebrow">概念联系</div><h2>放大、镜像与压缩到一点</h2><p class="panel-sub">正数相乘像沿数轴缩放，左右顺序保留。负数相乘除了缩放，还相当于关于原点镜像，因此左右顺序反转。乘以 0 会让两个数都落在原点，不能继续保留原来的严格大小关系。</p><div class="notice">类比的边界：这个演示解释的是数的顺序变化，不替代解不等式时的完整等价变形论证。</div><h3>小检验：−2x ＜ 6 的解是？</h3><div class="lab-quiz"><button class="button" data-quiz="wrong">x ＜ −3</button><button class="button" data-quiz="correct">x ＞ −3</button></div><div id="quiz-feedback" aria-live="polite" class="panel-sub">选择后查看解释。此练习不改变历史画像。</div><button class="text-button section-gap" data-knowledge="K-07">回到知识点与正式学习建议 ${icon('arrow',14)}</button></div></div>`;
+function explorePills() {
+  return `<div class="explore-pills" id="explore-pills" role="tablist" aria-label="选择实验">${explorePillItems()}</div>`;
 }
 
-function budgetLab() {
-  return `${panelHead('策划一次社团活动，选哪个方案？','关联代数式、方程与不等式 · 一个自编的小型建模项目。','<span class="pill purple">自编拓展 · 非官方推荐</span>')}<div class="grid-half"><div><div class="lab-stage"><div class="lab-label"><span>方案 A：9 + 2n 元</span><span>方案 B：3 + 4n 元</span></div><div class="budget-bars"><div class="budget-row"><span>方案 A</span><div class="budget-track"><i id="budget-a-bar"></i></div><strong id="budget-a"></strong></div><div class="budget-row"><span>方案 B</span><div class="budget-track"><i id="budget-b-bar"></i></div><strong id="budget-b"></strong></div></div><label class="lab-label" for="people"><span>参与人数 n</span><strong id="people-label">3 人</strong></label><input id="people" class="lab-range" type="range" min="1" max="12" value="3" step="1"></div><div class="lab-output" id="budget-result" aria-live="polite"></div></div><div><div class="eyebrow">动手实践</div><h2>从公式到一个“方案选择器”</h2><ol class="rule-list"><li>解释两条公式中的固定费用与每人费用。</li><li>解方程 9 + 2n = 3 + 4n，找到费用相同的人数。</li><li>用不等式判断何时 A 更划算，并考虑人数必须为正整数。</li><li>试着用电子表格或几行代码，做一个可输入人数的选择器。</li></ol><div class="notice">项目验收：输入 2、3、4 人，分别给出方案 B、费用相同、方案 A，并解释原因。费用为自编示例。</div><button class="text-button" data-knowledge="K-09">回看范围约束知识点 ${icon('arrow',14)}</button></div></div>`;
+function explorePillItems() {
+  const store = readExplore();
+  return exploreLabs.map(lab => {
+    const record = store.records[exploreKeyFor(lab.id)] || emptyExploreRecord();
+    const progress = labProgress(record, lab);
+    const active = state.lab === lab.id;
+    return `<button type="button" class="explore-pill ${active ? 'active' : ''} ${progress.done ? 'done' : ''}" data-lab="${esc(lab.id)}" role="tab" aria-selected="${active}" title="${esc(lab.field)}">
+      <i class="explore-pill-dot" aria-hidden="true"></i>
+      <strong>${esc(lab.title)}</strong>
+      <span>${esc(lab.knowledge.join(' / '))}</span>
+      ${progress.done ? '<em aria-label="已完成">✓</em>' : ''}
+    </button>`;
+  }).join('');
+}
+
+const EXPLORE_TABS = [
+  ['analysis', '解析'],
+  ['model', '模型'],
+  ['task', '任务'],
+  ['quiz', '自检']
+];
+
+function exploreLabPanel(lab) {
+  const record = exploreRecord(lab.id);
+  const progress = labProgress(record, lab);
+  const tab = EXPLORE_TABS.some(([id]) => id === state.exploreTab) ? state.exploreTab : null;
+  return `<header class="explore-head">
+    <div class="explore-head-copy">
+      <div class="eyebrow">实验 ${esc(lab.index)} · ${esc(lab.field)}</div>
+      <h2>${esc(lab.question)}</h2>
+      <p>${esc(lab.subtitle)}</p>
+    </div>
+    <div class="explore-head-pills"><span class="pill purple">自编 · 不计入评分</span><span class="pill ${progress.done ? '' : 'light'}" id="explore-lab-state">${progress.done ? '已完成' : '进行中'}</span></div>
+  </header>
+  <div class="explore-stage-wrap">
+    <div class="lab-stage">
+      <div class="lab-label"><span>${esc(lab.stageLabel)}</span><strong id="lab-input-label">—</strong></div>
+      ${exploreStage(lab)}
+      ${exploreControls(lab)}
+      <div class="lab-presets">${lab.presets.map((item, index) => `<button type="button" class="lab-preset" data-preset="${index}">${esc(item.label)}</button>`).join('')}</div>
+    </div>
+    <div class="lab-output" id="lab-readout" aria-live="polite"></div>
+  </div>
+  <div class="explore-tabs" role="tablist" aria-label="实验补充内容">${EXPLORE_TABS.map(([id, label]) => `<button type="button" class="explore-tab ${tab === id ? 'active' : ''}" data-explore-tab="${id}" role="tab" aria-selected="${tab === id}" aria-expanded="${tab === id}" aria-controls="explore-tab-body">${label}</button>`).join('')}</div>
+  <div class="explore-tab-body" id="explore-tab-body" role="tabpanel" ${tab ? '' : 'hidden'}>${tab ? exploreTabBody(lab, tab) : ''}</div>`;
+}
+
+function exploreTabBody(lab, tab) {
+  const record = exploreRecord(lab.id);
+  if (tab === 'analysis') {
+    return `<div class="explore-block">
+      <div class="explore-context"><div class="eyebrow">真实情境 · ${esc(lab.field)}</div><p>${esc(lab.context)}</p></div>
+      <h3>动手三步</h3><ol class="explore-steps">${lab.steps.map(step => `<li>${esc(step)}</li>`).join('')}</ol>
+      <h3>观察清单</h3><div class="lab-checks">${lab.checks.map(check => `<label class="lab-check"><input type="checkbox" data-check="${esc(check.id)}" ${record.checks.includes(check.id) ? 'checked' : ''}><span class="lab-check-mark" aria-hidden="true"></span><span class="lab-check-text">${esc(check.text)}</span></label>`).join('')}</div>
+      <div class="explore-boundary"><span class="explore-boundary-icon" aria-hidden="true">!</span><p>${esc(lab.boundary)}</p></div>
+    </div>`;
+  }
+  if (tab === 'model') {
+    return `<div class="explore-block">
+      <p class="explore-prose">${esc(lab.model)}</p>
+      <div class="explore-takeaway"><div class="eyebrow">一句话记住</div><p>${esc(lab.takeaway)}</p></div>
+    </div>`;
+  }
+  if (tab === 'task') {
+    return `<div class="explore-block">
+      <h3>迁移任务</h3>
+      <textarea class="lab-transfer" id="lab-transfer" maxlength="2000" placeholder="${esc(lab.transfer)}">${esc(record.transfer || '')}</textarea>
+      <div class="lab-transfer-row"><button type="button" class="button light" data-transfer-save>保存到本机</button><span class="muted" id="transfer-status">只保存在本浏览器，不进入诊断。</span></div>
+      ${exploreAdvice(lab)}
+      <button class="text-button explore-back" data-knowledge="${esc(lab.knowledge[0])}">回到 ${esc(lab.knowledge[0])} 知识点与正式建议 ${icon('arrow', 14)}</button>
+    </div>`;
+  }
+  return `<div class="explore-block" id="explore-quiz"><div id="explore-quiz-body">${exploreQuizBody(lab)}</div></div>`;
+}
+
+function toggleExploreTab(id) {
+  const lab = labById(state.lab);
+  if (!lab) return;
+  state.exploreTab = state.exploreTab === id ? null : id;
+  const body = $('#explore-tab-body');
+  document.querySelectorAll('.explore-tab').forEach(button => {
+    const on = button.dataset.exploreTab === state.exploreTab;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-selected', on);
+    button.setAttribute('aria-expanded', on);
+  });
+  if (!body) return;
+  body.innerHTML = state.exploreTab ? exploreTabBody(lab, state.exploreTab) : '';
+  body.hidden = !state.exploreTab;
+}
+
+let moreStore = null;
+
+const MORE_TITLES = { tasks: '真实任务墙', links: '学科联动', reads: '数学小史' };
+
+function readMore() {
+  if (moreStore) return moreStore;
+  try {
+    moreStore = parseMoreStore(localStorage.getItem(MORE_KEY));
+  } catch {
+    storageOK = false;
+    moreStore = parseMoreStore(null);
+  }
+  return moreStore;
+}
+
+function saveMore() {
+  try {
+    localStorage.setItem(MORE_KEY, JSON.stringify(readMore()));
+    storageOK = true;
+    return true;
+  } catch {
+    storageOK = false;
+    return false;
+  }
+}
+
+function moreData() {
+  return moreRecord(readMore(), D.meta.dataset_id, state.student);
+}
+
+function moreTaskRecord(id) {
+  const data = moreData();
+  if (!data.tasks[id]) data.tasks[id] = { plan: '', rubric: [], updated_at: '' };
+  return data.tasks[id];
+}
+
+function exploreMore() {
+  return `<section class="explore-more">
+    <header class="explore-more-head"><div class="eyebrow">BEYOND THE LAB</div><h2>数学在哪里</h2></header>
+    <div class="explore-more-cards" id="more-cards">${moreCardsHtml()}</div>
+  </section>`;
+}
+
+function moreCardsHtml() {
+  const summary = moreSummary(readMore(), D.meta.dataset_id, state.student);
+  const counts = {
+    tasks: `${summary.tasksWritten} / ${summary.taskTotal} 已写方案`,
+    links: '',
+    reads: `${summary.readTotal} 篇`
+  };
+  return moreSections.map(item => `<button type="button" class="more-card" data-more-open="${esc(item.id)}" aria-haspopup="dialog"><strong>${esc(item.title)}</strong><small>${esc(item.hint)}</small><span>${counts[item.id] ? `${esc(counts[item.id])} ` : ''}${icon('arrow', 13)}</span></button>`).join('');
+}
+
+function refreshMoreCards() {
+  const host = $('#more-cards');
+  if (host) host.innerHTML = moreCardsHtml();
+}
+
+function openMore(kind) {
+  const body = kind === 'tasks' ? moreTasksHtml() : kind === 'links' ? moreLinksHtml() : kind === 'reads' ? moreReadsHtml() : '';
+  if (!body) return;
+  showDrawer(esc(MORE_TITLES[kind]), body, 'BEYOND THE LAB');
+}
+
+function moreTasksHtml() {
+  const data = moreData();
+  return `<p class="more-intro">挑一张任务卡：先读任务，再写你的方案、勾选量规。内容只保存在这台电脑的浏览器里。</p>
+  ${taskWall.map(task => {
+    const record = data.tasks[task.id] || { plan: '', rubric: [] };
+    const progress = rubricProgress(task, record.rubric);
+    return `<details class="more-task" data-more-task="${esc(task.id)}">
+      <summary><span class="more-tag">${esc(task.subject)}</span><strong>${esc(task.title)}</strong><small>${record.plan.trim() ? '已写方案 · ' : ''}量规 ${progress.done}/${progress.total}</small></summary>
+      <div class="more-task-body">
+        <p class="more-role">谁在做这件事：${esc(task.role)}</p>
+        <p>${esc(task.brief)}</p>
+        <dl class="more-given"><dt>已知</dt><dd>${esc(task.given)}</dd><dt>要做什么</dt><dd>${esc(task.ask)}</dd><dt>交付物</dt><dd>${esc(task.deliverable)}</dd></dl>
+        <p class="more-hint">提示：${esc(task.hint)}</p>
+        <div class="more-rubric"><div class="more-rubric-title">评价量规（自评）</div>${task.rubric.map(item => `<label class="more-check"><input type="checkbox" data-more-task-check="${esc(task.id)}" data-rubric="${esc(item.id)}" ${record.rubric.includes(item.id) ? 'checked' : ''}><span>${esc(item.text)}</span></label>`).join('')}</div>
+        <label class="more-plan-label" for="more-task-${esc(task.id)}">我的方案</label>
+        <textarea class="lab-transfer" id="more-task-${esc(task.id)}" maxlength="2000" placeholder="写下算式或步骤，再写一句你会怎么检查它。">${esc(record.plan)}</textarea>
+        <div class="more-task-foot"><button type="button" class="button light" data-more-task-save="${esc(task.id)}">保存到本机</button><span class="muted" id="more-task-status-${esc(task.id)}">${record.plan ? '已保存' : '尚未保存'}</span><span class="muted">${esc(task.knowledge.join(' / '))}</span></div>
+      </div>
+    </details>`;
+  }).join('')}`;
+}
+
+function moreLinksHtml() {
+  return `<p class="more-intro">同一套数学，在别的课里换了个说法。点开看每门课具体用在哪，以及容易想当然的地方。</p>
+  ${subjectLinks.map(item => `<details class="more-link" data-more-link="${esc(item.id)}">
+    <summary><span class="more-tag">${esc(item.subject)}</span><strong>${esc(item.title)}</strong></summary>
+    <div class="more-link-body">
+      <p><span class="more-label">他们在学</span>${esc(item.inClass)}</p>
+      <p><span class="more-label">这里用到</span>${esc(item.math)}</p>
+      <p class="more-example">${esc(item.example)}</p>
+      <p class="more-careful"><span class="more-label">小心</span>${esc(item.careful)}</p>
+      <p class="more-muted">关联知识点：${esc(item.knowledge.join(' / '))}</p>
+    </div>
+  </details>`).join('')}`;
+}
+
+function moreReadsHtml() {
+  return `<p class="more-intro">三篇短读，读完在脑子里回答一下最后的问题就好。</p>
+  ${historyReads.map(item => `<details class="more-read" data-more-read="${esc(item.id)}">
+    <summary><span class="more-tag">${item.minutes} 分钟</span><strong>${esc(item.title)}</strong></summary>
+    <div class="more-read-body">
+      ${item.paragraphs.map(paragraph => `<p>${esc(paragraph)}</p>`).join('')}
+      <div class="more-takeaway"><strong>一句话带走：</strong>${esc(item.takeaway)}</div>
+      <p class="more-question"><strong>想一想：</strong>${esc(item.question)}</p>
+    </div>
+  </details>`).join('')}`;
+}
+
+function updateMoreTaskSummary(id, record) {
+  const small = document.querySelector(`[data-more-task="${id}"] summary small`);
+  if (!small) return;
+  const progress = rubricProgress(taskById(id), record.rubric);
+  small.textContent = `${record.plan.trim() ? '已写方案 · ' : ''}量规 ${progress.done}/${progress.total}`;
+}
+
+function saveMoreTask(id) {
+  const task = taskById(id);
+  if (!task) return;
+  const field = $(`#more-task-${id}`);
+  const record = moreTaskRecord(id);
+  record.plan = (field?.value || '').slice(0, 2000);
+  record.updated_at = new Date().toISOString();
+  const saved = saveMore();
+  const status = $(`#more-task-status-${id}`);
+  if (status) status.textContent = saved ? '已保存到本机' : '未能保存，请检查本地存储';
+  updateMoreTaskSummary(id, record);
+  refreshMoreCards();
+  if (saved) toast('方案已保存在本机。');
+}
+
+function toggleMoreRubric(input) {
+  const id = input.dataset.moreTaskCheck;
+  const rubricId = input.dataset.rubric;
+  const task = taskById(id);
+  if (!task) return;
+  const record = moreTaskRecord(id);
+  record.rubric = input.checked
+    ? [...new Set([...record.rubric, rubricId])]
+    : record.rubric.filter(item => item !== rubricId);
+  record.updated_at = new Date().toISOString();
+  saveMore();
+  updateMoreTaskSummary(id, record);
+  refreshMoreCards();
+}
+
+function exploreStage(lab) {
+  if (lab.id === 'mirror') {
+    return `<svg id="lab-svg" class="number-line" viewBox="0 0 500 150" role="img" aria-label="数轴上两个点的位置与顺序"></svg><div class="lab-equation" id="lab-equation">—</div>`;
+  }
+  if (lab.id === 'window') {
+    return `<svg id="lab-svg" class="time-line" viewBox="0 0 520 190" role="img" aria-label="两位同学的空闲时间轴与交集"></svg><div class="lab-equation lab-equation-small" id="lab-equation">—</div>`;
+  }
+  const tag = lab.id === 'rental' ? ['A 柜机', 'B 柜机'] : ['方案 A', '方案 B'];
+  return `<div class="fee-bars"><div class="fee-row"><span>${tag[0]}</span><div class="fee-track"><i id="bar-a"></i></div><strong id="bar-a-val"></strong></div><div class="fee-row"><span>${tag[1]}</span><div class="fee-track"><i id="bar-b"></i></div><strong id="bar-b-val"></strong></div></div><div class="fee-tie" id="fee-tie"></div>`;
+}
+
+function exploreControls(lab) {
+  if (lab.id === 'window') {
+    const first = lab.control, second = lab.control2;
+    return `<label class="lab-label" data-control-label for="lab-input-a"><span>${esc(first.label)}</span><span>${esc(first.hint)}</span></label><input class="lab-range" id="lab-input-a" data-lab-range="a" type="range" min="${first.min}" max="${first.max}" step="${first.step}" value="${first.value}">
+    <label class="lab-label" data-control-label for="lab-input-b"><span>${esc(second.label)}</span><span>${esc(second.hint)}</span></label><input class="lab-range" id="lab-input-b" data-lab-range="b" type="range" min="${second.min}" max="${second.max}" step="${second.step}" value="${second.value}">`;
+  }
+  const control = lab.control;
+  return `<label class="lab-label" data-control-label for="lab-input"><span>${esc(control.label)}</span><span>${esc(control.hint)}</span></label><input class="lab-range" id="lab-input" data-lab-range="v" type="range" min="${control.min}" max="${control.max}" step="${control.step}" value="${control.value}">`;
+}
+
+function exploreQuiz(lab) {
+  return `<div class="explore-quiz" id="explore-quiz">
+    <header class="explore-quiz-head"><div><div class="eyebrow">CHECK YOURSELF</div><h2>自检：说清楚才算学会</h2><p>选择后立即看到解释；答对与否都不改变历史画像。</p></div><span class="pill">${lab.quiz.length} 题</span></header>
+    <div id="explore-quiz-body">${exploreQuizBody(lab)}</div></div>`;
+}
+
+function exploreQuizBody(lab) {
+  const record = exploreRecord(lab.id);
+  const letters = 'ABC';
+  return lab.quiz.map((item, qi) => {
+    const choice = record.answers[String(qi)];
+    return `<div class="quiz-block"><p class="quiz-question"><strong>${qi + 1}.</strong> ${esc(item.q)}</p><div class="lab-quiz">${item.options.map((option, oi) => `<button type="button" class="button quiz-option ${choice === oi ? (option.correct ? 'correct' : 'wrong') : ''}" data-quiz-q="${qi}" data-quiz-option="${oi}" aria-pressed="${choice === oi}"><span class="quiz-letter" aria-hidden="true">${letters[oi] || oi + 1}</span><span class="quiz-text">${esc(option.text)}</span></button>`).join('')}</div><div class="quiz-explain ${choice === undefined ? '' : (item.options[choice].correct ? 'is-correct' : 'is-wrong')}" id="quiz-${qi}-feedback" aria-live="polite">${exploreQuizFeedback(lab, qi)}</div></div>`;
+  }).join('');
+}
+
+function exploreQuizFeedback(lab, qi) {
+  const choice = exploreRecord(lab.id).answers[String(qi)];
+  if (choice === undefined) return '选择后查看解释。';
+  const option = lab.quiz[qi].options[choice];
+  return option.correct ? `答对了。${option.why}` : `再看一遍。${option.why}`;
+}
+
+function exploreAdvice(lab) {
+  const profile = currentProfile();
+  if (!profile) return '';
+  const needs = new Set(profile.lists?.needs_consolidation || []);
+  const hits = lab.knowledge.filter(id => needs.has(id));
+  if (!hits.length) {
+    return `<p class="quiet-note explore-advice">这个实验关联 ${esc(lab.knowledge.join(' / '))}；它们目前不在你的“建议巩固”清单里，可以当作拓展练习。</p>`;
+  }
+  return `<div class="notice warm explore-advice">与你当前的学习建议相关：${esc(hits.join(' / '))} 正在“建议巩固”清单里。探索实验不计入诊断，但做完自检再去做正式练习会更顺。</div>`;
+}
+
+function exploreRecords() {
+  const store = readExplore();
+  const done = exploreLabs.filter(lab => labProgress(store.records[exploreKeyFor(lab.id)] || emptyExploreRecord(), lab).done).length;
+  const ratio = Math.round(done / exploreLabs.length * 100);
+  return `<section class="explore-records" id="explore-records">
+    <div class="explore-records-line">
+      <div class="explore-records-text"><div class="eyebrow">我的探索记录</div><p>只保存在本浏览器，不计入诊断、评分或掌握度。</p></div>
+      <div class="explore-records-side">
+        <div class="explore-meter" role="img" aria-label="探索完成度 ${ratio}%"><i id="explore-meter-i" style="width:${ratio}%"></i></div>
+        <span class="explore-meter-label" id="explore-meter-label">已完成 ${done} / ${exploreLabs.length}</span>
+        <button type="button" class="text-button" data-explore-reset>清空记录</button>
+      </div>
+    </div>
+  </section>`;
+}
+
+function exploreValues(lab) {
+  if (lab.id === 'window') {
+    const start = $('#lab-input-a'), end = $('#lab-input-b');
+    return { s: Number(start?.value ?? lab.control.value), e: Number(end?.value ?? lab.control2.value) };
+  }
+  const input = $('#lab-input');
+  return Number(input?.value ?? lab.control.value);
+}
+
+function updateExplore() {
+  const lab = labById(state.lab);
+  if (!lab) return;
+  const model = labModel(lab.id, exploreValues(lab));
+  const label = $('#lab-input-label');
+  if (label) {
+    label.textContent = lab.id === 'mirror' ? `同乘 ${numText(model.a)}`
+      : lab.id === 'budget' ? `${model.n} 份`
+        : lab.id === 'rental' ? `借 ${numText(model.h)} 小时`
+          : `甲 ${model.s} 点起 · 乙 ${model.e} 点止`;
+  }
+  const readout = $('#lab-readout');
+  if (readout) readout.textContent = model.text;
+  const equation = $('#lab-equation');
+  if (equation && lab.id !== 'window') equation.textContent = `${numText(model.x)} ${model.relation} ${numText(model.y)}`;
+  if (lab.id === 'window' && equation) {
+    equation.textContent = model.kind === 'empty' ? '没有公共时间'
+      : model.kind === 'point' ? `只能约在 ${model.low} 点` : `${model.low} — ${model.high} 点（${model.high - model.low} 小时）`;
+  }
+  if (lab.id === 'mirror') drawMirror(model);
+  if (lab.id === 'window') drawWindow(model);
+  if (lab.id === 'budget' || lab.id === 'rental') drawFees(lab, model);
+}
+
+function drawMirror(model) {
+  const svg = $('#lab-svg');
+  if (!svg) return;
+  const position = value => 250 + value * 13;
+  const ticks = [-15, -10, -5, 0, 5, 10, 15];
+  const same = Math.abs(model.x - model.y) < 1e-9;
+  const x = position(model.x), y = position(model.y);
+  svg.innerHTML = `<line class="nl-axis" x1="30" x2="470" y1="84" y2="84"/>
+    ${ticks.map(t => `<line class="nl-tick" x1="${position(t)}" x2="${position(t)}" y1="78" y2="90"/><text class="nl-label" x="${position(t)}" y="108" text-anchor="middle">${numText(t)}</text>`).join('')}
+    <circle class="nl-dot-a" cx="${x}" cy="84" r="8"/><text class="nl-label-a" x="${x}" y="62" text-anchor="middle">3a = ${numText(model.x)}</text>
+    ${same ? '' : `<circle class="nl-dot-b" cx="${y}" cy="84" r="8"/><text class="nl-label-b" x="${y}" y="138" text-anchor="middle">5a = ${numText(model.y)}</text>`}
+    ${same ? '<text class="nl-note" x="250" y="138" text-anchor="middle">两点重合：3a = 5a = 0</text>' : ''}
+    ${model.order === 'reverse' ? '<text class="nl-note" x="250" y="18" text-anchor="middle">负数 ⇒ 关于原点镜像，左右互换</text>' : ''}`;
+}
+
+function drawFees(lab, model) {
+  const scale = lab.id === 'budget' ? 51 : 30;
+  const paint = (prefix, value) => {
+    const bar = $(`#${prefix}`);
+    if (bar) bar.style.width = `${Math.max(0, Math.min(100, value / scale * 100))}%`;
+    const out = $(`#${prefix}-val`);
+    if (out) out.textContent = `${numText(value)} 元`;
+  };
+  paint('bar-a', model.a);
+  paint('bar-b', model.b);
+  const tie = $('#fee-tie');
+  if (tie) {
+    tie.textContent = model.cheaper === 'tie'
+      ? (lab.id === 'budget' ? '两种方案费用相同：交点 n = 3' : '两种计费相同：等费点 h = 1')
+      : `${lab.id === 'budget' ? `方案 ${model.cheaper}` : model.cheaper} 便宜 ${numText(model.diff)} 元`;
+  }
+}
+
+function drawWindow(model) {
+  const svg = $('#lab-svg');
+  if (!svg) return;
+  const pad = 46, span = (520 - pad * 2) / 8;
+  const x = hour => pad + (hour - 12) * span;
+  const hours = [12, 13, 14, 15, 16, 17, 18, 19, 20];
+  const bar = (y, from, to, cls) => {
+    if (to < from) return '';
+    if (to - from < 0.5) return `<circle class="${cls}" cx="${x(from)}" cy="${y + 8}" r="4"/>`;
+    return `<rect class="${cls}" x="${x(from)}" y="${y}" width="${Math.max(2, x(to) - x(from))}" height="16" rx="8"/>`;
+  };
+  const band = model.kind === 'empty' ? ''
+    : `<rect class="${model.kind === 'point' ? 'tl-hit-point' : 'tl-hit'}" x="${x(model.low)}" y="104" width="${Math.max(6, x(model.high) - x(model.low))}" height="10" rx="5"/>`;
+  const note = model.kind === 'empty'
+    ? '没有公共时间：起点晚于终点'
+    : model.kind === 'point' ? `交集只有 ${model.low} 点` : `公共时间 ${model.low} — ${model.high} 点`;
+  svg.innerHTML = `<line class="tl-axis" x1="${pad}" x2="${520 - pad}" y1="124" y2="124"/>
+    ${hours.map(hour => `<line class="tl-tick" x1="${x(hour)}" x2="${x(hour)}" y1="118" y2="130"/><text class="tl-label" x="${x(hour)}" y="148" text-anchor="middle">${hour}</text>`).join('')}
+    <text class="tl-name" x="10" y="44">甲</text>${bar(32, model.s, 18, 'tl-bar-a')}
+    <text class="tl-name" x="10" y="72">乙</text>${bar(60, 14, model.e, 'tl-bar-b')}
+    <text class="tl-name" x="10" y="114">交集</text>${band}
+    <text class="tl-note" x="260" y="172" text-anchor="middle">${note}</text>`;
+}
+
+function refreshExploreStatus() {
+  const lab = labById(state.lab);
+  const pills = $('#explore-pills');
+  if (pills) pills.innerHTML = explorePillItems();
+  const summary = exploreSummary(readExplore(), D.meta.dataset_id, state.student);
+  const ratio = Math.round(summary.done / summary.total * 100);
+  const meter = $('#explore-meter-i');
+  if (meter) meter.style.width = `${ratio}%`;
+  const meterLabel = $('#explore-meter-label');
+  if (meterLabel) meterLabel.textContent = `已完成 ${summary.done} / ${summary.total}`;
+  if (lab) {
+    const progress = labProgress(exploreRecord(lab.id), lab);
+    const statePill = $('#explore-lab-state');
+    if (statePill) {
+      statePill.textContent = progress.done ? '已完成' : '进行中';
+      statePill.className = `pill ${progress.done ? '' : 'light'}`;
+    }
+  }
+}
+
+function setExplorePreset(index) {
+  const lab = labById(state.lab);
+  const preset = lab?.presets[index];
+  if (!preset) return;
+  if (lab.id === 'window') {
+    const start = $('#lab-input-a'), end = $('#lab-input-b');
+    if (start) start.value = preset.value.s;
+    if (end) end.value = preset.value.e;
+  } else {
+    const input = $('#lab-input');
+    if (input) input.value = preset.value;
+  }
+  updateExplore();
+}
+
+function answerExploreQuiz(qi, oi) {
+  const lab = labById(state.lab);
+  if (!lab) return;
+  const record = exploreRecord(lab.id);
+  record.answers[String(qi)] = oi;
+  record.updated_at = new Date().toISOString();
+  saveExplore();
+  const body = $('#explore-quiz-body');
+  if (body) body.innerHTML = exploreQuizBody(lab);
+  refreshExploreStatus();
+}
+
+function toggleExploreCheck(input) {
+  const lab = labById(state.lab);
+  if (!lab) return;
+  const record = exploreRecord(lab.id);
+  const id = input.dataset.check;
+  record.checks = input.checked
+    ? [...new Set([...record.checks, id])]
+    : record.checks.filter(item => item !== id);
+  record.updated_at = new Date().toISOString();
+  saveExplore();
+  refreshExploreStatus();
+}
+
+function saveExploreTransfer() {
+  const lab = labById(state.lab);
+  const field = $('#lab-transfer');
+  if (!lab || !field) return;
+  const record = exploreRecord(lab.id);
+  record.transfer = field.value.slice(0, 2000);
+  record.updated_at = new Date().toISOString();
+  const saved = saveExplore();
+  const status = $('#transfer-status');
+  if (status) status.textContent = saved ? '已保存到本机（不计分）。' : '浏览器未能保存，请检查本地存储设置。';
+  if (saved) toast('迁移任务已保存在本机，不会进入诊断。');
+}
+
+function resetExplore() {
+  const store = readExplore();
+  for (const lab of exploreLabs) delete store.records[exploreKeyFor(lab.id)];
+  exploreStore = store;
+  saveExplore();
+  render();
+  toast('本机的探索记录已清空。');
 }
 
 function showDrawer(title, body, eyebrow = 'EVIDENCE & CONNECTIONS') {
@@ -997,7 +1536,7 @@ function navigate(values) {
 
 window.addEventListener('popstate', () => {
   const q = new URLSearchParams(location.search);
-  Object.assign(state, {role:location.pathname === '/student' ? 'student' : 'teacher', view:q.get('view') || 'overview', node:q.get('node'), group:q.get('group') || 'ALL', student:q.get('student'), report:q.get('report') || 'scores', profileTab:q.get('profile') || 'analysis', studentPanel:q.get('panel') || 'list', chartPage:0});
+  Object.assign(state, {role:location.pathname === '/student' ? 'student' : 'teacher', view:q.get('view') || 'overview', node:q.get('node'), group:q.get('group') || 'ALL', student:q.get('student'), report:q.get('report') || 'scores', profileTab:q.get('profile') || 'analysis', studentPanel:q.get('panel') || 'list', chartPage:0, lab:q.get('lab') || state.lab});
   render();
 });
 
@@ -1056,34 +1595,7 @@ function render() {
       if (state.view === 'settings') render();
     });
   }
-  if (state.view === 'explore') {
-    if (state.lab === 'axis') updateAxis();
-    else updateBudget();
-  }
-}
-
-function updateAxis() {
-  const a = Number($('#factor').value),
-    x = 3 * a,
-    y = 5 * a;
-  const fmt = v => String(v).replace('-', '−');
-  $('#factor-label').textContent = `同乘 ${fmt(a)}`;
-  $('#axis-equation').textContent = `${fmt(x)} ${a>0?'＜':a<0?'＞':'＝'} ${fmt(y)}`;
-  $('#axis-rule').textContent = a > 0 ? '乘以正数：顺序保留，3a ＜ 5a。' : a < 0 ? '乘以负数：数轴发生镜像，顺序反转，3a ＞ 5a。' : '乘以 0：两个数重合为 0。原来的严格不等关系不能保留；也不能用除以 0 逆推。';
-  const position = v => 250 + v * 13;
-  $('#number-line').innerHTML = `<line x1="30" x2="470" y1="48" y2="48" stroke="#9bad92" stroke-width="1.5"/>${[-15,-10,-5,0,5,10,15].map(t=>`<path d="M${position(t)} 43v10" stroke="#a1b296"/><text x="${position(t)}" y="75" text-anchor="middle" fill="#8b9f80" font-size="11">${t}</text>`).join('')}<circle cx="${position(x)}" cy="48" r="8" fill="#549477"/><text x="${position(x)}" y="22" text-anchor="middle" fill="#3f7d60" font-size="13">3a = ${x}</text><circle cx="${position(y)}" cy="48" r="${a===0?4:8}" fill="#c59968"/><text x="${position(y)}" y="97" text-anchor="middle" fill="#ad824f" font-size="13">5a = ${y}</text>`;
-}
-
-function updateBudget() {
-  const n = Number($('#people').value),
-    a = 9 + 2 * n,
-    b = 3 + 4 * n;
-  $('#people-label').textContent = `${n} 人`;
-  $('#budget-a').textContent = `${a} 元`;
-  $('#budget-b').textContent = `${b} 元`;
-  $('#budget-a-bar').style.width = `${a/51*100}%`;
-  $('#budget-b-bar').style.width = `${b/51*100}%`;
-  $('#budget-result').textContent = a === b ? `两种方案同为 ${a} 元。交点满足 9 + 2n = 3 + 4n，所以 n = 3。` : `${n} 人时，方案 ${a<b?'A':'B'} 便宜 ${Math.abs(a-b)} 元。正整数人数 n > 3 时选 A，n < 3 时选 B。`;
+  if (state.view === 'explore') updateExplore();
 }
 
 function exportSummary() {
@@ -1972,11 +2484,36 @@ document.addEventListener('click', event => {
   }
   if (b.dataset.lab) {
     state.lab = b.dataset.lab;
+    state.exploreTab = null;
     render();
     return;
   }
-  if (b.dataset.quiz) {
-    $('#quiz-feedback').textContent = b.dataset.quiz === 'correct' ? '正确。两边除以 −2，不等号反向，得到 x ＞ −3。这次自编检验不会改动历史画像。' : '再想一想：两边除以负数时，数轴左右顺序会反转。试着把乘数拖到负数区域再观察。';
+  if (b.dataset.exploreTab) {
+    toggleExploreTab(b.dataset.exploreTab);
+    return;
+  }
+  if (b.dataset.moreOpen) {
+    openMore(b.dataset.moreOpen);
+    return;
+  }
+  if (b.dataset.moreTaskSave) {
+    saveMoreTask(b.dataset.moreTaskSave);
+    return;
+  }
+  if (b.dataset.preset !== undefined) {
+    setExplorePreset(Number(b.dataset.preset));
+    return;
+  }
+  if (b.dataset.quizOption !== undefined) {
+    answerExploreQuiz(Number(b.dataset.quizQ), Number(b.dataset.quizOption));
+    return;
+  }
+  if (b.hasAttribute('data-transfer-save')) {
+    saveExploreTransfer();
+    return;
+  }
+  if (b.hasAttribute('data-explore-reset')) {
+    resetExplore();
     return;
   }
   if (b.hasAttribute('data-export-reviews')) {
@@ -1986,6 +2523,14 @@ document.addEventListener('click', event => {
   if (b.hasAttribute('data-export')) exportSummary();
 });
 document.addEventListener('change', event => {
+  if (event.target.matches('[data-more-task-check]')) {
+    toggleMoreRubric(event.target);
+    return;
+  }
+  if (event.target.matches('[data-check]')) {
+    toggleExploreCheck(event.target);
+    return;
+  }
   if (event.target.id === 'avatar-input') {
     handleAvatarFile(event.target.files?.[0]);
     event.target.value = '';
@@ -2049,8 +2594,7 @@ document.addEventListener('input', event => {
     el.focus();
     el.setSelectionRange(position, position);
   }
-  if (event.target.id === 'factor') updateAxis();
-  if (event.target.id === 'people') updateBudget();
+  if (event.target.matches('[data-lab-range]')) updateExplore();
 });
 document.addEventListener('submit', async event => {
   if (event.target.id === 'profile-form') {

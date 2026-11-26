@@ -22,6 +22,7 @@ from knowflow.llm.chat import answer_question
 from knowflow.llm.settings_store import read_llm_settings, save_llm_settings, test_llm_connection
 from knowflow.web.auth import COOKIE_NAME, Account, AuthStore
 from knowflow.web.data import read_json
+from knowflow.web.learning import LearningStore
 from knowflow.web.training import TrainingStore
 
 STATIC = Path(__file__).with_name("static")
@@ -41,6 +42,8 @@ ASSETS = {
     "/login.css": "text/css",
     "/knowledge-map.css": "text/css",
     "/training.js": "text/javascript",
+    "/learning.js": "text/javascript",
+    "/learning.css": "text/css",
     "/pdf-viewer.js": "text/javascript",
     "/pdf-print.js": "text/javascript",
     "/pdf-print.css": "text/css",
@@ -127,6 +130,7 @@ def create_server(
             item["document_url"] = "/api/document/" + mid
     record_ids = {r["record_id"] for r in snapshot["records"]}
     record_owner = {r["record_id"]: r["student_id"] for r in snapshot["records"]}
+    learning = LearningStore(repo_root() / 'data/learning' / snapshot['meta']['dataset_id'], snapshot, knowledge_base)
     scoped_cache: dict[str, bytes] = {}
 
     def snapshot_bytes(account: Account) -> bytes:
@@ -372,7 +376,11 @@ def create_server(
             if path in SESSION_PAGES:
                 account = self.account()
                 if account is None:
-                    self.redirect("/login")
+                    # 把 ?motion=1 这类显式动效开关带到登录页：否则未登录访问
+                    # /?motion=1 会被 302 抹掉查询串，开关在登录前就失效了。
+                    motion = ((parse_qs(urlsplit(self.path).query).get("motion") or [""])[0] or "").lower()
+                    allowed = {"1", "on", "true", "yes", "force", "0", "off", "false", "no", "auto", "system"}
+                    self.redirect(f"/login?motion={motion}" if motion in allowed else "/login")
                     return
                 home = "/teacher" if account.role == "teacher" else "/student"
                 if path == "/":
@@ -400,6 +408,17 @@ def create_server(
                     self.json({"error": str(exc)}, 400)
             elif path == '/api/training':
                 self.json(training.list_for(account))
+            elif path == '/api/learning':
+                query = parse_qs(urlsplit(self.path).query)
+                sid = query.get('student_id', [account.student_id])[0]
+                nid = query.get('node_id', [''])[0]
+                if account.role == 'student' and sid != account.student_id:
+                    self.json({'error': '只能查看本人的学习空间。'}, 403)
+                    return
+                try:
+                    self.json(learning.list_for(sid, nid))
+                except ValueError as exc:
+                    self.json({'error': str(exc)}, 400)
             elif any(path.startswith('/api/training/' + route + '/') for route in ('pdf', 'pdf-preview', 'pdf-page')):
                 try:
                     identifier = path.rsplit('/', 1)[-1]
@@ -504,6 +523,12 @@ def create_server(
                 "/api/training/approve",
                 "/api/training/scan",
                 "/api/training/review",
+                "/api/learning/start",
+                "/api/learning/read",
+                "/api/learning/answer",
+                "/api/learning/generate",
+                "/api/learning/favorite",
+                "/api/learning/question",
             ):
                 self.json({"error": "没有找到该接口。"}, 404)
                 return
@@ -564,6 +589,36 @@ def create_server(
                     auth.drop(self.session_token())
                 cleared = f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
                 self.json({"ok": True}, cookies=(cleared,))
+                return
+
+            if path.startswith('/api/learning/'):
+                if self.headers.get('X-KnowFlow-Learning') != '1':
+                    self.json({'error': '缺少本机请求头。'}, 403)
+                    return
+                sid, nid = payload.get('student_id'), payload.get('node_id')
+                if account.role == 'student' and sid != account.student_id:
+                    self.json({'error': '只能操作本人的学习空间。'}, 403)
+                    return
+                action = path.rsplit('/', 1)[-1]
+                try:
+                    if action == 'start':
+                        result = learning.start(sid, nid, payload.get('knowledge_id'))
+                    elif action == 'read':
+                        result = learning.mark_read(sid, nid, payload.get('knowledge_id'))
+                    elif action == 'answer':
+                        result = learning.answer(sid, nid, payload)
+                    elif action == 'generate':
+                        result = learning.generate(sid, nid, payload.get('knowledge_id'))
+                    elif action == 'favorite':
+                        result = learning.favorite(sid, nid, payload.get('question_id'), payload.get('favorite'))
+                    else:
+                        result = learning.question(sid, nid, payload.get('question_id'))
+                    self.json(result)
+                except ValueError as exc:
+                    self.json({'error': str(exc)}, 400)
+                except Exception:
+                    traceback.print_exc()
+                    self.json({'error': '学习记录操作失败，请重试。'}, 500)
                 return
 
             if path.startswith('/api/training/'):

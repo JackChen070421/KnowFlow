@@ -35,5 +35,6 @@ def test_pending_advice_waits_for_scoring_instead_of_another_test():
 def test_class_poor_is_included_in_ai_focus():
     facts = {'class': {'id': 'ALL', 'students': 4, 'coverage': {}, 'knowledge': [{'id': 'K-01', 'name': '方程', 'weak': 0, 'sparse_poor': 3, 'insufficient': 0}]}}
     answer = rules_answer(facts, 'evidence')
+    # 较差与薄弱同属需要支持的一侧；两者仍是分开报的数字，不能合成“薄弱 3 人”。
     assert '较差 3 人' in answer
-    assert '最需要关注' in answer
+    assert '薄弱 3 人' not in answer

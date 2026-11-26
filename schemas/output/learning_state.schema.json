@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowflow.local/schemas/output/learning_state.schema.json",
+  "title": "Student formative learning state",
+  "description": "Local student learning, probe, practice and collection state v1; independent of canonical records and official diagnosis.",
+  "type": "object",
+  "required": ["schema_version", "student_id", "lessons", "questions", "attempts", "mistakes", "favorites", "revealed"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "student_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,60}$"},
+    "lessons": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["read", "completed", "bank_ids", "ai_ids", "probe_ids", "probe_result", "created_at"],
+        "properties": {
+          "read": {"type": "boolean"}, "completed": {"type": "boolean"},
+          "bank_ids": {"$ref": "#/$defs/ids"}, "ai_ids": {"$ref": "#/$defs/ids"}, "probe_ids": {"$ref": "#/$defs/ids"},
+          "probe_id": {"type": "string"}, "created_at": {"type": "string"},
+          "probe_result": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["correct", "total", "accuracy", "status"], "properties": {"correct": {"type": "integer", "minimum": 0, "maximum": 2}, "total": {"const": 2}, "accuracy": {"enum": [0, 0.5, 1]}, "status": {"enum": ["needs_practice", "ready"]}}}]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "questions": {"type": "object", "additionalProperties": {"type": "object", "required": ["question_id", "knowledge_id", "prompt", "options", "answer", "explanation", "source"], "properties": {"question_id": {"type": "string"}, "knowledge_id": {"type": "string"}, "prompt": {"type": "string", "minLength": 1}, "options": {"type": "array", "items": {"type": "string"}, "maxItems": 4}, "answer": {"type": "string"}, "explanation": {"type": "string"}, "source": {"enum": ["bank", "probe", "ai"]}}}},
+    "attempts": {"type": "array", "items": {"type": "object", "required": ["request_id", "question_id", "answer", "correct", "independent", "node_id", "knowledge_id", "created_at"], "properties": {"request_id": {"type": "string"}, "question_id": {"type": "string"}, "answer": {"type": "string"}, "correct": {"type": ["boolean", "null"]}, "independent": {"type": "boolean"}}}},
+    "mistakes": {"type": "object", "additionalProperties": {"type": "object", "required": ["question_id", "resolved", "origin"], "properties": {"resolved": {"type": "boolean"}, "origin": {"enum": ["history", "practice"]}}}},
+    "favorites": {"$ref": "#/$defs/ids"}, "revealed": {"$ref": "#/$defs/ids"}
+  },
+  "$defs": {"ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}
+}

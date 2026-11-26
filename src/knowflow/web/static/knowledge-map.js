@@ -28,7 +28,13 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const springs=[...[...layout.hubs.keys()].map(id=>({from:'course',to:'category-'+id})),...nodes.map(n=>({from:'category-'+n.topic,to:n.id}))];
  const segments=[],hubGroups=new Map();
  let drawKey=null,renderPoints=[],lastCamera='',paintFrame=0,geometryDirty=false;
- let physicsFrame=0,energy=0,pinned=null,dynamic=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ // ?motion=1 时即使系统关闭动画也按“可动”启动：theme-boot.js 已把 html.kf-force-motion
+ // 写好，这里再把同一个标记放到 shadow host 上，供 knowledge-map.css 的 @media 使用
+ // （shadow root 里的选择器碰不到 <html>）。
+ const forcedMotion=document.documentElement.classList.contains('kf-force-motion');
+ if(forcedMotion)host.classList.add('force-motion');
+ const motionOK=window.kfMotionAllowed?window.kfMotionAllowed():!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let physicsFrame=0,energy=0,pinned=null,dynamic=motionOK;
  let orbitFrame=0,orbitLast=0,orbitHover=false;
  let cameraFrame=0,cameraReady=false,animateNext=false;
  let mode='overview',active=null,shown=nodes,groups=new Map(),camera={x:0,y:0,k:1},width=900,height=650,gesture=null,suppressClick=false,frame=0,disposed=false;
@@ -114,7 +120,10 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  svg.addEventListener('pointerout',e=>{orbitHover=!!e.relatedTarget?.closest?.('[data-drag-id]')});
  svg.addEventListener('pointerleave',()=>{orbitHover=false});
  function wake(){
-  if(!dynamic||disposed||mode!=='overview'||!shown.length)return;energy=1;if(physicsFrame)return;
+  // 拖动模块/知识点时，挂在上面的节点要跟着被弹簧带走。这是对直接操作的反馈，
+  // 不是装饰性动画，所以不再受 dynamic（系统“减少动效”）约束：即使系统关闭动画，
+  // 拖拽联动照样生效；被关掉的只是空闲漂移（orbit）与环境光。
+  if(disposed||mode!=='overview'||!shown.length)return;energy=1;if(physicsFrame)return;
   const visible=new Set(['course',...shown.map(n=>'category-'+n.topic),...shown.map(n=>n.id)]);
   const ps=[...points].filter(([id])=>visible.has(id)).map(([id,p])=>({id,...p,point:p,homeX:homes.get(id).x,homeY:homes.get(id).y}));
   const links=springs.filter(e=>visible.has(e.from)&&visible.has(e.to));let lastTick=-Infinity,quiet=0;
@@ -150,7 +159,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   const selected=active?layout.positions.get(active):null;
   const target=selected?{x:selected.x,y:selected.y,k:Math.max(.75,Math.min(1.25,width/480,height/440))}:{x:(left+right)/2,y:(top+bottom)/2,k:Math.min((width-28)/(right-left),(height-70)/(bottom-top),1.4)};
   if(!active&&shown.length===nodes.length)target.k*=1.12;
-  const animate=cameraReady&&(animateNext||cameraFrame!==0)&&!matchMedia('(prefers-reduced-motion: reduce)').matches;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
+  const animate=cameraReady&&(animateNext||cameraFrame!==0)&&motionOK;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
   if(!animate){camera=target;paint();return}
   const start={...camera},t0=performance.now();
   function step(now){if(disposed)return;const progress=Math.min(1,(now-t0)/420);camera=interpolateCamera(start,target,progress);paint();if(progress<1)cameraFrame=requestAnimationFrame(step);else cameraFrame=0}
@@ -196,5 +205,8 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function end(e){if(gesture?.id!==e.pointerId)return;const movedNode=gesture.moved&&gesture.node,blankClick=!gesture.moved&&!gesture.node&&e.type==='pointerup';suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');if(blankClick)full();else if(movedNode)wake();setTimeout(()=>suppressClick=false,0)}svg.onpointerup=svg.onpointercancel=end;
  const motion=el('button','动态布局：'+(dynamic?'开':'关'));motion.id='motion';motion.setAttribute('aria-pressed',String(dynamic));motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');motion.setAttribute('aria-pressed',String(dynamic));if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0}};
  const reset=el('button','重置布局');reset.id='resetLayout';reset.onclick=()=>{cancelAnimationFrame(physicsFrame);physicsFrame=0;pinned=null;for(const [id,p] of points)Object.assign(p,homes.get(id));full()};root.querySelector('.tools').append(motion,reset);
- const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
+ const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();
+ // 学习卡「定位图谱」用 host.dataset.focus 指定要聚焦的节点或其观察指标（PR #38）。
+ if(host.dataset.focus){const target=nodes.find(n=>n.id===host.dataset.focus||n.indicators.includes(host.dataset.focus));if(target)choose(target.id)}
+ orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
 }

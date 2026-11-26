@@ -706,7 +706,14 @@ def test_history_is_trimmed_and_untrusted_items_are_dropped():
     assert normalize_history([{"role": "user", "text": 3}]) == []
 
 
-def test_a_number_quoted_from_an_earlier_answer_is_not_a_new_claim(monkeypatch):
+def test_a_number_from_an_earlier_answer_is_not_a_current_fact(monkeypatch):
+    """历史回答里的数字不再进白名单（任务 D）。
+
+    旧行为：上一轮说过 37，这一轮复述 37 就不算新主张。这会允许第一轮的错误
+    数字在多轮里滚雪球。现在的规则是：历史只提供语境，事实只来自本轮事实卡，
+    所以同一句话在有没有历史时都应被拦下。
+    """
+
     facts = {
         "node": {"id": "N01", "date": "2026-06-17", "objectives": 1},
         "knowledge": [],
@@ -732,7 +739,8 @@ def test_a_number_quoted_from_an_earlier_answer_is_not_a_new_claim(monkeypatch):
         client=client,
         history=[{"role": "assistant", "text": "这个班还有 37 人证据不足"}],
     )
-    assert result["source"] == "llm"
+    assert result["source"] == "rules"
+    assert result["trace"]["guard"]["failure_kind"] == "number"
 
     without_history = answer_question(
         snapshot=snapshot, message="再说说他们", client=SequenceClient(["刚才那 37 人先补观测。"])
@@ -869,6 +877,14 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
         status, headers, _ = call("GET", "/teacher")
         assert status == 302 and headers["Location"] == "/login"
         assert call("GET", "/login")[0] == 200
+        # ?motion=1 必须活过登录跳转（否则演示机上登录前就丢了这个开关）；
+        # 其他参数不跟过去，避免把任意查询串带进重定向。
+        status, headers, _ = call("GET", "/?motion=1")
+        assert status == 302 and headers["Location"] == "/login?motion=1"
+        status, headers, _ = call("GET", "/?utm_source=x")
+        assert status == 302 and headers["Location"] == "/login"
+        status, headers, _ = call("GET", "/?motion=%3Cscript%3E")
+        assert status == 302 and headers["Location"] == "/login"
 
         # Login must come from the local page, with a real password.
         assert call("POST", "/api/login", {"username": "teacher", "password": "123456"})[0] == 403

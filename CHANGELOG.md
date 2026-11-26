@@ -10,6 +10,63 @@
 
 ---
 
+## 2026-11-26 — 动画默认开启，不再由系统「减少动效」拦截
+
+- 根因：原实现把系统设置当总开关——Windows 关闭「动画效果」→ 浏览器上报 `prefers-reduced-motion: reduce` → 三处各自关闭：`knowledge-map.js` 的 `dynamic`（空闲漂移/相机补间/拖拽物理）、`styles.css` 的全局 `animation/transition: none !important`、`motion.css` 整份包在 `@media (no-preference)` 里。演示机上因此整页静态，且界面上没有任何入口能打开。
+- 口径改为「默认播放，按需关闭」：`theme-boot.js` 默认给 `<html>` 挂 `kf-force-motion`，只有本机显式关闭时才不挂；`kfMotionAllowed()` 成为脚本侧唯一判定（`app.js` 主题切换、`knowledge-map.js`、`course-stories.mjs` 共用）。关闭入口：设置 → 显示 →「关闭」（存 `localStorage['knowflow.motion']='off'`）或 `?motion=0`；`?motion=1` 恢复默认。
+- 拖拽联动与动效开关解耦：`knowledge-map.js` 的 `wake()` 不再受 `dynamic` 约束——拖动模块/知识点时子节点被弹簧带走属于直接操作反馈，任何设置下都生效。
+- 样式：`styles.css` / `theme.css` / `login.css` 的 reduce 守卫加 `html:not(.kf-force-motion)`；`knowledge-map.css` 在 shadow root 内改用 `:host(:not(.force-motion))`；`motion.css` 去掉 `@media (no-preference)` 包裹，默认关闭改由上述 blanket 守卫负责（登录页不加载 styles.css，故自带一份）。
+- 无障碍代价：偏好「减少动效」的用户现在也会看到动画，需要自己关一次（本机记住）。这是为演示可见性做的取舍，不是遗漏。
+- 验证：`node --test tests/web/*.test.mjs` 29 项通过（含 9 项动效策略）；`pytest` 454 项、`ruff` 通过。真实浏览器（Edge headless，系统动画关闭、`reduce=true`）实测：全新环境不登录直接进导图即 `kf-force-motion`、`::before` 为 `map-ambient-glow`、节点 2.5s 位移约 14px；设置点「关闭」后 `transform` 两次采样完全相同、动画名 `none`、`localStorage=off`；再点「始终开启（默认）」恢复移动并清空存储。
+- 回退：还原 6 个静态文件、`server.py` 的登录跳转与 `tests/web/motion-override.test.mjs`。
+
+---
+
+## 2026-11-26 — 学生学习空间：补测、分页学习与真实 AI 续练
+
+**本机未提交** · `feat/student-learning-workspace`
+
+- 学习卡按屏幕分页，卡内逐步阅读、练习和续练；精简学生导航，适配浅色、深色、护眼与手机界面。
+- 待观察知识先做两道补测；首次答题低于 2/2 进入本次巩固，不修改队友的正式诊断算法与阈值。
+- 知识概要可定位图谱及教材页码；题库推荐 1–2 题，DeepSeek 每批生成 2 题，并通过不含候选答案的独立请求复核。
+- 新增历史与新练习错题集、解析、重做及收藏，按学生保存到被忽略的 `data/learning/`；独立契约见 `schemas/learning.md`。
+- 模型仅接收课程概要与出题要求；密钥存于本机 `.env`，调用失败明确提示，自动复核不替代教师审核。
+- 验证：完整测试 315 通过、4 项可选 PDF/图片依赖测试跳过；契约/样例/静态检查通过；30 项浏览器检查通过，真实 API 两批共 4 题及续练跑通。
+- 回退：回退本条对应代码与契约；本机学习记录和 `.env` 独立保留，不影响官方数据与正式画像。
+
+---
+
+## 2026-11-26 — 事实审计与多轮隔离
+
+**本机未提交** · 建议分支 `feat/chat-fact-audit`
+
+- ① 中文数字进审计（A）：`audit.py` 新增 `parse_chinese_number` / `chinese_number_tokens`，解析后复用同一个 `classify_number` 判语境。支持四十三 / 一百零五 / 两千零二十六 / 百分之二十三 / 三分之二；模糊数量（十几 / 几十 / 百余）与解析失败的"一两"不得作为精确事实；序数、一方面、建议十人一组不误报。
+- ② 历史隔离（D）：删除"上一轮回答里的数字进白名单"；system 增加 `HISTORY_RULE`，真实 `complete_messages` 与单轮兜底两条路径同时生效；事实卡新增 `dialogue`（指代 / 冲突 / 用户补充 / clarify）。用户数字只在带"你说的、你补充的"归属时放行，用户补充不算数据库更新。
+- ③ 零记录缺口（G）：`_knowledge_rows` 增 `unknown = insufficient + unobserved`（已核对状态桶互斥，`not_applicable` 不计入）；新增 `no_record` 与 `_gap_sentence`，兜底不再漏掉"完全没有作答记录"的知识点，仍只给一个判断、一个动作。
+- ④ 结构化验收（F）：`tests/diagnosis/test_acceptance.py` 分五类（数据提取 7 / 统计口径 6 / 表达 4 / 数字审计 4 / 实体引用 3），`acceptance_support.py` 是 B 的原型检查器，`scripts/check_acceptance.py` 按类输出通过数。
+- ⑤ 顺带收紧两处旧漏洞：百分比换算只在数字确实写成百分数时生效（否则 0.17 会放行"17 人"）；白名单不再预置 1/2/3/5（"有 3 人薄弱"不再无条件通过）。
+- 验证：`pytest` 440 passed + 1 xfailed、`ruff`、`check_contracts`、`check_examples` 通过；`scripts/check_acceptance.py` 五类全 PASS；真实快照六条验收 0/6（规则与真实模型各跑一遍）。
+- 未验证 / 已知缺口：B 只做设计，运行时仍放行"K-06 有 19 人薄弱"（以 xfail 记录）；中文数字只到"万"，"千万"按语气词处理；用户补充与数据库记录的合并口径未定义。
+- 回退：还原 `llm/audit.py`、`llm/chat.py`、新增测试与脚本，以及 CHANGELOG/AGENT/README 三处文档。
+
+---
+
+## 2026-11-26 — 学情对话：意图识别、信号区分与兜底重写
+
+**本机未提交** · 建议分支 `feat/chat-teaching-analysis`
+
+- ① 意图识别：新增 `llm/intent.py`（7 类意图 + 复合意图 + 提问形式 + 学科问题标记）。只给**主意图**的分析重点，避免"班级分层指南"叠到单个学生问题上；数据查询类显式要求"只回答数据本身"。
+- ② 事实卡改结构：`weak_signal` 与 `evidence_gap` 分开（旧的 `weak+insufficient` 合并排序把 K-06 排在 K-05 前面）；补 `tiers`（注明"不是能力分层"）、`groups`（描述性差异）、`timeline`（注明跨节点不等于进步）、`focus`、`lookup`；知识点带组成计数与短名。
+- ③ 数字审计重构为 `llm/audit.py`：按语境分「学情数字 / 教学数字 / 建议数量 / 待核」；数据词判定从整句收到数字附近。修复真实误杀——"开场用 10 分钟做小测…36 名证据不足"里的 10 分钟曾被判为编造数据（该次回答被弃用后重写更差）。反向收紧三处：`约/不到` 只对邻近数字放宽（`41 人` 不再借用同句的"不到"）；"×100" 百分比换算只对 0<x≤1 的比率生效（此前事实卡里有个 10，`999 人` 就能按"999% of 10"过关）；新增绝对化结论检查——事实卡还有证据缺口时拒收"全班都没掌握/都掌握"，带"不能说……"限定语的说法放行。
+- ④ 兜底重写：按意图组合作答（查询一问一答、是/否正面回答、策略分"先补证据/直接巩固"），不再输出 `ALL` 与 `M-` 编号；证据模式的"结论/依据"保留。
+- ⑤ 失败可分类：`trace.guard` 增 `intent`/`failure_kind`/`problems`/`attempts`，`note` 区分模型不可达、数字、编号、越界结论与格式，重写提示按类型给。
+- ⑥ 冲突修正：证据模式给数据查询硬套"依据"（"全班 40 人 / 依据：当前数据只有课程映射"）→ 单事实回答不再套两段；"有多少人掌握"没指明知识点时按班级人数作答 → 改为回"这个数查不到，请指明知识点或学生"；学科问题（"K-07 怎么算"）复用知识点分析指南 → 改用独立 `TEACH_GUIDE`；生源无适用知识点时输出"已观察到 0/0" → 改为"这个节点还没有可判断的记录"。
+- 验证：`pytest` 372 项、`ruff`、`check_contracts`、`check_examples` 通过；真实快照上 `scripts/chat_acceptance.py --path rules` 与 `--path live` 均 0/6 未通过。规则路径由"六条问题同一段模板"变为六种回答；模型路径 E 从"40 人 + 整段分析"变为一句，C 从误判回退变为直接作答。
+- 未验证：① 白名单只能证明数字“在事实卡里存在”，不能证明它被挂在了正确的对象上；本轮六条验收未出现错挂，但机制上不保证。② 模型偶尔仍用“证据不足”统称“有评分但太少”和“一条记录都没有”两种缺口（如“用整式解释具体问题 40 人全部证据不足”，实际是 11 人证据不足 + 29 人无记录），提示词已要求分开说，但不保证。③ 学生视角与多轮下的真实模型未逐条复核。
+- 回退：删除 `llm/intent.py`、`llm/audit.py`、`scripts/chat_acceptance.py` 与新增测试，恢复 `llm/chat.py`；事实卡与前端协议不变。
+
+---
+
 ## 2026-11-26 — 学生知识地图图例对应掌握程度
 
 - 仅个人学情导图将章节色图例替换为节点状态图例，共用节点色表，说明连线与外圈代表章节。

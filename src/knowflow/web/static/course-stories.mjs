@@ -253,7 +253,7 @@ export function mountNodeVisual(host,id,el,se){
   else if(config.kind==='endpoint'){axis(config.bound,step===0?-1:1,step===1);text(200,62,step===0?'x ≤ 4':'x > 4',24,green);text(200,192,step===0?'实心点：边界值 4 也在解集中':'空心点：边界值 4 不在解集中',16)}
   else if(config.kind==='budget'){const x=n=>45+n*58;line(x(0),105,x(5),105,'#8a9b95',2);line(x(0),105,x(11/3),105,green,6);for(let i=0;i<=5;i++){text(x(i),136,String(i),15);if(step===1)circle(x(i),105,7,i<=3?green:orange,true)}circle(x(11/3),105,6,green);text(x(11/3),76,'11/3',17);text(200,178,step===0?'可行实数范围：0 ≤ n ≤ 11/3':'整数选择：0、1、2、3；4 已超出范围',16);text(200,207,'数量只能取整数，边界值不能直接当份数',13)}
  }
- const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const reduced=window.kfMotionAllowed?!window.kfMotionAllowed():matchMedia('(prefers-reduced-motion: reduce)').matches;
  let playing=!reduced,timer=0,stopTransition=()=>{},disposed=false;
  function update(){stopTransition();stopTransition=visualTransition(svg,draw,reduced)}
  function syncPlay(){play.textContent=playing?'暂停':'播放';play.setAttribute('aria-label',playing?'暂停动画':'播放动画');play.setAttribute('aria-pressed',String(playing))}
@@ -277,7 +277,7 @@ export function mountStoryLab(host,kind,el,svgEl){
   else if(kind==='cost'){text(40,48,'A');text(40,102,'B');line(65,43,65+r.a*8,43,'#16836e',18);line(65,97,65+r.b*8,97,'#b97132',18);text(90+r.a*8,48,String(r.a));text(90+r.b*8,102,String(r.b));text(220,140,'横条长度表示费用（元）')}
   else{const x=n=>45+n*42;line(x(0),138,x(8),138,'#8a9b95',1);line(x(v),36,x(8),36,'#16836e',5);line(x(0),86,x(6),86,'#b97132',5);dot(x(v),36,'#16836e');dot(x(6),86,'#b97132');text(x(8)+9,41,'→');text(x(0)-9,91,'←');if(v<=6){line(x(v),138,x(6),138,'#7062a5',7);dot(x(v),138,'#7062a5');dot(x(6),138,'#7062a5')}for(let i=0;i<=8;i++)text(x(i),164,String(i));text(220,20,'绿色：x ≥ '+v);text(220,70,'橙色：x ≤ 6');text(220,120,v>6?'紫色：没有公共解':v===6?'紫色：x = 6':'紫色：'+v+' ≤ x ≤ 6')}
  }
- const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const reduced=window.kfMotionAllowed?!window.kfMotionAllowed():matchMedia('(prefers-reduced-motion: reduce)').matches;
  const controls=el('div','','visual-controls'),play=el('button','暂停');play.type='button';controls.append(play);box.append(controls);
  let playing=!reduced,timer=0,direction=1,disposed=false,stopTransition=()=>{};
  function syncPlay(){play.textContent=playing?'暂停':'播放';play.setAttribute('aria-label',playing?'暂停动画':'播放动画');play.setAttribute('aria-pressed',String(playing))}

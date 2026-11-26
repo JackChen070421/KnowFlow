@@ -385,8 +385,8 @@
 
 @media (prefers-reduced-motion: reduce) {
 
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
+  html:not(.kf-force-motion)::view-transition-old(root),
+  html:not(.kf-force-motion)::view-transition-new(root) {
     animation: none;
   }
 }
@@ -431,6 +431,14 @@
   grid-template-columns: repeat(auto-fit, minmax(194px, 1fr));
   gap: 14px;
   margin: 4px 0 16px;
+}
+
+/* 设置页「界面动效」的两个互斥按钮；沿用 .button 的外观，只负责横向排布。 */
+.motion-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .theme-card {

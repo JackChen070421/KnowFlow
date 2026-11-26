@@ -22,7 +22,7 @@ button:hover:not(:disabled){border-color:var(--teal,#176b56)}button:focus-visibl
 :host([workspace]){height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden}:host([workspace]) .canvas{flex:1;min-height:0;overflow:hidden;border:0;padding:8px}:host([workspace]) #atlas{height:100%;min-height:0}:host([workspace]) #detail{height:100%;min-height:0;max-height:none}:host([workspace]) .tablebox{min-height:0}
 @media(max-width:700px){.tools{gap:5px}.tools>*{font-size:13px;padding:6px}.tools select{max-width:175px}.map-caption span{display:none}.explorer.has-detail{grid-template-columns:minmax(0,1fr) minmax(270px,48%)}#detail{padding:11px}.legend{font-size:11px;gap:6px 12px}}
 @media(max-width:520px){.explorer.has-detail{grid-template-columns:1fr;grid-template-rows:minmax(180px,35%) minmax(0,1fr)}.maptools{bottom:5px;left:5px}#detail{max-height:420px}.canvas{min-height:720px}:host([workspace]) .canvas{min-height:0}.map-caption strong{font-size:14px}.tools input{min-width:140px}.tools select{max-width:155px}}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+@media(prefers-reduced-motion:reduce){:host(:not(.force-motion)) *{scroll-behavior:auto!important}}
 .radial-node,.category-hub,.course-hub{cursor:grab}#atlas.dragging,#atlas.dragging *{cursor:grabbing!important}
 
 /* Quiet ambient movement stays behind the interactive graph. */
@@ -35,4 +35,6 @@ button:hover:not(:disabled){border-color:var(--teal,#176b56)}button:focus-visibl
 .personal-legend strong{font-size:12px}.personal-legend small{font-size:11px}
 @keyframes map-ambient-glow{from{transform:translate(-2%,-1%) scale(1);opacity:.72}50%{opacity:1}to{transform:translate(3%,2%) scale(1.06);opacity:.82}}
 @keyframes map-ambient-dots{from{transform:translate(0,0)}to{transform:translate(14px,-18px)}}
-@media(prefers-reduced-motion:reduce){.stage::before,.stage::after{animation:none}}
+/* 这份样式表在 shadow root 里，选择器碰不到 <html>，所以用 :host 上的
+   .force-motion 承接 ?motion=1（由 knowledge-map.js 按 kfMotionAllowed() 添加）。 */
+@media(prefers-reduced-motion:reduce){:host(:not(.force-motion)) .stage::before,:host(:not(.force-motion)) .stage::after{animation:none}}

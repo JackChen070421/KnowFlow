@@ -10,6 +10,16 @@
 
 ---
 
+## 2026-11-27 — PDF板块更新
+
+- 优化训练工作区双栏布局、试卷状态卡片及窄屏显示。
+- 题卷/答案通过权限过滤后的 JSON 与 HTML 排版，独立打印页调用浏览器原生打印保存 PDF，不依赖 Python PDF 生成库。
+- 保留后端访问权限与扫描流程；HTML 预览不承诺与打印分页完全一致。
+- 验证：契约、合成样例、完整 pytest 与 24 项前端测试通过；浏览器确认布局及题卷预览。最终保存 PDF 未实测。
+- 回退：还原 training.js、pdf-viewer.js、pdf-print 三文件、styles.css、对应测试及说明。
+
+---
+
 ## 2026-11-26 — 动画默认开启，不再由系统「减少动效」拦截
 
 - 根因：原实现把系统设置当总开关——Windows 关闭「动画效果」→ 浏览器上报 `prefers-reduced-motion: reduce` → 三处各自关闭：`knowledge-map.js` 的 `dynamic`（空闲漂移/相机补间/拖拽物理）、`styles.css` 的全局 `animation/transition: none !important`、`motion.css` 整份包在 `@media (no-preference)` 里。演示机上因此整页静态，且界面上没有任何入口能打开。

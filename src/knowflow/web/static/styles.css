@@ -4148,7 +4148,7 @@ body.course-mode{height:100dvh;overflow:hidden}
 .course-workspace{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
 .course-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .course-heading h1{font-size:22px;margin:0}.course-heading .filters{margin:0;padding:0;border:0}
-.course-tabs{align-self:flex-start;flex-shrink:0}
+.course-title-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;min-width:0}.course-title-row h1{flex-shrink:0}.course-tabs{flex-shrink:0;margin:0}.course-heading .filters{margin-left:auto}
 .course-content{flex:1;min-height:0;border:1px solid #e3e9ef;border-radius:14px;background:#fff;overflow:hidden}
 .course-content.is-map{display:flex;flex-direction:column;padding:0 14px 12px}
 .course-content.is-map>[data-interactive-map]{flex:1;min-height:0}
@@ -4361,3 +4361,18 @@ body.module-mode{height:100dvh;overflow:hidden}
  .source-card .source-file{padding-top:0}.source-card footer{margin-top:6px;padding-top:6px}
  .source-card-grid{gap:10px}
 }
+
+/* Keep knowledge context fixed while the student panel scrolls independently. */
+#drawer.knowledge-drawer{overflow:hidden}
+.knowledge-drawer #drawer-content{height:100%;display:flex;flex-direction:column;min-height:0}
+.knowledge-drawer .drawer-head{flex-shrink:0}
+.knowledge-drawer .drawer-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px;padding-bottom:20px;overflow:hidden}
+.knowledge-summary{flex-shrink:0}
+.knowledge-students{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:12px;padding:0 14px 14px;background:var(--surface,#fff)}
+.knowledge-related{flex-shrink:0;max-height:30%;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--line);padding-top:12px;font-size:13px}
+.knowledge-related summary{cursor:pointer;font-weight:600}
+@media(max-height:600px){.knowledge-summary{max-height:35%;overflow:auto}.knowledge-drawer .drawer-body{gap:8px;padding-top:10px}.knowledge-drawer .drawer-head{padding-top:12px;padding-bottom:12px}}
+
+.knowledge-students.has-class-summary{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+.knowledge-class-summary{flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.knowledge-student-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 0 14px;scrollbar-gutter:stable}

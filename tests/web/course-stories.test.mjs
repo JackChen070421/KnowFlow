@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {storyContent,storyPaths,storyExperiment,nodeVisuals} from '../../src/knowflow/web/static/course-stories.mjs';
+import {storyContent,storyPaths,storyExperiment,nodeVisuals,drawSemanticScene,visualReadingDelay} from '../../src/knowflow/web/static/course-stories.mjs';
 import {radialLayout} from '../../src/knowflow/web/static/map-layout.mjs';
 
 test('exploration covers every official node exactly once and links resolve',()=>{
@@ -46,4 +46,29 @@ test('intersection distinguishes an interval, a singleton and the empty set',()=
  assert.match(storyExperiment('intersection',2).text,/2 ≤ x ≤ 6/);
  assert.match(storyExperiment('intersection',6).text,/只剩 x = 6/);
  assert.match(storyExperiment('intersection',7).text,/没有公共解/);
+});
+
+
+test('all semantic animation steps render finite geometry with stable object identities',()=>{
+ const makeNode=(tag,attrs={})=>({tagName:tag,attrs:{...attrs},textContent:'',setAttribute(k,v){this.attrs[k]=v}});
+ for(const [id,config] of Object.entries(nodeVisuals)){
+  if(config.kind!=='semantic')continue;
+  for(let step=0;step<config.steps.length;step++){
+   const children=[];
+   const svg={append(node){children.push(node)},querySelector(selector){const key=selector.match(/"([^"\]]+)"/)[1];return children.find(n=>n.attrs['data-motion-key']===key)}};
+   drawSemanticScene(svg,id,step,makeNode);
+   assert.ok(children.length>0,id);
+   const keys=children.map(n=>n.attrs['data-motion-key']);
+   assert.equal(new Set(keys).size,keys.length,id+' duplicate visual identity');
+   for(const n of children)for(const key of ['x','y','x1','x2','y1','y2','cx','cy','width','height','r']){
+    if(key in n.attrs)assert.ok(Number.isFinite(Number(n.attrs[key])),id+' '+key);
+   }
+  }
+ }
+});
+
+test('animation gives dense equations more reading time and holds the final result',()=>{
+ assert.ok(visualReadingDelay('x = 4')>=4200);
+ assert.ok(visualReadingDelay('先展开括号，再合并同类项：2(x + 3) − x = x + 3 + x + 3 − x = x + 6')>visualReadingDelay('x = 4'));
+ assert.equal(visualReadingDelay('x = 4',true)-visualReadingDelay('x = 4'),1000);
 });

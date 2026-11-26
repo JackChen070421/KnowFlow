@@ -10,7 +10,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const palette={confirmed_mastered:['已掌握','#199b79'],mastered:['已掌握','#199b79'],likely_mastered:['趋于掌握','#48ad98'],confirmed_weak:['需加强','#df785c'],weak:['需加强','#df785c'],likely_weak:['需加强','#df785c'],mixed_performance:['表现不稳定','#b58b31'],insufficient_evidence:['证据不足','#a3afbf'],not_applicable:['未覆盖','#cbd3df']};
  const byId=new Map(nodes.map(n=>[n.id,n])),edges=graph.edges||[];
  const root=host.attachShadow({mode:'open'});
- root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools"><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="map-caption"><strong>从整体，看见知识的分支</strong><span>中心 → 类别 → 知识点 · 点击节点打开图解</span></div><div class="legend" id="legend"></div><div class="explorer"><div class="stage"><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
+ root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
  const $=id=>root.getElementById(id),svg=$('atlas'),world=$('world');
  function el(tag,text='',cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
  function se(tag,attrs={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
@@ -18,14 +18,17 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function action(group,fn){group.setAttribute('role','button');group.setAttribute('tabindex','0');group.onclick=()=>{if(!suppressClick)fn()};group.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();fn()}}}
  function nodeState(n){const ss=n.indicators.map(id=>states.get(id)).filter(Boolean);return ss.find(s=>['weak','confirmed_weak','likely_weak'].includes(s.status))||ss.find(s=>s.status==='insufficient_evidence')||ss.find(s=>s.status==='mixed_performance')||ss[0]}
  const layout=radialLayout(nodes);
+ const chapterSpeed=(Math.random()<.5?-1:1)*Math.PI*2/(480000+Math.random()*180000);
+ const chapterOrbits=new Map([...layout.hubs.keys()].map(topic=>[topic,{time:0,phase:Math.random()*Math.PI*2,period:45000+Math.random()*30000,amplitude:.035+Math.random()*.025,radial:5+Math.random()*5}]));
+ const categoryOrbits=new Map([...layout.hubs.keys()].map(topic=>[topic,{speed:(Math.random()<.5?-1:1)*Math.PI*2/(300000+Math.random()*180000)}]));
+ const nodeOrbits=new Map(nodes.map(n=>[n.id,{time:0,phase:Math.random()*Math.PI*2,period:18000+Math.random()*24000,amplitude:.012+Math.random()*.018}]));
  const points=new Map([['course',layout.center],...[...layout.hubs].map(([id,p])=>['category-'+id,p]),...layout.positions]);
  const homes=new Map([...points].map(([id,p])=>[id,{...p}]));
  const springs=[...[...layout.hubs.keys()].map(id=>({from:'course',to:'category-'+id})),...nodes.map(n=>({from:'category-'+n.topic,to:n.id}))];
- const storageKey='knowflow.dynamic-categories.v2.'+(profile?.student_id||'course');
- try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');for(const [id,p] of points){const s=saved[id];if(s&&Number.isFinite(s.x)&&Number.isFinite(s.y)&&Math.abs(s.x)<10000&&Math.abs(s.y)<10000)Object.assign(p,{x:s.x,y:s.y})}}catch{}
  const segments=[],hubGroups=new Map();
  let drawKey=null,renderPoints=[],lastCamera='',paintFrame=0,geometryDirty=false;
  let physicsFrame=0,energy=0,pinned=null,dynamic=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let orbitFrame=0,orbitLast=0,orbitHover=false;
  let cameraFrame=0,cameraReady=false,animateNext=false;
  let mode='overview',active=null,shown=nodes,groups=new Map(),camera={x:0,y:0,k:1},width=900,height=650,gesture=null,suppressClick=false,frame=0,disposed=false;
  themes.forEach((name,i)=>{$('topic').add(new Option(name,String(i)));const item=el('span',name),dot=el('i');dot.style.background=colors[i];item.prepend(dot);$('legend').append(item)});
@@ -42,7 +45,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   for(const [topic,hub] of layout.hubs){
    const category=shown.filter(n=>n.topic===topic);if(!category.length)continue;curve(layout.center,hub,colors[topic],true);
    const g=se('g',{transform:`translate(${hub.x} ${hub.y})`,class:'category-hub','aria-label':themes[topic]+'，聚焦本类',style:`--branch:${colors[topic]}`});
-   g.append(se('rect',{x:-120,y:-34,width:240,height:68,rx:22}));svgText(g,themes[topic],0,-2,'category-title');svgText(g,category.length+' 个知识点',0,22,'category-count');action(g,()=>{$('topic').value=String(topic);render()});$('hubs').append(g);
+   g.append(se('rect',{x:-120,y:-34,width:240,height:68,rx:22}));svgText(g,themes[topic],0,-2,'category-title');svgText(g,category.length+' 个知识点',0,22,'category-count');action(g,()=>{stopCamera();animateNext=true;pinned=null;$('topic').value=String(topic);render()});$('hubs').append(g);
    g.dataset.dragId='category-'+topic;hubGroups.set('category-'+topic,g);
    for(const n of category){
     const p=layout.positions.get(n.id);curve(hub,p,colors[topic]);
@@ -59,11 +62,47 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   const transform=`translate(${width/2} ${height/2}) scale(${camera.k}) translate(${-camera.x} ${-camera.y})`;
   if(transform!==lastCamera){world.setAttribute('transform',transform);lastCamera=transform}
   if(!geometry)return;
-  for(const item of renderPoints){const p=item.point;if(p.x===item.x&&p.y===item.y)continue;item.element.setAttribute('transform',`translate(${p.x} ${p.y})`);item.x=p.x;item.y=p.y}
+  for(const item of renderPoints){const p=item.point;if(p.x===item.x&&p.y===item.y)continue;item.element.setAttribute('transform',`translate(${p.x} ${p.y})`);item.x=p.x;item.y=p.y;const n=byId.get(item.element.dataset.id);if(n){const hub=layout.hubs.get(n.topic),labels=item.element.querySelectorAll('.node-label');labels.forEach((label,i)=>label.setAttribute('y',String((p.y<hub.y-20?-37-(labels.length-1)*25:49)+i*25)))}}
   for(const segment of segments){const {a,b,path}=segment;const d=`M ${a.x} ${a.y} Q ${a.x} ${b.y} ${b.x} ${b.y}`;if(d!==segment.d){path.setAttribute('d',d);segment.d=d}}
  }
  function requestPaint(geometry=false){geometryDirty=geometryDirty||geometry;if(paintFrame)return;paintFrame=requestAnimationFrame(()=>{paintFrame=0;if(disposed)return;const dirty=geometryDirty;geometryDirty=false;paint(dirty)})}
- function persist(){try{localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(points)))}catch{}}
+ // Slow, varied category orbits with bounded individual drift to preserve spacing.
+ // Random parameters stay fixed for this mount; never add per-frame jitter.
+ function orbit(now){
+  if(disposed)return;
+  orbitFrame=requestAnimationFrame(orbit);
+  if(!orbitLast){orbitLast=now;return}
+  const elapsed=now-orbitLast;if(elapsed<33)return;orbitLast=now;
+  if(!dynamic||document.hidden||mode!=='overview'||active||gesture||orbitHover||physicsFrame||cameraFrame||frame||svg.querySelector(':focus'))return;
+  const dt=Math.min(elapsed,70);
+  // Keep chapters spaced around the course while adding gentle, independent drift.
+  // Move every child with its hub; pause this outer orbit in filtered views.
+  if(shown.length===nodes.length){
+   for(const [topic,hub] of layout.hubs){
+    const motion=chapterOrbits.get(topic),before=motion.phase+motion.time/motion.period*Math.PI*2;
+    motion.time+=dt;
+    const after=motion.phase+motion.time/motion.period*Math.PI*2;
+    const angle=chapterSpeed*dt+motion.amplitude*(Math.sin(after)-Math.sin(before));
+    const dx=hub.x-layout.center.x,dy=hub.y-layout.center.y,radius=Math.hypot(dx,dy);
+    const radial=motion.radial*(Math.sin(after*.73)-Math.sin(before*.73));
+    const scale=radius>1?Math.max(1,radius+radial)/radius:1,c=Math.cos(angle),s=Math.sin(angle);
+    const x=layout.center.x+(dx*c-dy*s)*scale,y=layout.center.y+(dx*s+dy*c)*scale;
+    for(const n of nodes){if(n.topic!==topic)continue;const p=layout.positions.get(n.id);p.x+=x-hub.x;p.y+=y-hub.y}
+    hub.x=x;hub.y=y;
+   }
+  }
+  for(const n of shown){
+   const motion=nodeOrbits.get(n.id),before=motion.phase+motion.time/motion.period*Math.PI*2;
+   motion.time+=dt;
+   const after=motion.phase+motion.time/motion.period*Math.PI*2;
+   const angle=categoryOrbits.get(n.topic).speed*dt+motion.amplitude*(Math.sin(after)-Math.sin(before)),c=Math.cos(angle),s=Math.sin(angle);
+   const p=layout.positions.get(n.id),hub=layout.hubs.get(n.topic),dx=p.x-hub.x,dy=p.y-hub.y;p.x=hub.x+dx*c-dy*s;p.y=hub.y+dx*s+dy*c;
+  }
+  requestPaint(true);
+ }
+ svg.addEventListener('pointerover',e=>{orbitHover=!!e.target.closest('[data-drag-id]')});
+ svg.addEventListener('pointerout',e=>{orbitHover=!!e.relatedTarget?.closest?.('[data-drag-id]')});
+ svg.addEventListener('pointerleave',()=>{orbitHover=false});
  function wake(){
   if(!dynamic||disposed||mode!=='overview'||!shown.length)return;energy=1;if(physicsFrame)return;
   const visible=new Set(['course',...shown.map(n=>'category-'+n.topic),...shown.map(n=>n.id)]);
@@ -76,7 +115,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    relaxCategory(ps,links,gesture?.node||pinned,energy);let movement=0;
    for(const p of ps){movement=Math.max(movement,Math.abs(p.x-p.point.x)+Math.abs(p.y-p.point.y));p.point.x=p.x;p.point.y=p.y}
    requestPaint(true);energy*=.89;quiet=movement<.06?quiet+1:0;if(gesture?.node)energy=Math.max(.5,energy);
-   if((energy>.025&&quiet<3)||gesture?.node)physicsFrame=requestAnimationFrame(tick);else{physicsFrame=0;persist()}
+   if((energy>.025&&quiet<3)||gesture?.node)physicsFrame=requestAnimationFrame(tick);else{physicsFrame=0}
   }
   physicsFrame=requestAnimationFrame(tick);
  }
@@ -92,56 +131,60 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   const focus=active?byId.get(active).topic:$('topic').value===''?null:Number($('topic').value);
   const points=shown.filter(n=>focus===null||n.topic===focus).map(n=>layout.positions.get(n.id));
   if(focus===null)points.push(layout.center,...layout.hubs.values());else points.push(layout.hubs.get(focus));
+  if(!active){for(const [topic,hub] of layout.hubs){const visible=shown.filter(n=>n.topic===topic);if(!visible.length)continue;const radius=Math.max(...visible.map(n=>{const p=layout.positions.get(n.id);return Math.hypot(p.x-hub.x,p.y-hub.y)}));points.push({x:hub.x-radius,y:hub.y-radius},{x:hub.x+radius,y:hub.y+radius})}}
+  if(!active&&shown.length===nodes.length){
+   const radius=Math.max(...nodes.map(n=>{const hub=layout.hubs.get(n.topic),p=layout.positions.get(n.id);return Math.hypot(hub.x-layout.center.x,hub.y-layout.center.y)+Math.hypot(p.x-hub.x,p.y-hub.y)+20}));
+   points.push({x:layout.center.x-radius,y:layout.center.y-radius},{x:layout.center.x+radius,y:layout.center.y+radius});
+  }
   const left=Math.min(...points.map(p=>p.x))-130,right=Math.max(...points.map(p=>p.x))+130,top=Math.min(...points.map(p=>p.y))-85,bottom=Math.max(...points.map(p=>p.y))+95;
   const selected=active?layout.positions.get(active):null;
   const target=selected?{x:selected.x,y:selected.y,k:Math.max(.75,Math.min(1.25,width/480,height/440))}:{x:(left+right)/2,y:(top+bottom)/2,k:Math.min((width-28)/(right-left),(height-70)/(bottom-top),1.4)};
+  if(!active&&shown.length===nodes.length)target.k*=1.12;
   const animate=cameraReady&&(animateNext||cameraFrame!==0)&&!matchMedia('(prefers-reduced-motion: reduce)').matches;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
   if(!animate){camera=target;paint();return}
   const start={...camera},t0=performance.now();
   function step(now){if(disposed)return;const progress=Math.min(1,(now-t0)/420);camera=interpolateCamera(start,target,progress);paint();if(progress<1)cameraFrame=requestAnimationFrame(step);else cameraFrame=0}
   cameraFrame=requestAnimationFrame(step);
  }
- function scheduleFit(){cancelAnimationFrame(frame);frame=requestAnimationFrame(fit)}
+ function scheduleFit(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;fit()})}
  function pdf(n){const url=materials.find(m=>m.material_id===n.material)?.document_url;if(!url)return el('small','本机未载入该教材 PDF');const a=el('a','打开教材 · PDF 第 '+n.page+' 页 ↗','pdf');a.href=url+'#page='+n.page;a.target='_blank';a.rel='noopener';return a}
+ let disposeVisual=()=>{};
  function showDetail(){
+  disposeVisual();disposeVisual=()=>{};
   const d=$('detail');d.replaceChildren();d.hidden=!active;root.querySelector('.explorer').classList.toggle('has-detail',!!active);if(!active)return;
   const n=byId.get(active),c=storyContent[n.id];d.scrollTop=0;
   const close=el('button','收起讲解','detail-close');close.onclick=()=>{animateNext=true;active=null;pinned=null;showDetail();syncViewport();highlight();paint();scheduleFit()};d.append(close,el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name));
   if(c){
-   d.append(el('p',c.question,'story-question'));mountNodeVisual(d,n.id,el,se);d.append(el('h3','这样理解'),el('p',c.idea),el('div',c.example,'story-example'));
-   const check=el('details','','story-challenge');check.append(el('summary','想一想 · '+c.check),el('p',c.answer));d.append(check);
-   const more=el('details','','story-sources');more.append(el('summary','易错提醒与课外连接'),el('p',c.caution),el('h3',c.extra[0]),el('p',c.extra[1]));d.append(more,el('h3','接着看'));
-   for(const [target,reason] of c.next){if(byId.has(target)){const b=el('button',reason+' → '+byId.get(target).name,'story-link');b.onclick=()=>choose(target);d.append(b)}}
+   d.append(el('p',c.question,'story-question'));disposeVisual=mountNodeVisual(d,n.id,el,se)||(()=>{});d.append(el('h3','要点'),el('p',c.idea),el('div',c.example,'story-example'));
+   if(c.life)d.append(el('h3','联系生活'),el('p',c.life));
+   d.append(el('h3','相关知识'));
+   for(const [target] of c.next){if(byId.has(target)){const b=el('button',byId.get(target).name,'story-link');b.onclick=()=>choose(target);d.append(b)}}
   }else d.append(el('p',n.summary));
-  const source=el('details','','story-sources');source.append(el('summary','教材、学习要求与学情'),el('p',n.summary),el('p',n.loc),pdf(n));
+  const source=el('details','','story-sources');source.append(el('summary','教材与学情'),pdf(n));
   for(const id of n.indicators){const k=knowledge.find(v=>v.knowledge_id===id);if(!k)continue;
    if(profile){const s=states.get(id);source.append(el('p',k.name+'：'+(palette[s?.status]||palette.insufficient_evidence)[0]+' · '+(s?.evidence_count||0)+' 条评分证据'));
     const scores=[];for(const scan of training?.scans||[]){if(scan.status!=='reviewed'||scan.student_id!==profile.student_id||scan.node_id!==profile.node_id)continue;const paper=training?.papers?.find(p=>p.id===scan.paper_id);for(const q of paper?.questions||[]){const score=scan.scores?.[q.question_id];if(q.knowledge_id===id&&Number.isFinite(score))scores.push(score)}}
-    if(scores.length)source.append(el('p','补充训练：'+scores.length+' 题 · 平均得分 '+Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*100)+'%（独立证据，未覆盖原始诊断）'));
+    if(scores.length)source.append(el('p','补充训练：'+scores.length+' 题 · 平均得分 '+Math.round(scores.reduce((a,b)=>a+b,0)/scores.length*100)+'%'));
    }
    const b=el('button',k.name+' · 学情与材料','story-link');b.onclick=()=>openKnowledge(id);source.append(b);
   }d.append(source);
-  const related=edges.filter(e=>e.source_node_id===active||e.target_node_id===active);
-  if(related.length){const section=el('details','','story-sources');section.append(el('summary','正式课程关系 · '+related.length));for(const e of related){const target=e.source_node_id===active?e.target_node_id:e.source_node_id;if(!byId.has(target))continue;const relation=e.relation_type==='prerequisite'?(e.target_node_id===active?'基础知识':'后续应用'):e.relation_type==='related_to'?'相关方法':'易混对照';const b=el('button',relation+' · '+byId.get(target).name+' · '+(e.review_status==='reviewed'?'已核对':'待核验'),'story-link');b.onclick=()=>choose(target);section.append(b)}d.append(section)}
-  d.append(el('p','图解与例子为自编教学演示，待教师复核；图中的分支表示类别归属，不表示先修关系。','story-note'));
  }
  function choose(id){if(!byId.has(id))return;stopCamera();animateNext=true;pinned=id;if(!shown.some(n=>n.id===id)){$('query').value='';$('topic').value='';shown=nodes}mode='overview';active=id;render(false)}
- function full(){stopCamera();animateNext=true;$('query').value='';$('topic').value='';active=null;mode='overview';render()}
+ function full(){stopCamera();animateNext=true;pinned=null;$('query').value='';$('topic').value='';active=null;mode='overview';render()}
  function render(clear=true){
   if(clear)active=null;const q=$('query').value.trim().toLowerCase();shown=nodes.filter(n=>($('topic').value===''||String(n.topic)===$('topic').value)&&[n.name,n.id,n.summary,n.loc,...Object.values(storyContent[n.id]||{}).flat(2)].join(' ').toLowerCase().includes(q));
   $('nodata').hidden=!!shown.length;$('overview').hidden=mode!=='overview'||!shown.length;$('list').hidden=mode!=='list'||!shown.length;$('overviewMode').setAttribute('aria-pressed',String(mode==='overview'));$('listMode').setAttribute('aria-pressed',String(mode==='list'));
   motion.hidden=reset.hidden=mode!=='overview';cancelAnimationFrame(physicsFrame);physicsFrame=0;if(mode!=='overview')stopCamera();
   if(mode==='list'){$('rows').replaceChildren();for(const n of shown){const tr=el('tr'),name=el('td'),b=el('button',n.name),loc=el('td',n.loc);b.onclick=()=>choose(n.id);name.append(b);loc.append(el('br'),pdf(n));tr.append(name,el('td',n.summary),loc);$('rows').append(tr)}}else{showDetail();draw();scheduleFit()}
  }
- function stopCamera(){cancelAnimationFrame(frame);cancelAnimationFrame(cameraFrame);cameraFrame=0;animateNext=false}
+ function stopCamera(){cancelAnimationFrame(frame);frame=0;cancelAnimationFrame(cameraFrame);cameraFrame=0;animateNext=false}
  function zoom(f){stopCamera();camera.k=Math.max(.15,Math.min(3,camera.k*f));requestPaint()}
  $('query').oninput=$('topic').onchange=()=>render();$('overviewMode').onclick=()=>{mode='overview';render()};$('listMode').onclick=()=>{mode='list';render()};$('home').onclick=full;$('plus').onclick=()=>zoom(1.25);$('minus').onclick=()=>zoom(.8);
  svg.onwheel=e=>{e.preventDefault();zoom(Math.exp(-Math.sign(e.deltaY)*.14))};
  svg.onpointerdown=e=>{if(e.button!==0)return;stopCamera();suppressClick=false;const node=e.target.closest('[data-drag-id]')?.dataset.dragId;gesture={id:e.pointerId,node,start:node?{...points.get(node)}:null,x:e.clientX,y:e.clientY,camera:{...camera},moved:false}};
  svg.onpointermove=e=>{if(!gesture||gesture.id!==e.pointerId)return;const dx=e.clientX-gesture.x,dy=e.clientY-gesture.y;if(!gesture.moved&&Math.hypot(dx,dy)>4){gesture.moved=true;svg.setPointerCapture(e.pointerId);svg.classList.add('dragging')}if(!gesture.moved)return;if(gesture.node){pinned=gesture.node;Object.assign(points.get(gesture.node),{x:gesture.start.x+dx/camera.k,y:gesture.start.y+dy/camera.k});wake()}else{camera.x=gesture.camera.x-dx/camera.k;camera.y=gesture.camera.y-dy/camera.k}requestPaint(!!gesture.node)};
- function end(e){if(gesture?.id!==e.pointerId)return;const movedNode=gesture.moved&&gesture.node;suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');persist();if(movedNode)wake();setTimeout(()=>suppressClick=false,0)}svg.onpointerup=svg.onpointercancel=end;
- const motion=el('button','动态布局：'+(dynamic?'开':'关'));motion.id='motion';motion.setAttribute('aria-pressed',String(dynamic));motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');motion.setAttribute('aria-pressed',String(dynamic));if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0;persist()}};
- const reset=el('button','重置布局');reset.id='resetLayout';reset.onclick=()=>{cancelAnimationFrame(physicsFrame);physicsFrame=0;pinned=null;for(const [id,p] of points)Object.assign(p,homes.get(id));persist();full()};root.querySelector('.tools').append(motion,reset);
- root.querySelector('.map-caption span').textContent='拖动节点，分支弹性跟随 · 拖动空白平移 · 点击打开图解';
- const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();return()=>{disposed=true;persist();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
+ function end(e){if(gesture?.id!==e.pointerId)return;const movedNode=gesture.moved&&gesture.node,blankClick=!gesture.moved&&!gesture.node&&e.type==='pointerup';suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');if(blankClick)full();else if(movedNode)wake();setTimeout(()=>suppressClick=false,0)}svg.onpointerup=svg.onpointercancel=end;
+ const motion=el('button','动态布局：'+(dynamic?'开':'关'));motion.id='motion';motion.setAttribute('aria-pressed',String(dynamic));motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');motion.setAttribute('aria-pressed',String(dynamic));if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0}};
+ const reset=el('button','重置布局');reset.id='resetLayout';reset.onclick=()=>{cancelAnimationFrame(physicsFrame);physicsFrame=0;pinned=null;for(const [id,p] of points)Object.assign(p,homes.get(id));full()};root.querySelector('.tools').append(motion,reset);
+ const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
 }

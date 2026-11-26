@@ -372,7 +372,11 @@ def create_server(
             if path in SESSION_PAGES:
                 account = self.account()
                 if account is None:
-                    self.redirect("/login")
+                    # 把 ?motion=1 这类显式动效开关带到登录页：否则未登录访问
+                    # /?motion=1 会被 302 抹掉查询串，开关在登录前就失效了。
+                    motion = ((parse_qs(urlsplit(self.path).query).get("motion") or [""])[0] or "").lower()
+                    allowed = {"1", "on", "true", "yes", "force", "0", "off", "false", "no", "auto", "system"}
+                    self.redirect(f"/login?motion={motion}" if motion in allowed else "/login")
                     return
                 home = "/teacher" if account.role == "teacher" else "/student"
                 if path == "/":

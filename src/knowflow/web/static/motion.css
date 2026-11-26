@@ -24,7 +24,12 @@
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
+/* Effects below are declared unconditionally so that ?motion=1 (html.kf-force-motion)
+   can keep them on a machine whose system animations are disabled.  The
+   reduced-motion default is enforced by the global `animation/transition: none`
+   guard in styles.css (and login.css for the sign-in page), which skips
+   html.kf-force-motion.  Declaring them inside `@media (no-preference)` would make
+   that override impossible without duplicating the whole file. */
 
   /* ---- staggered entrance ---- */
   .stats-grid > *,
@@ -274,4 +279,3 @@
     transform: none;
     box-shadow: none;
   }
-}

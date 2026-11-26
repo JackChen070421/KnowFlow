@@ -207,3 +207,17 @@ input, button { font: inherit; }
 [data-theme="dark"] .login-button {
   color: #08171a;
 }
+
+/* The sign-in page does not load styles.css, which is where the app-wide
+   reduced-motion guard lives.  motion.css is now unconditional, so repeat the
+   guard here — otherwise the login card would animate even for a reader who
+   asked the system for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  html:not(.kf-force-motion) *,
+  html:not(.kf-force-motion) *::before,
+  html:not(.kf-force-motion) *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

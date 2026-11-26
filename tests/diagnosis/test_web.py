@@ -877,6 +877,14 @@ def test_login_is_required_and_students_only_receive_their_own_data(dashboard_ru
         status, headers, _ = call("GET", "/teacher")
         assert status == 302 and headers["Location"] == "/login"
         assert call("GET", "/login")[0] == 200
+        # ?motion=1 必须活过登录跳转（否则演示机上登录前就丢了这个开关）；
+        # 其他参数不跟过去，避免把任意查询串带进重定向。
+        status, headers, _ = call("GET", "/?motion=1")
+        assert status == 302 and headers["Location"] == "/login?motion=1"
+        status, headers, _ = call("GET", "/?utm_source=x")
+        assert status == 302 and headers["Location"] == "/login"
+        status, headers, _ = call("GET", "/?motion=%3Cscript%3E")
+        assert status == 302 and headers["Location"] == "/login"
 
         # Login must come from the local page, with a real password.
         assert call("POST", "/api/login", {"username": "teacher", "password": "123456"})[0] == 403

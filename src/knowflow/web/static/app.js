@@ -97,7 +97,10 @@ const MASK_REVEAL = typeof CSS !== 'undefined' && !!CSS.supports
 
 function switchTheme(theme, event) {
   if (!theme || theme === currentTheme()) return;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // ?motion=1 时 theme-boot.js 会让 kfMotionAllowed() 返回 true，主题切换仍然走圆形扩散。
+  const reduce = window.kfMotionAllowed
+    ? !window.kfMotionAllowed()
+    : window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!document.startViewTransition || reduce) {
     applyTheme(theme);
     return;
@@ -1536,13 +1539,21 @@ function displayPanel() {
   if (loading) return loading;
   const theme = currentTheme();
   const home = profileData.preferences.home_view;
+  // 默认播放动画；只有本机显式关闭时 theme-boot.js 才不会挂 kf-force-motion。
+  const motionOn = document.documentElement.classList.contains('kf-force-motion');
   return `<section class="panel">
-    ${panelHead('显示', '主题与登录后的默认首页；只影响这台电脑上的显示。', '<span class="pill">本机保存</span>')}
+    ${panelHead('显示', '主题、界面动效与默认首页；只影响这台电脑上的显示。', '<span class="pill">本机保存</span>')}
     <div class="theme-options" role="radiogroup" aria-label="外观主题">${THEMES.map(t => `<button type="button" class="theme-card ${theme === t.id ? 'active' : ''}" data-theme-choice="${t.id}" role="radio" aria-checked="${theme === t.id}">
       <span class="theme-preview ${t.id}" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="theme-copy"><strong>${t.label}</strong><small>${t.desc}</small></span>
       <span class="theme-check">${icon('check', 13)}</span>
     </button>`).join('')}</div>
+    <div class="settings-sub"><div><h3>界面动效</h3><p>默认播放，不受操作系统「动画效果」设置影响；对动效敏感时可在这里关闭，只影响这台电脑。</p></div></div>
+    <div class="motion-choice" role="radiogroup" aria-label="界面动效">
+      <button type="button" class="button ${motionOn ? 'primary' : 'light'}" data-motion-choice="force" role="radio" aria-checked="${motionOn}">始终开启（默认）</button>
+      <button type="button" class="button ${motionOn ? 'light' : 'primary'}" data-motion-choice="off" role="radio" aria-checked="${!motionOn}">关闭</button>
+      <span class="muted">${motionOn ? '当前：播放动画（导图漂移、拖拽联动、主题扩散、卡片入场）' : '当前：已关闭动画，本机记住该选择'}</span>
+    </div>
     <div class="settings-sub"><div><h3>默认首页</h3><p>登录后默认打开这个页面；地址里带参数时以参数为准。</p></div></div>
     <form id="display-form" class="settings-form">
       <div class="settings-row">
@@ -1828,6 +1839,20 @@ document.addEventListener('click', event => {
       el.classList.toggle('active', on);
       el.setAttribute('aria-checked', String(on));
     });
+    return;
+  }
+  if (b.dataset.motionChoice) {
+    const on = b.dataset.motionChoice !== 'off';
+    try {
+      if (on) localStorage.removeItem('knowflow.motion');
+      else localStorage.setItem('knowflow.motion', 'off');
+    } catch (error) {
+      // 隐私模式下存不住，本次会话仍然生效。
+    }
+    document.documentElement.classList.toggle('kf-force-motion', on);
+    // 导图和分步讲解在挂载时读取动效状态，所以重渲染一次当前页面。
+    render();
+    toast(on ? '已开启动画。' : '已关闭动画，本机记住该选择。');
     return;
   }
   if (b.hasAttribute('data-llm-test')) {

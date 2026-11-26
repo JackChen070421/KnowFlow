@@ -3107,9 +3107,10 @@ dialog::backdrop {
 
 @media(prefers-reduced-motion:reduce) {
 
-  *,
-  *:before,
-  *:after {
+  /* ?motion=1 会加 html.kf-force-motion，此时保留动效；见 theme-boot.js。 */
+  html:not(.kf-force-motion) *,
+  html:not(.kf-force-motion) *:before,
+  html:not(.kf-force-motion) *:after {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important

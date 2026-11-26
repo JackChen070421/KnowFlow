@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-26 — 动画默认开启，不再由系统「减少动效」拦截
+
+- 根因：原实现把系统设置当总开关——Windows 关闭「动画效果」→ 浏览器上报 `prefers-reduced-motion: reduce` → 三处各自关闭：`knowledge-map.js` 的 `dynamic`（空闲漂移/相机补间/拖拽物理）、`styles.css` 的全局 `animation/transition: none !important`、`motion.css` 整份包在 `@media (no-preference)` 里。演示机上因此整页静态，且界面上没有任何入口能打开。
+- 口径改为「默认播放，按需关闭」：`theme-boot.js` 默认给 `<html>` 挂 `kf-force-motion`，只有本机显式关闭时才不挂；`kfMotionAllowed()` 成为脚本侧唯一判定（`app.js` 主题切换、`knowledge-map.js`、`course-stories.mjs` 共用）。关闭入口：设置 → 显示 →「关闭」（存 `localStorage['knowflow.motion']='off'`）或 `?motion=0`；`?motion=1` 恢复默认。
+- 拖拽联动与动效开关解耦：`knowledge-map.js` 的 `wake()` 不再受 `dynamic` 约束——拖动模块/知识点时子节点被弹簧带走属于直接操作反馈，任何设置下都生效。
+- 样式：`styles.css` / `theme.css` / `login.css` 的 reduce 守卫加 `html:not(.kf-force-motion)`；`knowledge-map.css` 在 shadow root 内改用 `:host(:not(.force-motion))`；`motion.css` 去掉 `@media (no-preference)` 包裹，默认关闭改由上述 blanket 守卫负责（登录页不加载 styles.css，故自带一份）。
+- 无障碍代价：偏好「减少动效」的用户现在也会看到动画，需要自己关一次（本机记住）。这是为演示可见性做的取舍，不是遗漏。
+- 验证：`node --test tests/web/*.test.mjs` 29 项通过（含 9 项动效策略）；`pytest` 454 项、`ruff` 通过。真实浏览器（Edge headless，系统动画关闭、`reduce=true`）实测：全新环境不登录直接进导图即 `kf-force-motion`、`::before` 为 `map-ambient-glow`、节点 2.5s 位移约 14px；设置点「关闭」后 `transform` 两次采样完全相同、动画名 `none`、`localStorage=off`；再点「始终开启（默认）」恢复移动并清空存储。
+- 回退：还原 6 个静态文件、`server.py` 的登录跳转与 `tests/web/motion-override.test.mjs`。
+
+---
+
 ## 2026-11-26 — 事实审计与多轮隔离
 
 **本机未提交** · 建议分支 `feat/chat-fact-audit`

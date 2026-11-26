@@ -1,6 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {logicLayout,logicNeighborhood,logicRelationLabel} from '../../src/knowflow/web/static/map-layout.mjs';
 import {relax,relaxCategory,interpolateCamera,resizeCamera} from '../../src/knowflow/web/static/map-layout.mjs';
+
+const graph=JSON.parse(readFileSync(new URL('../../knowledge/curriculum_graph.json',import.meta.url),'utf8'));
+const nodes=graph.nodes.map(n=>({id:n.node_id,topic:n.theme_index}));
+test('logic view preserves graph evidence and places prerequisites above successors',()=>{
+ const before=JSON.stringify(graph),layout=logicLayout(nodes,graph.edges);
+ assert.equal(layout.positions.size,nodes.length);
+ assert.equal(new Set([...layout.positions.values()].map(p=>`${p.x},${p.y}`)).size,nodes.length);
+ assert.deepEqual(layout.links,graph.edges);
+ for(const e of graph.edges.filter(e=>e.relation_type==='prerequisite'))assert.ok(layout.positions.get(e.source_node_id).y<layout.positions.get(e.target_node_id).y);
+ assert.equal(JSON.stringify(graph),before);
+});
+test('focus includes only immediate neighbors and preserves relative relationship direction',()=>{
+ const near=logicNeighborhood('C-010',graph.edges);
+ assert.deepEqual([...near.ids].sort(),['C-004','C-005','C-010','C-013','C-014']);
+ assert.equal(near.links.filter(e=>logicRelationLabel(e,'C-010')==='前置知识').length,2);
+ assert.equal(near.links.filter(e=>logicRelationLabel(e,'C-010')==='后续知识').length,2);
+ const methods=logicNeighborhood('C-013',graph.edges);
+ assert.ok(methods.links.some(e=>logicRelationLabel(e,'C-013')==='不同方法'));
+ assert.deepEqual([...logicNeighborhood('C-007',graph.edges).ids],['C-007']);
+});
+test('empty and cyclic display graphs terminate with finite positions and omit dangling links',()=>{
+ assert.equal(logicLayout([],[]).positions.size,0);
+ const cycle=[{source_node_id:'a',target_node_id:'b',relation_type:'prerequisite'},{source_node_id:'b',target_node_id:'a',relation_type:'prerequisite'},{source_node_id:'a',target_node_id:'missing'}];
+ const result=logicLayout([{id:'a',topic:0},{id:'b',topic:0}],cycle);
+ assert.equal(result.links.length,2);
+ assert.ok([...result.positions.values()].every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)));
+});
 
 test('panel resize preserves the on-screen position before focus starts',()=>{
  const a={x:40,y:-30,k:.7},b=resizeCamera(a,900,600,500,600),point={x:-200,y:130};

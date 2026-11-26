@@ -74,3 +74,31 @@ export function relax(points, edges, pinned=null, strength=1) {
   }
   return movement;
 }
+
+// Layer by directed prerequisite relations; cycles stay together in a finite layer.
+// This is display-only and does not change learning recommendations or edge review status.
+export function logicLayout(nodes, edges) {
+  const ids=new Set(nodes.map(n=>n.id)), indegree=new Map(nodes.map(n=>[n.id,0]));
+  const links=edges.filter(e=>ids.has(e.source_node_id)&&ids.has(e.target_node_id));
+  const directed=links.filter(e=>e.relation_type==='prerequisite');
+  const outgoing=new Map(nodes.map(n=>[n.id,[]])),rank=new Map(nodes.map(n=>[n.id,0]));
+  for(const e of directed){outgoing.get(e.source_node_id).push(e.target_node_id);indegree.set(e.target_node_id,indegree.get(e.target_node_id)+1)}
+  const queue=nodes.filter(n=>indegree.get(n.id)===0).map(n=>n.id);
+  for(let i=0;i<queue.length;i++){const id=queue[i];for(const target of outgoing.get(id)){rank.set(target,Math.max(rank.get(target),rank.get(id)+1));indegree.set(target,indegree.get(target)-1);if(indegree.get(target)===0)queue.push(target)}}
+  const layers=new Map();for(const n of nodes){const level=rank.get(n.id);if(!layers.has(level))layers.set(level,[]);layers.get(level).push(n)}
+  const positions=new Map();let row=0;
+  for(const [,group] of [...layers].sort((a,b)=>a[0]-b[0])){group.sort((a,b)=>a.topic-b.topic||a.id.localeCompare(b.id));for(let offset=0;offset<group.length;offset+=5){const line=group.slice(offset,offset+5);line.forEach((n,i)=>positions.set(n.id,{x:(i-(line.length-1)/2)*230,y:row*180}));row++}}
+  for(const p of positions.values())p.y-=(row-1)*90;
+  return {positions,links};
+}
+
+export function logicNeighborhood(id, edges) {
+  const links=edges.filter(e=>e.source_node_id===id||e.target_node_id===id);
+  return {ids:new Set([id,...links.flatMap(e=>[e.source_node_id,e.target_node_id])]),links};
+}
+export function logicRelationLabel(edge, active=null) {
+  if(edge.relation_type==='prerequisite')return active===edge.target_node_id?'前置知识':active===edge.source_node_id?'后续知识':'前置 → 后续';
+  if(edge.relation_type==='confusable_with')return '易混辨析';
+  if(edge.relation_type==='related_to'&&[edge.source_node_id,edge.target_node_id].sort().join('|')==='C-013|C-014')return '不同方法';
+  return '相关知识';
+}

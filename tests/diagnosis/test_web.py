@@ -706,7 +706,14 @@ def test_history_is_trimmed_and_untrusted_items_are_dropped():
     assert normalize_history([{"role": "user", "text": 3}]) == []
 
 
-def test_a_number_quoted_from_an_earlier_answer_is_not_a_new_claim(monkeypatch):
+def test_a_number_from_an_earlier_answer_is_not_a_current_fact(monkeypatch):
+    """历史回答里的数字不再进白名单（任务 D）。
+
+    旧行为：上一轮说过 37，这一轮复述 37 就不算新主张。这会允许第一轮的错误
+    数字在多轮里滚雪球。现在的规则是：历史只提供语境，事实只来自本轮事实卡，
+    所以同一句话在有没有历史时都应被拦下。
+    """
+
     facts = {
         "node": {"id": "N01", "date": "2026-06-17", "objectives": 1},
         "knowledge": [],
@@ -732,7 +739,8 @@ def test_a_number_quoted_from_an_earlier_answer_is_not_a_new_claim(monkeypatch):
         client=client,
         history=[{"role": "assistant", "text": "这个班还有 37 人证据不足"}],
     )
-    assert result["source"] == "llm"
+    assert result["source"] == "rules"
+    assert result["trace"]["guard"]["failure_kind"] == "number"
 
     without_history = answer_question(
         snapshot=snapshot, message="再说说他们", client=SequenceClient(["刚才那 37 人先补观测。"])

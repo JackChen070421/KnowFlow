@@ -67,6 +67,27 @@
 
 ---
 
+## 2026-11-26 — 跨域探索补充：任务墙 / 学科联动 / 数学小史
+
+- 实验面板下方新增「数学在哪里」三个入口（抽屉承载，不新增页面）：真实任务墙 6 个跨学科任务（体育心率、地理气温、班务采购、信息伪代码、音乐排练、交通月卡），每个含任务书、交付物与三条自评量规；学科联动 8 门课（地理/生物/历史/语文/信息/体育/音乐/美术）各一条「他们在学什么—这里用到什么—小心什么」；数学小史 3 篇微阅读，每篇带「一句话带走」与思考题。
+- 新增 `web/static/explore-more.mjs`：内容 + 纯函数（`caseCheck`/`rubricProgress`/`parseMoreStore`/`moreSummary`）；学生方案与作答写入 `localStorage['knowflow.explore.more.v1']`，按数据集+学生隔离，与实验记录分开。
+- `server.py` 静态白名单注册 `/explore-more.mjs`；新增前端单测 6 项，覆盖内容完整性、知识点引用、量规进度与存储降级。
+- 验证：前端 node 35 项、Python 311 项、Ruff 通过；静态资源与 `/student?view=explore` 实测 200；无头浏览器点开三个入口并保存/展开通过，控制台无报错。
+- 回退：删除 `explore-more.mjs` 与 `tests/web/explore-more.test.mjs`，移除 `app.js` 的入口与抽屉函数、`styles.css` 的 `.explore-more*` 块与 `server.py` 白名单一行。
+
+---
+
+## 2026-11-26 — 学生端跨域探索：四个自编实验与探索记录
+
+- 学生端「跨域探索」重做为极简结构：顶部四个椭圆选项（标题 + 知识点，选中的高亮），下方以实验本体为主，解析 / 模型 / 任务 / 自检 四个折叠面板按需展开；完成判定只看两道自检是否答对。
+- 内容仍是四个自编实验：数轴镜像（K-07）、活动预算（K-09）、共享充电宝分段计费（K-04/K-06）、两人的共同空闲（K-08）。
+- 新增 `web/static/explore-labs.mjs`：自编内容 + 纯函数模型（`mirrorModel`/`budgetModel`/`rentalModel`/`windowModel`）+ 本机存储解析与完成度判定；`app.js` 改为按实验渲染，勾选/自检/迁移任务写入 `localStorage['knowflow.explore.v1']`，按数据集+学生隔离。
+- 样式改用主题 token（`--teal`/`--mint`/`--line`/`--surface` 等）并重做视觉层级：每个实验一个强调色、卡片顶部色条、观察清单勾选态、自检 A/B/C 选项与对错高亮、记录进度条；深色/护眼与打印/PDF 同步适配。`server.py` 静态白名单注册 `/explore-labs.mjs`，新增测试覆盖。
+- 验证：Python 311 项、前端 node 29 项（新增 9 项）、Ruff 通过；静态资源与 `/student?view=explore` 实测 200。未做浏览器视觉复核。
+- 回退：删除 `explore-labs.mjs` 与 `tests/web/explore-labs.test.mjs`，还原 `app.js` 的 explore 段与 `styles.css` 的 `.lab-*` 块，移除 `server.py` 白名单一行；浏览器里的探索记录可手动清空。
+
+---
+
 ## 2026-11-26 — 学生知识地图图例对应掌握程度
 
 - 仅个人学情导图将章节色图例替换为节点状态图例，共用节点色表，说明连线与外圈代表章节。

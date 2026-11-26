@@ -290,8 +290,10 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
-| v0.32 | 2026-11-26 | 事实审计与多轮隔离：中文数字进审计、历史回答数字不再进白名单、`dialogue`（指代/冲突/补充/clarify）、零记录缺口、结构化验收五类（`scripts/check_acceptance.py`）；测试 440 项 + 1 xfail |
-| v0.31 | 2026-11-26 | 学情对话：`llm/intent.py` 意图识别（7 类 + 复合 + 提问形式）、事实卡分 `weak_signal`/`evidence_gap`、`llm/audit.py` 按语境判数字与绝对结论、兜底按意图作答、失败分类写进 `trace.guard`；测试 372 项 |
+| v0.34 | 2026-11-26 | 事实审计与多轮隔离：中文数字进审计、历史回答数字不再进白名单、`dialogue`（指代/冲突/补充/clarify）、零记录缺口、结构化验收五类（`scripts/check_acceptance.py`）；测试 440 项 + 1 xfail |
+| v0.33 | 2026-11-26 | 学情对话：`llm/intent.py` 意图识别（7 类 + 复合 + 提问形式）、事实卡分 `weak_signal`/`evidence_gap`、`llm/audit.py` 按语境判数字与绝对结论、兜底按意图作答、失败分类写进 `trace.guard`；测试 372 项 |
+| v0.32 | 2026-11-26 | 跨域探索补充：`explore-more.mjs` 任务墙（6）/学科联动（8）/数学小史（3），抽屉承载与本机存储；测试 311 项 + 前端 35 项 |
+| v0.31 | 2026-11-26 | 学生端跨域探索四实验：`web/static/explore-labs.mjs` 自编内容与纯函数模型、本机探索记录（勾选/自检/迁移任务）、主题 token 化；`server.py` 注册静态资源；测试 311 项 + 前端 29 项 |
 | v0.30 | 2026-11-25 | 稀疏观测建议：后验概率接进决策（`_sparse_action`）、子状态区分、层级先验（`_prior_risk`）；巩固项 34→69、补观测 65→41；测试 285 项 |
 | v0.29 | 2026-11-25 | 交互契约第二档：行为红线 `MUST_NOT_INFER`/`BOUNDARY_NOTE` 单一来源并三处同源注入、推荐路径补 `audience`；新增契约测试；测试 283 项 |
 | v0.28 | 2026-11-25 | 建议语言层第一档：决策/语言边界（`llm/contract.py`）、`check` 确定性、材料白名单收紧、`numbers_used` 移除；回退率 27%→10%、材料漂移归零；测试 278 项 |

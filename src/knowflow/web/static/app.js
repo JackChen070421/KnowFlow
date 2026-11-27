@@ -2,6 +2,7 @@ import {describe, distribution, aggregateRecords, topics} from './analytics.mjs'
 import { mountMap } from './knowledge-map.js';
 import { openTraining } from './training.js';
 import { mountLearning, learningRequest } from './learning.js';
+import { attachPanelResizer } from './panel-resize.mjs';
 import {
   exploreLabs, labById, labModel, exploreKey, emptyExploreRecord,
   parseExploreStore, labProgress, exploreSummary, EXPLORE_KEY
@@ -731,6 +732,23 @@ function coursePage(personal) {
 
 let sourceQuery='',sourceScope='all',sourceLoading=null;
 const sourceBodies=new Map();
+// 材料的 PDF 起始页：课程图谱里同一份教材的细目自带 pdf_page，
+// 优先取与本资料课标目标相关的那条，取不到就用第一条。
+function materialPDFPage(material){
+  const related=(kb.curriculum_graph?.nodes||[]).filter(n=>n.material_id===material.material_id);
+  if(!related.length)return null;
+  const wanted=new Set(kb.knowledge.filter(k=>k.objective_id===material.objective_id).map(k=>k.knowledge_id));
+  const preferred=related.find(n=>(n.knowledge_ids||[]).some(id=>wanted.has(id)))||related[0];
+  const page=Number(preferred.pdf_page);
+  return Number.isFinite(page)&&page>0?page:null;
+}
+// 「查看原文」直接在新标签打开 PDF 路由（/api/document/<材料编号>），带 #page= 定位。
+function sourcePDFLink(material){
+  const page=materialPDFPage(material);
+  if(!material.document_url)return `<button class="button light" data-material="${esc(material.material_id)}">查看原文</button>`;
+  const href=material.document_url+(page?`#page=${page}`:'');
+  return `<a class="button light" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(`在新标签打开 PDF${page?`第 ${page} 页`:''}`)}">查看原文</a>`;
+}
 function sourceLibrary(){
   const materials=kb.materials.filter(m=>m.material_type==='reference').sort((a,b)=>Number(!!b.objective_id)-Number(!!a.objective_id)||a.material_id.localeCompare(b.material_id));
   const nodes=kb.curriculum_graph?.nodes||[];
@@ -744,7 +762,7 @@ function sourceLibrary(){
     const filename=(m.source||'').split(/[\\/]/).pop();
     const synopsis=sourceBodies.get(m.material_id)||m.body||'';
     const title=objective?.theme||synopsis||m.title;
-    return `<article class="source-card ${objective?'is-linked':''}" data-source-kind="${objective?'linked':'extra'}" data-source-text="${esc([m.title,synopsis,m.material_id,m.source,objective?.theme,...related.map(n=>n.title)].join(' ').toLowerCase())}"><div class="source-card-top"><span class="source-book">${icon('book',18)}<b>${esc(code)}</b></span><span class="source-category">${objective?'课程关联':'拓展资料'}</span></div><h3>${esc(title)}</h3><p class="source-description">${esc(objective?synopsis:m.title)}</p><div class="source-links">${related.length?`<span>${related.length} 个知识节点</span><p>${esc(related.slice(0,2).map(n=>n.title).join(' · '))}${related.length>2?' 等':''}</p>`:'<span>补充阅读材料</span><p>可打开教材查看章节原文。</p>'}</div><div class="source-file" title="${esc(m.source)}">${esc(filename||m.title)}</div><footer><span>${esc(m.material_id)}</span><button class="button light" data-material="${esc(m.material_id)}">查看原文</button></footer></article>`;
+    return `<article class="source-card ${objective?'is-linked':''}" data-source-kind="${objective?'linked':'extra'}" data-source-text="${esc([m.title,synopsis,m.material_id,m.source,objective?.theme,...related.map(n=>n.title)].join(' ').toLowerCase())}"><div class="source-card-top"><span class="source-book">${icon('book',18)}<b>${esc(code)}</b></span><span class="source-category">${objective?'课程关联':'拓展资料'}</span></div><h3>${esc(title)}</h3><p class="source-description">${esc(objective?synopsis:m.title)}</p><div class="source-links">${related.length?`<span>${related.length} 个知识节点</span><p>${esc(related.slice(0,2).map(n=>n.title).join(' · '))}${related.length>2?' 等':''}</p>`:'<span>补充阅读材料</span><p>可打开教材查看章节原文。</p>'}</div><div class="source-file" title="${esc(m.source)}">${esc(filename||m.title)}</div><footer><span class="source-ids"><b>${esc(m.material_id)}</b>${objective?`<i aria-hidden="true">·</i>${esc(objective.objective_id)}`:''}</span>${sourcePDFLink(m)}</footer></article>`;
   }).join('')}</div><p id="source-empty" class="empty" hidden>没有匹配的资料，请换一个关键词或资料范围。</p></section>`;
 }
 function bindSourceLibrary(){
@@ -759,8 +777,34 @@ function knowledgeMap(p) {
   return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['sparse_good_count','sparse_good'],['sparse_poor_count','sparse_poor'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['unobserved_count','unobserved'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
+// 知识点的「具体要求」：优先取知识点对象自己的 requirement / description，
+// 两者在本机数据里都是空的，就回退到课程图谱里引用该知识点的细目 summary
+// （课标原文整理结果），再没有就只显示名称，绝不在这里写死文案。
+function knowledgeRequirement(k) {
+  for (const value of [k.requirement, k.description]) {
+    if (value && String(value).trim()) return String(value).trim();
+  }
+  const node = (kb.curriculum_graph?.nodes || []).find(n => (n.knowledge_ids || []).includes(k.knowledge_id));
+  return node?.summary ? String(node.summary).trim() : '';
+}
+
+// 超出 40 字截断加省略号，保持卡片底部信息密度一致。
+function clipText(text, limit = 40) {
+  const value = String(text ?? '');
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
+}
+
+function requirementKnowledgeList(objectiveId) {
+  const items = kb.knowledge.filter(k => k.objective_id === objectiveId);
+  if (!items.length) return '<p class="requirement-empty">此主题暂未登记知识点。</p>';
+  return `<ul class="requirement-knowledge">${items.map(k => {
+    const requirement = knowledgeRequirement(k);
+    return `<li class="rk-row"><button type="button" class="rk-link" data-knowledge="${esc(k.knowledge_id)}" title="${esc(`${k.knowledge_id} ${k.name}${requirement ? `：${requirement}` : ''}`)}"><span class="rk-code">${esc(k.knowledge_id)}</span><span class="rk-name">${esc(k.name)}</span>${requirement?`<span class="rk-req">${esc(clipText(requirement))}</span>`:''}</button></li>`;
+  }).join('')}</ul>`;
+}
+
 function requirements() {
-  return `<div class="requirement-grid">${kb.objectives.map(o=>`<article class="requirement-card"><span class="pill">${esc(o.objective_id)}</span><h3>${esc(o.theme)}</h3><p>${esc(o.objective_text)}</p><div class="material-buttons">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>`<button class="material-chip" data-knowledge="${esc(k.knowledge_id)}">${esc(k.knowledge_id)}</button>`).join('')}</div><div class="source"><strong>${esc(o.unit)}</strong><br>出处：${esc(o.source_locator)}</div></article>`).join('')}</div>`;
+  return `<div class="requirement-grid">${kb.objectives.map(o=>`<article class="requirement-card"><span class="pill">${esc(o.objective_id)}</span><h3>${esc(o.theme)}</h3><p>${esc(o.objective_text)}</p>${requirementKnowledgeList(o.objective_id)}<div class="source"><strong>${esc(o.unit)}</strong><br>出处：${esc(o.source_locator)}</div></article>`).join('')}</div>`;
 }
 
 function studentHome() { return personalPage(false); }
@@ -1423,10 +1467,35 @@ function resetExplore() {
   toast('本机的探索记录已清空。');
 }
 
+// 详情抽屉（含知识点的「全部班级 · 学生差异」）复用 panel-resize.mjs 的把手：
+// 左边缘拖动改宽度，双击恢复默认，宽度按 kf.panel.map-diff.width 记忆。
+let drawerResizer = null;
+function ensureDrawerResizer() {
+  const dialog = $('#drawer');
+  if (!dialog) return null;
+  if (drawerResizer?.handle.isConnected) return drawerResizer;
+  drawerResizer = attachPanelResizer(dialog, {
+    storageKey: 'kf.panel.map-diff.width',
+    label: '调整学生差异面板宽度',
+    min: 360,
+    max: 760,
+    getWidth: () => dialog.getBoundingClientRect().width,
+    setWidth: width => {
+      if (width == null) dialog.style.removeProperty('--kf-panel-width');
+      else dialog.style.setProperty('--kf-panel-width', width + 'px');
+    },
+    maxFor: () => Math.max(360, Math.min(760, window.innerWidth - 80)),
+  });
+  dialog.classList.add('has-panel-resizer');
+  dialog.append(drawerResizer.handle);
+  return drawerResizer;
+}
+
 function showDrawer(title, body, eyebrow = 'EVIDENCE & CONNECTIONS') {
   const dialog = $('#drawer');
   dialog.classList.remove('knowledge-drawer');
   if (!dialog.open) drawerOrigin = document.activeElement;
+  ensureDrawerResizer();
   $('#drawer-content').innerHTML = `<header class="drawer-head"><div><div class="eyebrow">${eyebrow}</div><h2 id="drawer-title">${title}</h2></div><button class="icon-button" data-close aria-label="关闭详情">${icon('close')}</button></header><div class="drawer-body">${body}</div>`;
   if (!dialog.open) dialog.showModal();
   dialog.scrollTop = 0;

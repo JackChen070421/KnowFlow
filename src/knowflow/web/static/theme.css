@@ -27,6 +27,8 @@
   --chart-grid: #e5ebe9;
   --chart-label-bg: #fff;
   --press-shadow: inset 0 3px 9px rgba(17, 60, 64, .2);
+  /* 侧栏面板拖拽条的高亮线：浅色下也要是薄荷色，所以单独给一个 token。 */
+  --panel-accent: #3fa98d;
   color-scheme: light;
 }
 
@@ -50,6 +52,7 @@
   --chart-grid: #24323a;
   --chart-label-bg: #192328;
   --press-shadow: inset 0 3px 10px rgba(0, 0, 0, .55);
+  --panel-accent: #6fd0b6;
   color-scheme: dark;
 }
 
@@ -1137,4 +1140,289 @@ dialog#password-dialog::backdrop {
 [data-theme="dark"] .node-history dl,
 [data-theme="eye"] .node-history dl {
   background: var(--surface-2);
+}
+
+/* =====================================================================
+   深色全局表面覆盖 —— 夜间模式白边收口
+   ---------------------------------------------------------------------
+   现象：切到夜间后，页面四周、卡片、图谱画布仍出现白边或白色底。
+   原因有两类，都在这层一次修完：
+     1. 结构层（html/body/#app/main/.app-shell）没有显式底色，某些路由下
+        内容区高度不够，露出的就是 UA 默认的白色画布；
+     2. 组件层用字面色（#fff / #fafbf8 / #edf4ed …）写死了浅色底与浅色描边，
+        调色板变量换成深色也覆盖不到它们。
+   写法约定：只作用于 [data-theme="dark"]，浅色与护眼两个主题逐像素不变；
+   不使用 filter/invert 之类的事后反色 hack，白底一律在源头换成深色表面。
+   ===================================================================== */
+
+/* --- 1. 文档级画布：先把最外层刷成深色，滚动溢出也不再露白 --- */
+html[data-theme="dark"] {
+  background: var(--paper);
+  color-scheme: dark;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] #app,
+[data-theme="dark"] main,
+[data-theme="dark"] .app-shell,
+[data-theme="dark"] .workspace {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] #main {
+  background: var(--paper);
+}
+
+/* --- 2. 通用表面：面板、卡片、表格容器、空态、抽屉、对话、画布、工具条 --- */
+[data-theme="dark"] .panel,
+[data-theme="dark"] .card,
+[data-theme="dark"] .table-wrap,
+[data-theme="dark"] .table-scroll,
+[data-theme="dark"] .empty,
+[data-theme="dark"] .drawer,
+[data-theme="dark"] .dialog,
+[data-theme="dark"] dialog,
+[data-theme="dark"] .map-stage,
+[data-theme="dark"] .map-canvas,
+[data-theme="dark"] .toolbar,
+[data-theme="dark"] table {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* 表格：表头带、单元格分隔线、选中与悬停行统一回主题色 */
+[data-theme="dark"] table th,
+[data-theme="dark"] table td,
+[data-theme="dark"] .data-table th,
+[data-theme="dark"] .data-table td {
+  border-color: var(--line);
+}
+
+[data-theme="dark"] table th,
+[data-theme="dark"] .data-table th {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .data-table tr.selected,
+[data-theme="dark"] table tr.selected {
+  background: var(--surface-3);
+}
+
+[data-theme="dark"] .data-table tr:hover td,
+[data-theme="dark"] table tr:hover td {
+  background: var(--surface-2);
+}
+
+/* 面包屑与页脚属于文字通道，保持透明底，只把字色交给 muted */
+[data-theme="dark"] .breadcrumb,
+[data-theme="dark"] .page-footer {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+/* 表单控件（含日期选择与下拉选项）统一深色底与描边 */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] option {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: var(--muted);
+}
+
+/* --- 3. 课程知识地图整页：白色外框与画布底层（白边最明显的一处） --- */
+[data-theme="dark"] .course-content {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .course-content.sources-panel {
+  background: var(--surface-2);
+}
+
+/* 图谱组件活在自己的 shadow root 里，:host 上的自定义属性可继承，
+   所以这里只用变量兜底，把白底换成画布底色。 */
+[data-theme="dark"] .map-stage,
+[data-theme="dark"] .map-canvas {
+  background: var(--surface);
+}
+
+/* --- 4. 抽屉详情：粘性标题栏原本是半透明白 --- */
+[data-theme="dark"] #drawer,
+[data-theme="dark"] .drawer-head,
+[data-theme="dark"] #drawer-content {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .drawer-body p {
+  color: var(--muted);
+}
+
+/* --- 5. 组件里的字面浅色：找到一处补一处，都在源头换成语义变量 --- */
+[data-theme="dark"] .tabs,
+[data-theme="dark"] .role-switch {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .stat-icon {
+  /* .stat-card 的内联 --shade 是浅色小方块，深色下改用统一薄荷底 */
+  background: var(--mint);
+  color: var(--teal);
+}
+
+[data-theme="dark"] .audit-step {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .chart-note,
+[data-theme="dark"] .issue-row {
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .source-links,
+[data-theme="dark"] .source-card footer {
+  border-top-color: var(--line);
+}
+
+[data-theme="dark"] .source-card,
+[data-theme="dark"] .source-library {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .source-description,
+[data-theme="dark"] .source-file {
+  color: var(--muted);
+}
+
+[data-theme="dark"] .personal-focus button {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .pdf-dialog,
+[data-theme="dark"] .pdf-toolbar,
+[data-theme="dark"] .paper-preview-frame,
+[data-theme="dark"] .print-paper {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* --- 7. 状态徽标与资料卡小标签：浅色粉彩在深色下换成同色相低透明度 --- */
+/* 先给通用徽标一个中性底，再让具体状态覆盖成各自的色相。 */
+[data-theme="dark"] .badge {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .status-mastered,
+[data-theme="dark"] .status-confirmed_mastered,
+[data-theme="dark"] .status-likely_mastered {
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+}
+
+[data-theme="dark"] .status-weak,
+[data-theme="dark"] .status-confirmed_weak,
+[data-theme="dark"] .status-likely_weak {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
+}
+
+[data-theme="dark"] .status-mixed,
+[data-theme="dark"] .status-mixed_performance {
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 18%, transparent);
+}
+
+[data-theme="dark"] .status-insufficient_evidence,
+[data-theme="dark"] .status-not_applicable {
+  color: var(--muted);
+  background: var(--surface-3);
+}
+
+[data-theme="dark"] .evidence-chain {
+  color: var(--muted);
+}
+
+[data-theme="dark"] .evidence-chain span {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .source-book {
+  color: var(--teal);
+}
+
+[data-theme="dark"] .source-category,
+[data-theme="dark"] .source-scope {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .source-scope.active {
+  background: var(--mint);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .source-library-heading p,
+[data-theme="dark"] .source-links > span {
+  color: var(--muted);
+}
+
+[data-theme="dark"] .source-card,
+[data-theme="dark"] .source-card.is-linked,
+[data-theme="dark"] .source-card footer,
+[data-theme="dark"] .requirement-card .source {
+  border-color: var(--line);
+}
+
+/* 数据与证据页的「校验通过」条 */
+[data-theme="dark"] .audit-status span {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+/* --- 6. 滚动条：深色轨道 + 低饱和滑块，不再露浏览器默认浅色 --- */
+html[data-theme="dark"] {
+  scrollbar-color: #3b4c54 var(--paper);
+  scrollbar-width: thin;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--surface-2);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #3b4c54;
+  border: 2px solid var(--surface-2);
+  border-radius: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #4b616b;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-corner {
+  background: var(--paper);
 }

@@ -1,6 +1,7 @@
 import {states as statusStyles} from './charts.js';
 import {radialLayout,logicLayout,logicNeighborhood,logicRelationLabel,relaxCategory,interpolateCamera,resizeCamera} from './map-layout.mjs';
 import {storyContent,mountNodeVisual} from './course-stories.mjs';
+import {attachPanelResizer,fitWithin} from './panel-resize.mjs';
 
 export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openKnowledge,profile=null,training=null){
  const nodes=(graph?.nodes||[]).map(n=>({id:n.node_id,name:n.title,topic:n.theme_index,summary:n.summary,loc:n.source_locator,page:n.pdf_page,indicators:n.knowledge_ids,material:n.material_id}));
@@ -11,8 +12,24 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const palette=Object.fromEntries(Object.entries(statusStyles).map(([status,style])=>[status,[style.label,style.color]]));
  const byId=new Map(nodes.map(n=>[n.id,n])),edges=graph.edges||[];
  const root=host.attachShadow({mode:'open'});
- root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><defs><marker id="logic-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><div class="layout-switch" role="group" aria-label="思维导图布局"><span class="layout-pill" aria-hidden="true"></span><button id="chapterLayout" aria-pressed="true">按章节分类</button><button id="logicLayout" aria-pressed="false">按逻辑</button></div><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
+ root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><link rel="stylesheet" href="/panel-resize.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><defs><marker id="logic-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><div class="layout-switch" role="group" aria-label="思维导图布局"><span class="layout-pill" aria-hidden="true"></span><button id="chapterLayout" aria-pressed="true">按章节分类</button><button id="logicLayout" aria-pressed="false">按逻辑</button></div><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
  const $=id=>root.getElementById(id),svg=$('atlas'),world=$('world');
+ // 「讲解」面板左边缘的拖拽把手：和「学生差异」抽屉共用 panel-resize.mjs。
+ // 宽度写到 .explorer 的 CSS 变量上，网格轨道随之改变，画布由既有
+ // ResizeObserver 重新适配，不会出现横向滚动条。
+ const explorer=root.querySelector('.explorer'),detailPanel=$('detail');
+ const detailResizer=attachPanelResizer(detailPanel,{
+  storageKey:'kf.panel.map-explain.width',
+  label:'调整讲解面板宽度',
+  min:360,
+  max:760,
+  getWidth:()=>detailPanel.getBoundingClientRect().width,
+  setWidth:width=>{
+   if(width==null)explorer.style.removeProperty('--kf-panel-width');
+   else explorer.style.setProperty('--kf-panel-width',width+'px');
+  },
+  maxFor:()=>fitWithin(explorer,240,760),
+ });
  function el(tag,text='',cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
  function se(tag,attrs={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
  function svgText(parent,text,x,y,cls){const t=se('text',{x,y,'text-anchor':'middle',class:cls});t.textContent=text;parent.append(t)}
@@ -204,6 +221,8 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function showDetail(){
   disposeVisual();disposeVisual=()=>{};
   const d=$('detail');d.replaceChildren();d.hidden=!active;root.querySelector('.explorer').classList.toggle('has-detail',!!active);if(!active)return;
+  // 讲解内容每次重画都会清空，把手要重新挂回面板左边缘（绝对定位，不影响排版）。
+  d.append(detailResizer.handle);
   const n=byId.get(active),c=storyContent[n.id];d.scrollTop=0;
   const close=el('button','收起讲解','detail-close');close.onclick=()=>{animateNext=true;active=null;pinned=null;render()};d.append(close,el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name));
   if(layoutMode==='logic'){
@@ -305,5 +324,5 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();
  // 学习卡「定位图谱」用 host.dataset.focus 指定要聚焦的节点或其观察指标（PR #38）。
  if(host.dataset.focus){const target=nodes.find(n=>n.id===host.dataset.focus||n.indicators.includes(host.dataset.focus));if(target)choose(target.id)}
- orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;cancelAnimationFrame(layoutFrame);cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
+ orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;detailResizer.dispose();cancelAnimationFrame(layoutFrame);cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
 }

@@ -654,6 +654,62 @@ def test_chat_keeps_one_nudge_before_dropping_evidence_structure(dashboard_run):
     assert "先补观测" in result["answer"]
 
 
+def test_chat_sends_the_webui_map_with_the_fact_card(dashboard_run):
+    """The model must get both halves: learner facts and the interface map."""
+
+    data = load_dashboard(dashboard_run)
+    data["meta"]["viewer"] = {"role": "teacher"}
+
+    class RecordingClient:
+        provider = "fake"
+        model = "fake-model"
+
+        def __init__(self) -> None:
+            self.system = ""
+            self.user = ""
+
+        def complete(self, system: str, user: str) -> str:
+            self.system = system
+            self.user = user
+            return "在「班级学情」的「知识诊断」里看。"
+
+    client = RecordingClient()
+    result = answer_question(
+        snapshot=data,
+        message="在哪里看薄弱知识点？",
+        context={"view": "overview"},
+        client=client,
+    )
+    assert result["source"] == "llm"
+    assert "FACTS（唯一可用信息）" in client.user
+    assert "界面怎么用" in client.system
+    assert "知识诊断" in client.system
+    assert "对方此刻在「班级学情」页" in client.system
+
+
+def test_chat_accepts_a_numeric_ui_name_without_falling_back(dashboard_run):
+    """「两个人的共同空闲」 is a name, not a claim of two learners."""
+
+    data = load_dashboard(dashboard_run)
+    data["meta"]["viewer"] = {"role": "student"}
+
+    class RecordingClient:
+        provider = "fake"
+        model = "fake-model"
+
+        def complete(self, system: str, user: str) -> str:
+            return "在「跨域探索」顶部的「两个人的共同空闲」里，拖动滑块看两个时间区间怎么相交。"
+
+    result = answer_question(
+        snapshot=data,
+        message="共同空闲在哪里？",
+        context={"view": "explore"},
+        client=RecordingClient(),
+    )
+    assert result["source"] == "llm"
+    assert "两个人的共同空闲" in result["answer"]
+
+
 def test_chat_sends_history_as_separate_turns(dashboard_run):
     data = load_dashboard(dashboard_run)
 

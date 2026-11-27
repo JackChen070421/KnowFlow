@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-27 — AI 学伴：WebUI 地图与当前页面一起进 prompt
+
+- 新增 `llm/ui_guide.py`：把当前 WebUI 的页面、分区、按钮和操作路径整理成一张地图，与学情事实卡同时发送；教师 / 学生两套，学生端不出现教师工具。
+- 指路边界写进同一份地图：只说明怎么操作，不报页面数量、不写 URL、不编造入口、不替用户点击；并明确“地图不是学情数据，不能据此推断班级”。
+- 数字标签：`audit` 新增 `names` 白名单，只豁免界面名里的数字（如「两个人的共同空闲」），同句其他「2 人」仍按事实卡核对；`test_ui_guide` 会检查新数字标签是否登记。
+- 当前页面：前端 `/api/chat` 的 `context` 增加 `view`，对话标题显示所在页面；后端只接受本角色已知的 view，未知值忽略（教师页不会泄漏给学生）。
+- 同步机制：`tests/diagnosis/test_ui_guide.py` 逐项比对 `app.js` / `learning.js` / `training.js` 的真实标签，界面改了而地图没改时测试失败；README / AGENT.md 记录维护规则。
+- 验证：`pytest` 497 passed + 1 xfailed；`ruff` 通过；`node --test tests/web/*.test.mjs` 63 项通过。未调用真实模型验证话术，只验证 prompt 组装、数字锁与标签一致性。
+- 回退：删除 `llm/ui_guide.py` 与 `tests/diagnosis/test_ui_guide.py`，还原 `chat.py` 两处、`app.js` 两处与三份文档。
+
+---
+
 ## 2026-11-27 — 知识地图随面板宽度重新适配 + 深色图表状态色 class 化
 
 **未推送** · 分支 `feat/web-night-panel-pdf`

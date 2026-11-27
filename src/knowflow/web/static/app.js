@@ -2,6 +2,7 @@ import {describe, distribution, aggregateRecords, topics} from './analytics.mjs'
 import { mountMap } from './knowledge-map.js';
 import { openTraining } from './training.js';
 import { mountLearning, learningRequest } from './learning.js';
+import { renderAdviceSummary } from './advice-summary.mjs';
 import { attachPanelResizer } from './panel-resize.mjs';
 import {
   exploreLabs, labById, labModel, exploreKey, emptyExploreRecord,
@@ -676,7 +677,9 @@ function personalPage(teacher = false) {
     knowledge: () => profileKnowledge(p),
     records: () => recordTable(p),
     history: () => personalHistory(p),
-    plans: () => chartDeck(chartCard('学习建议', `${p.student_id} · ${state.node}`, plans(p.student_id, teacher)), 'report-single'),
+    plans: () => chartDeck(teacher
+      ? chartCard('学习建议', `${p.student_id} · ${state.node}`, plans(p.student_id, true))
+      : `<section class="panel advice-panel">${plans(p.student_id)}</section>`, 'report-single'),
     feedback: () => `<div class="report-body report-single">${feedbackPanel(p.student_id) || empty('此节点没有可调整的学习计划。')}</div>`
   };
   return `<div id="student-detail" class="report-workspace personal-workspace ${['plans','feedback'].includes(state.profileTab) ? 'flow-workspace' : ''}">
@@ -723,7 +726,7 @@ function knowledgeList(list, fallback) {
 }
 
 function plans(sid, teacher = false) {
-  if (!teacher && state.role === 'student') return `<div class="learn-home-entry"><p>按知识点补测、学习和练习，错题与收藏会保存在你的账号下。</p><button class="button primary" data-view="plan">进入学习空间</button></div>`;
+  if (!teacher && state.role === 'student') return renderAdviceSummary(D.profiles[state.node]?.[sid], D.recommendations[state.node]?.[sid], kb);
   const r = D.recommendations[state.node][sid];
   if (!r.plan.length) return empty('此节点没有生成新计划。若参与范围不明，请先确认范围；表现较好时也不强行加练。');
   const history = r.history || [];

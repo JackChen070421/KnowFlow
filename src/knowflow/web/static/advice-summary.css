@@ -1,0 +1,59 @@
+/* Personal recommendation overview. Colors inherit all three application themes. */
+.advice-summary { color: var(--ink); }
+.advice-panel { padding: 22px; }
+.advice-overview { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.advice-overview h2 { margin: 0 0 5px; font-size: 21px; line-height: 1.4; font-weight: 700; }
+.advice-overview p { margin: 0; font-size: 15px; color: var(--ink); line-height: 1.6; }
+.advice-counts { display: flex; flex-wrap: wrap; gap: 9px; }
+.advice-counts span { padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 14px; white-space: nowrap; }
+.advice-counts b { margin-right: 4px; font-size: 19px; color: var(--teal); }
+.advice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.advice-grid:has(.advice-details[open]) { align-items: start; }
+.advice-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--line); border-top: 3px solid var(--teal); border-radius: 14px; padding: 17px 18px 12px; background: var(--surface-2); }
+.advice-card.observe { border-top-color: var(--blue); }
+.advice-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+.advice-step { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--mint); color: var(--teal); font-size: 14px; font-weight: 750; }
+.advice-kind { font-size: 14px; font-weight: 650; }
+.advice-duration { margin-left: auto; font-size: 14px; white-space: nowrap; }
+.advice-card h3 { margin: 0 0 12px; min-height: 54px; font-size: 18px; line-height: 1.5; font-weight: 700; text-wrap: pretty; }
+.advice-facts { display: grid; gap: 10px; margin: 0 0 16px; }
+.advice-facts > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+.advice-facts dt { font-size: 14px; font-weight: 700; line-height: 1.65; padding-top: 1px; }
+.advice-facts dd { margin: 0; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.advice-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.advice-source { border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 6px 8px; font-size: 14px; line-height: 1.4; font-weight: 550; cursor: pointer; }
+.advice-source:hover { color: var(--teal); border-color: var(--teal); }
+.advice-details { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.advice-details summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 14px; font-weight: 650; cursor: pointer; list-style: none; color: var(--teal); }
+.advice-details summary::-webkit-details-marker { display: none; }
+.advice-details[open] summary svg { transform: rotate(90deg); }
+.advice-detail-body { padding-top: 12px; overflow-wrap: anywhere; }
+.advice-detail-body h4 { margin: 12px 0 5px; font-size: 15px; }
+.advice-detail-body p { font-size: 15px; line-height: 1.65; margin: 5px 0; color: var(--ink); }
+.advice-detail-body .advice-locator { font-size: 14px; }
+.advice-detail-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.advice-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 19px; padding-top: 15px; border-top: 1px solid var(--line); }
+.advice-footer p { margin: 0; font-size: 15px; line-height: 1.65; }
+.advice-footer p span { display: block; font-size: 14px; margin-top: 3px; }
+.advice-footer .button { flex-shrink: 0; font-size: 16px; padding: 11px 17px; }
+.advice-summary .advice-footer .button.primary { background: var(--teal); color: white; }
+[data-theme="dark"] .advice-summary .advice-footer .button.primary { color: #08171a; }
+.advice-empty { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 26px; font-size: 16px; }
+.advice-pending { font-size: 15px; line-height: 1.6; color: var(--ink); }
+.advice-summary :is(button, summary):focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+@media (max-width: 1250px) {
+  .advice-overview { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .advice-card { padding-inline: 14px; }
+  .advice-facts > div { grid-template-columns: 1fr; gap: 3px; }
+}
+@media (max-width: 1000px) {
+  .advice-grid { grid-template-columns: 1fr; }
+  .advice-card h3 { min-height: 0; }
+  .advice-facts > div { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+}
+@media (max-width: 600px) {
+  .advice-counts { gap: 6px; }
+  .advice-counts span { padding: 7px 8px; }
+  .advice-footer { align-items: stretch; flex-direction: column; gap: 12px; }
+  .advice-card { padding: 15px 14px 12px; }
+}

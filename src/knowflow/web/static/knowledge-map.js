@@ -137,7 +137,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   const elapsed=now-orbitLast;if(elapsed<33)return;orbitLast=now;
   if(!dynamic||document.hidden||mode!=='overview'||(active&&layoutMode==='chapter')||gesture||orbitHover||physicsFrame||cameraFrame||layoutFrame||frame||(layoutMode==='chapter'&&svg.querySelector(':focus')))return;
   const dt=Math.min(elapsed,70);
-  if(layoutMode==='logic'){for(const n of shown){if(n.id===active||n.id===pinned)continue;const motion=nodeOrbits.get(n.id),period=motion.period*.4,before=motion.phase+motion.time/period*Math.PI*2;motion.time+=dt;const after=motion.phase+motion.time/period*Math.PI*2,p=layout.positions.get(n.id);p.x+=22*(Math.sin(after)-Math.sin(before));p.y+=18*(Math.cos(after*.83)-Math.cos(before*.83))}requestPaint(true);return}
+  if(layoutMode==='logic'){for(const n of shown){if(n.id===active||n.id===pinned)continue;const motion=nodeOrbits.get(n.id),period=motion.period*1.2,before=motion.phase+motion.time/period*Math.PI*2;motion.time+=dt;const after=motion.phase+motion.time/period*Math.PI*2,p=layout.positions.get(n.id);p.x+=22*(Math.sin(after)-Math.sin(before));p.y+=18*(Math.cos(after*.83)-Math.cos(before*.83))}requestPaint(true);return}
   // Keep chapters spaced around the course while adding gentle, independent drift.
   // Move every child with its hub; pause this outer orbit in filtered views.
   if(shown.length===nodes.length){
@@ -214,7 +214,8 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    const legendBox=$('legend').getBoundingClientRect();
    const topInset=active?legendBox.height+30:30,bottomInset=70,rightInset=active?14:legendBox.width+24;
    target.k=Math.min(target.k,Math.max(80,height-topInset-bottomInset)/(bottom-top),Math.max(80,width-rightInset-14)/(right-left));
-   target.x+=(rightInset-14)/(2*target.k);
+   if(!active)target.k*=1.08;
+   // Center on the canvas; the corner legend should not shift the entire graph left.
    target.y-=(topInset-bottomInset)/(2*target.k);
   }
   if(layoutMode==='chapter'&&shown.length===nodes.length)target.k*=1.12;
@@ -254,6 +255,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  const onWindowResize=()=>{if(disposed||!mapMounted||refitFrame)return;refitFrame=requestAnimationFrame(()=>{refitFrame=0;refitNow()})};
  window.addEventListener('resize',onWindowResize);
  function pdf(n){const url=materials.find(m=>m.material_id===n.material)?.document_url;if(!url)return el('small','本机未载入该教材 PDF');const a=el('a','打开教材 · PDF 第 '+n.page+' 页 ↗','pdf');a.href=url+'#page='+n.page;a.target='_blank';a.rel='noopener';return a}
+ const cardHistory=[];
  let disposeVisual=()=>{};
  function showDetail(){
   disposeVisual();disposeVisual=()=>{};
@@ -261,7 +263,9 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   // 讲解内容每次重画都会清空，把手要重新挂回面板左边缘（绝对定位，不影响排版）。
   d.append(detailResizer.handle);
   const n=byId.get(active),c=storyContent[n.id];d.scrollTop=0;
-  const close=el('button','收起讲解','detail-close');close.onclick=()=>{animateNext=true;active=null;pinned=null;render()};d.append(close,el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name));
+  const nav=el('div','','story-nav');
+  if(cardHistory.length){const previous=cardHistory.at(-1),back=el('button','← 上一张学习卡','story-back');back.title='返回：'+byId.get(previous.id).name;back.onclick=()=>{const entry=cardHistory.pop();choose(entry.id,false);d.scrollTop=entry.scrollTop;const focus=d.querySelector('.story-back')||d.querySelector('.detail-close');focus?.focus({preventScroll:true})};nav.append(back)}
+  const close=el('button','收起讲解','detail-close');close.onclick=()=>{animateNext=true;active=null;pinned=null;render()};nav.append(close);d.append(nav,el('div',themes[n.topic]+' · '+n.id,'meta'),el('h2',n.name));
   if(layoutMode==='logic'){
    const neighborhood=logicNeighborhood(active,logical.links),section=el('section','','neighbor-relations');section.append(el('h3','直接关联 · '+neighborhood.links.length+' 条'));
    if(!neighborhood.links.length)section.append(el('p','当前图谱没有记录此节点的直接关系。'));
@@ -283,7 +287,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    const b=el('button',k.name+' · 学情与材料','story-link');b.onclick=()=>openKnowledge(id);source.append(b);
   }d.append(source);
  }
- function choose(id){if(!byId.has(id))return;stopCamera();animateNext=true;pinned=id;if(!shown.some(n=>n.id===id)){$('query').value='';$('topic').value='';shown=nodes}mode='overview';active=id;render(false)}
+ function choose(id,remember=true){if(!byId.has(id)||id===active)return;if(remember&&active)cardHistory.push({id:active,scrollTop:$('detail').scrollTop});stopCamera();animateNext=true;pinned=id;if(!shown.some(n=>n.id===id)){$('query').value='';$('topic').value='';shown=nodes}mode='overview';active=id;render(false)}
  function full(){stopCamera();animateNext=true;pinned=null;$('query').value='';$('topic').value='';active=null;mode='overview';render()}
  function arrangeNeighborhood(){
   if(layoutMode!=='logic')return;
@@ -298,6 +302,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  }
  function render(clear=true,animateNeighborhood=true){
   if(clear)active=null;
+  if(!active)cardHistory.length=0;
   const transitioning=animateNeighborhood&&layoutMode==='logic'&&cameraReady&&neighborhoodId!==active&&motionOK;
   const oldView=transitioning?{camera:{...camera},width,height,positions:new Map([...points].map(([id,p])=>[id,{...p}]))}:null;
   if(transitioning){cancelAnimationFrame(layoutFrame);layoutFrame=0;stopCamera()}

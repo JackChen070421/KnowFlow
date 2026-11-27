@@ -85,10 +85,35 @@ export function logicLayout(nodes, edges) {
   for(const e of directed){outgoing.get(e.source_node_id).push(e.target_node_id);indegree.set(e.target_node_id,indegree.get(e.target_node_id)+1)}
   const queue=nodes.filter(n=>indegree.get(n.id)===0).map(n=>n.id);
   for(let i=0;i<queue.length;i++){const id=queue[i];for(const target of outgoing.get(id)){rank.set(target,Math.max(rank.get(target),rank.get(id)+1));indegree.set(target,indegree.get(target)-1);if(indegree.get(target)===0)queue.push(target)}}
-  const layers=new Map();for(const n of nodes){const level=rank.get(n.id);if(!layers.has(level))layers.set(level,[]);layers.get(level).push(n)}
-  const positions=new Map();let row=0;
-  for(const [,group] of [...layers].sort((a,b)=>a[0]-b[0])){group.sort((a,b)=>a.topic-b.topic||a.id.localeCompare(b.id));for(let offset=0;offset<group.length;offset+=5){const line=group.slice(offset,offset+5);line.forEach((n,i)=>positions.set(n.id,{x:(i-(line.length-1)/2)*230,y:row*180}));row++}}
-  for(const p of positions.values())p.y-=(row-1)*90;
+  // Connectivity includes every displayed relation, regardless of arrow direction.
+  const adjacent=new Map(nodes.map(n=>[n.id,[]])),byId=new Map(nodes.map(n=>[n.id,n]));
+  for(const e of links){adjacent.get(e.source_node_id).push(e.target_node_id);adjacent.get(e.target_node_id).push(e.source_node_id)}
+  const seen=new Set(),blocks=[];
+  for(const node of nodes){
+    if(seen.has(node.id))continue;
+    const members=[node.id];seen.add(node.id);
+    for(let i=0;i<members.length;i++)for(const id of adjacent.get(members[i]))if(!seen.has(id)){seen.add(id);members.push(id)}
+    const layers=new Map();for(const id of members){const level=rank.get(id);if(!layers.has(level))layers.set(level,[]);layers.get(level).push(byId.get(id))}
+    const local=new Map();let row=0,maxColumns=1;
+    for(const [,group] of [...layers].sort((a,b)=>a[0]-b[0])){
+      group.sort((a,b)=>a.topic-b.topic||a.id.localeCompare(b.id));
+      for(let offset=0;offset<group.length;offset+=4){const line=group.slice(offset,offset+4);maxColumns=Math.max(maxColumns,line.length);line.forEach((n,i)=>local.set(n.id,{x:(i-(line.length-1)/2)*200,y:row*155}));row++}
+    }
+    blocks.push({local,width:(maxColumns-1)*200+180,height:(row-1)*155+160});
+  }
+  // Pack entire components into columns, leaving room for labels and idle drift.
+  blocks.sort((a,b)=>b.height-a.height||b.width-a.width);
+  const gap=100,area=blocks.reduce((sum,b)=>sum+(b.width+gap)*(b.height+gap),0);
+  const targetHeight=Math.max(0,...blocks.map(b=>b.height),Math.sqrt(area/1.25));
+  const columns=[];
+  for(const block of blocks){
+    let column=columns.filter(c=>c.height+gap+block.height<=targetHeight).sort((a,b)=>a.height-b.height)[0];
+    if(!column){column={blocks:[],width:0,height:0};columns.push(column)}
+    block.top=column.blocks.length?column.height+gap:0;column.blocks.push(block);column.width=Math.max(column.width,block.width);column.height=block.top+block.height;
+  }
+  const positions=new Map(),totalWidth=columns.reduce((sum,c)=>sum+c.width,0)+Math.max(0,columns.length-1)*gap;
+  let left=-totalWidth/2;
+  for(const column of columns){for(const block of column.blocks)for(const [id,p] of block.local)positions.set(id,{x:left+column.width/2+p.x,y:block.top-column.height/2+70+p.y});left+=column.width+gap}
   return {positions,links};
 }
 

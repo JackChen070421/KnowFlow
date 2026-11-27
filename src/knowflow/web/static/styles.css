@@ -1678,6 +1678,79 @@ select {
   color: #91a08d
 }
 
+/* 课标目标卡里的知识点：代号 + 名称 + 具体要求，一行到两行，不撑破卡片。 */
+.requirement-knowledge {
+  display: grid;
+  gap: 6px;
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none
+}
+
+.rk-row {
+  margin: 0;
+  min-width: 0
+}
+
+.rk-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer
+}
+
+.rk-link:hover:not(:disabled) {
+  border-color: var(--teal)
+}
+
+.rk-code {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--teal);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: .3px;
+  white-space: nowrap
+}
+
+.rk-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.rk-req {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.65;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2
+}
+
+.requirement-empty {
+  margin: 13px 0 0;
+  color: var(--muted);
+  font-size: 11px
+}
+
 .course-foot {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
@@ -3211,6 +3284,16 @@ dialog {
 dialog::backdrop {
   background: #133b3655;
   backdrop-filter: blur(2px)
+}
+
+/* 详情抽屉左边缘可拖动改变宽度：--kf-panel-width 由 panel-resize.mjs 写入，
+   没有记忆时保持原来的 min(590px,100%)，刷新后按记忆恢复。 */
+#drawer {
+  width: min(var(--kf-panel-width, 590px), 100%)
+}
+
+#drawer.has-panel-resizer {
+  position: fixed
 }
 
 .drawer-head {
@@ -5521,6 +5604,11 @@ body.module-mode{height:100dvh;overflow:hidden}
 .source-description{min-height:38px}.source-links{margin:10px 0;padding:8px 0;border-top:1px solid #edf1ee}.source-links>span{font-size:11px;color:#45816c;font-weight:600}.source-links p{margin-top:3px!important}
 .source-file{font-size:11px;color:#86958c;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin-top:auto;padding-top:4px}
 .source-card footer{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #edf1ee;margin-top:10px;padding-top:10px;gap:8px}.source-card footer>span{font-size:11px;color:#8b9b91}.source-card footer .button{font-size:12px;padding:6px 10px}
+/* 卡片底部编号：材料编号在前，课标编号在后（M-063 · OBJ-7M-02），不重复不颠倒。 */
+.source-card footer>span.source-ids{display:inline-flex;align-items:center;gap:5px;min-width:0;font-size:11px;color:var(--muted);white-space:nowrap}
+.source-ids b{font-weight:600;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
+.source-ids i{font-style:normal;opacity:.55}
+.source-card footer .button{flex:none;white-space:nowrap;text-decoration:none}
 @media(max-width:1150px){.source-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.source-counts{gap:12px}}
 @media(max-width:800px){.source-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.source-library-heading{align-items:start}.source-counts{display:none}.source-toolbar .search-field{margin-left:0;flex:1}.course-content.sources-panel{padding:12px}}
 @media(max-width:500px){.source-card-grid{grid-template-columns:1fr}.source-toolbar{gap:8px}}

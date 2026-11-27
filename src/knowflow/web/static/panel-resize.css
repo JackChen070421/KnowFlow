@@ -1,0 +1,60 @@
+/* =====================================================================
+   可拖拽面板把手 —— 「讲解」面板与「学生差异」抽屉共用
+   ---------------------------------------------------------------------
+   两个面板的宽度逻辑在 panel-resize.mjs 里；这里只负责外观：
+   左边缘 8px 的透明抓取条，悬停 / 拖动 / 键盘聚焦时显示薄荷色竖线。
+   本文件同时被主文档与知识地图的 shadow root 引用，所以只用自定义属性
+   取色（--panel-accent 在 theme.css 的调色板里定义，浅色与深色各一支）。
+   ===================================================================== */
+
+.panel-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 6;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resizer::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+.panel-resizer:hover::before,
+.panel-resizer:focus-visible::before,
+.panel-resizer.is-dragging::before {
+  background: var(--panel-accent, #3fa98d);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--panel-accent, #3fa98d) 26%, transparent);
+}
+
+.panel-resizer:focus-visible {
+  outline: 2px solid var(--panel-accent, #3fa98d);
+  outline-offset: -2px;
+}
+
+/* 拖动期间整页禁用文本选择，光标保持 col-resize，避免选中旁边的文字。 */
+html.kf-panel-resizing,
+html.kf-panel-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-resizer::before {
+    transition: none;
+  }
+}

@@ -2,6 +2,7 @@
 .advice-summary { color: var(--ink); }
 .advice-panel { padding: 22px; }
 .advice-overview { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.advice-eyebrow { margin-bottom: 6px; font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--teal); }
 .advice-overview h2 { margin: 0 0 5px; font-size: 21px; line-height: 1.4; font-weight: 700; }
 .advice-overview p { margin: 0; font-size: 15px; color: var(--ink); line-height: 1.6; }
 .advice-counts { display: flex; flex-wrap: wrap; gap: 9px; }
@@ -16,6 +17,8 @@
 .advice-kind { font-size: 14px; font-weight: 650; }
 .advice-duration { margin-left: auto; font-size: 14px; white-space: nowrap; }
 .advice-card h3 { margin: 0 0 12px; min-height: 54px; font-size: 18px; line-height: 1.5; font-weight: 700; text-wrap: pretty; }
+.advice-student-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+.advice-feedback-label { font-size: 14px; font-weight: 650; color: var(--muted); }
 .advice-facts { display: grid; gap: 10px; margin: 0 0 16px; }
 .advice-facts > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
 .advice-facts dt { font-size: 14px; font-weight: 700; line-height: 1.65; padding-top: 1px; }

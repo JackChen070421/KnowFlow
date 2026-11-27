@@ -677,9 +677,7 @@ function personalPage(teacher = false) {
     knowledge: () => profileKnowledge(p),
     records: () => recordTable(p),
     history: () => personalHistory(p),
-    plans: () => chartDeck(teacher
-      ? chartCard('学习建议', `${p.student_id} · ${state.node}`, plans(p.student_id, true))
-      : `<section class="panel advice-panel">${plans(p.student_id)}</section>`, 'report-single'),
+    plans: () => `<section class="panel advice-panel">${plans(p.student_id, teacher)}</section>`,
     feedback: () => `<div class="report-body report-single">${feedbackPanel(p.student_id) || empty('此节点没有可调整的学习计划。')}</div>`
   };
   return `<div id="student-detail" class="report-workspace personal-workspace ${['plans','feedback'].includes(state.profileTab) ? 'flow-workspace' : ''}">
@@ -726,11 +724,7 @@ function knowledgeList(list, fallback) {
 }
 
 function plans(sid, teacher = false) {
-  if (!teacher && state.role === 'student') return renderAdviceSummary(D.profiles[state.node]?.[sid], D.recommendations[state.node]?.[sid], kb);
-  const r = D.recommendations[state.node][sid];
-  if (!r.plan.length) return empty('此节点没有生成新计划。若参与范围不明，请先确认范围；表现较好时也不强行加练。');
-  const history = r.history || [];
-  return `<div class="plan-list">${history.length?`<div class="notice">已完成 ${history.length} 项，保留在历史记录中；本轮只重排未开始项。</div>`:''}${r.plan.map(p=>{const done=p.material_ids.filter(m=>submission(sid,p.seq,m)).length;return `<article class="plan-card ${p.activity_type==='probe'?'probe':''}"><div class="plan-top"><div class="plan-heading"><span class="plan-index">${String(p.seq).padStart(2,'0')}</span><div><h3>${esc(p.activity)}</h3>${p.status==='in_progress'?'<span class="pill warm">进行中</span>':''}<div class="plan-meta"><span>${esc(p.issue_id)}</span><span>${esc(p.knowledge_ids.join(' / '))}</span><span>约 ${p.est_minutes} 分钟</span></div></div></div><span class="pill ${p.activity_type==='probe'?'purple':'warm'}">${p.activity_type==='probe'?'先补充观察':'巩固与验证'}</span></div><details class="method-details recommendation-reason"><summary>推荐依据</summary><p>${esc(p.reason)}</p></details><div class="check-line">${icon('check',15)}<span><strong>完成标准：</strong>${esc(p.check)}</span></div>${p.teacher_locked?`<div class="notice warm">教师已锁定：重新规划时保留此安排。</div>`:''}${(p.adjustments||[]).map(a=>`<div class="notice">教师调整（${ADJUST_LABEL[a.action]||a.action}）：${esc(a.reason||'')}</div>`).join('')}${(p.teacher_comments||[]).map(c=>`<div class="notice">教师评语：${esc(c.text)}</div>`).join('')}${!teacher?`<div class="feedback-row">${[['difficulty','太难'],['confusion','没看懂'],['request','需要更多例题']].map(([kind,label])=>`<button type="button" class="text-button" data-feedback-kind="${kind}" data-feedback-item="${esc(p.plan_item_id)}">${label}</button>`).join('')}</div>`:''}<div class="material-buttons">${p.material_ids.map(m=>`<button class="material-chip" data-material="${esc(m)}" data-plan="${p.seq}" data-owner="${esc(sid)}">${icon(materialFor(m)?.material_type==='assessment'?'target':'book',13)}${esc(m)} · ${materialFor(m)?.material_type==='assessment'?'练习':'阅读'}${submission(sid,p.seq,m)?' ✓':''}</button>`).join('')}</div><div class="progress-strip"><span>${done?`本机已提交 ${done} / ${p.material_ids.length} 项 · 待评阅`:'新练习：未记录'}</span><div class="progress-track"><i style="width:${done/p.material_ids.length*100}%"></i></div><span>${teacher?'待评阅':'点击材料开始'}</span></div></article>`;}).join('')}</div><div class="notice">${storageOK?'练习保存在此浏览器，教师页可查看。':'当前浏览器不允许本地存储，暂时无法保存新练习。'}提交后待评阅，历史画像不变。</div>`;
+  return renderAdviceSummary(D.profiles[state.node]?.[sid], D.recommendations[state.node]?.[sid], kb, {teacher});
 }
 
 function feedbackPanel(sid) {
@@ -862,16 +856,6 @@ function qualityPage() {
     <button class="button light" data-review-entry>进入存疑证据 ${icon('arrow',14)}</button>
   </section>`;
 }
-
-const ADJUST_LABEL = {
-  lock: '锁定',
-  unlock: '解除锁定',
-  remove: '移除',
-  restore: '恢复',
-  replace_materials: '更换材料',
-  set_time: '调整用时',
-  set_difficulty: '调整难度'
-};
 
 const REVIEW_STATUS_LABEL = {
   flagged: '待复核',

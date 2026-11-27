@@ -46,6 +46,8 @@ ASSETS = {
     "/training.js": "text/javascript",
     "/learning.js": "text/javascript",
     "/learning.css": "text/css",
+    "/advice-summary.mjs": "text/javascript",
+    "/advice-summary.css": "text/css",
     "/pdf-viewer.js": "text/javascript",
     "/pdf-print.js": "text/javascript",
     "/pdf-print.css": "text/css",

@@ -23,6 +23,17 @@ test('focus includes only immediate neighbors and preserves relative relationshi
  assert.ok(methods.links.some(e=>logicRelationLabel(e,'C-013')==='不同方法'));
  assert.deepEqual([...logicNeighborhood('C-007',graph.edges).ids],['C-007']);
 });
+
+test('disconnected components have separate bounds including isolated nodes and mixed relations',()=>{
+ const layout=logicLayout(nodes,graph.edges),pending=new Set(nodes.map(n=>n.id)),bounds=[];
+ while(pending.size){const ids=[pending.values().next().value];pending.delete(ids[0]);
+  for(let i=0;i<ids.length;i++)for(const e of graph.edges){const other=e.source_node_id===ids[i]?e.target_node_id:e.target_node_id===ids[i]?e.source_node_id:null;if(pending.delete(other))ids.push(other)}
+  const ps=ids.map(id=>layout.positions.get(id));bounds.push({left:Math.min(...ps.map(p=>p.x)),right:Math.max(...ps.map(p=>p.x)),top:Math.min(...ps.map(p=>p.y)),bottom:Math.max(...ps.map(p=>p.y))});
+ }
+ assert.ok(bounds.length>1);
+ for(let i=0;i<bounds.length;i++)for(let j=i+1;j<bounds.length;j++){const a=bounds[i],b=bounds[j];assert.ok(a.right+260<=b.left||b.right+260<=a.left||a.bottom+260<=b.top||b.bottom+260<=a.top,'components need space for labels and drift')}
+ assert.deepEqual(logicLayout(nodes,graph.edges).positions,layout.positions);
+});
 test('empty and cyclic display graphs terminate with finite positions and omit dangling links',()=>{
  assert.equal(logicLayout([],[]).positions.size,0);
  const cycle=[{source_node_id:'a',target_node_id:'b',relation_type:'prerequisite'},{source_node_id:'b',target_node_id:'a',relation_type:'prerequisite'},{source_node_id:'a',target_node_id:'missing'}];

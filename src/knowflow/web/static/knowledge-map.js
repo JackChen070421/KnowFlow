@@ -188,7 +188,8 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    const legendBox=$('legend').getBoundingClientRect();
    const topInset=active?legendBox.height+30:30,bottomInset=70,rightInset=active?14:legendBox.width+24;
    target.k=Math.min(target.k,Math.max(80,height-topInset-bottomInset)/(bottom-top),Math.max(80,width-rightInset-14)/(right-left));
-   target.x+=(rightInset-14)/(2*target.k);
+   if(!active)target.k*=1.08;
+   // Center on the canvas; the corner legend should not shift the entire graph left.
    target.y-=(topInset-bottomInset)/(2*target.k);
   }
   if(layoutMode==='chapter'&&!active&&shown.length===nodes.length)target.k*=1.12;

@@ -75,6 +75,13 @@ export const statusGroup = status => ({
   likely_weak: 'weak',
   mixed_performance: 'mixed'
 } [status] || status);
+// 图表状态色的唯一来源是 CSS：SVG 的 fill/stroke 属性不认 var()，所以这里只输出
+// class，颜色在 theme.css 的 --status-fill-* 里按浅色 / 深色两套定义。深色下
+// 「待评分 / 未覆盖 / 本节点不适用」不再是 #c9d4dc / #e9edf0 这类浅灰块。
+const statusSlug = status => String(statusGroup(status) ?? 'unknown').replace(/_/g, '-');
+export const statusFill = status => `chart-fill-${statusSlug(status)}`;
+export const statusSwatch = status => `chart-swatch-${statusSlug(status)}`;
+export const statusStroke = status => `chart-stroke-${statusSlug(status)}`;
 export const icon = (name, size = 20) => {
   const paths = {
     overview: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -102,10 +109,10 @@ export function badge(status) {
     label: status,
     color: '#c9d4dc'
   };
-  return `<span class="badge status-${esc(status)}"><i style="background:${s.color}"></i>${esc(s.label)}</span>`;
+  return `<span class="badge status-${esc(status)}"><i class="${statusSwatch(states[status] ? status : 'insufficient_evidence')}"></i>${esc(s.label)}</span>`;
 }
 export function legend(includeMixed=false) {
-  return `<div class="legend">${categories.filter(k=>includeMixed||k!=='mixed').map(k=>states[k]).map(s=>`<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
+  return `<div class="legend">${categories.filter(k=>includeMixed||k!=='mixed').map(k=>`<span><i class="${statusSwatch(k)}"></i>${states[k].label}</span>`).join('')}</div>`;
 }
 export function donut(items, center, caption) {
   const sum = items.reduce((a, x) => a + x.value, 0),
@@ -114,11 +121,13 @@ export function donut(items, center, caption) {
   let offset = 0;
   const arcs = items.filter(x => x.value > 0).map(x => {
     const length = sum ? x.value / sum * circumference : 0;
-    const part = `<circle cx="90" cy="90" r="${radius}" fill="none" stroke="${x.color}" stroke-width="18" stroke-dasharray="${Math.max(0,length-2)} ${circumference}" stroke-dashoffset="${-offset}" transform="rotate(-90 90 90)"><title>${esc(x.label)}：${x.value}（${pct(x.value/sum)}）</title></circle>`;
+    // 状态项带 tone 时用 class + 主题变量；普通数据系列仍用显式颜色。
+    const paint = x.tone ? `class="${statusStroke(x.tone)}"` : `stroke="${x.color}"`;
+    const part = `<circle cx="90" cy="90" r="${radius}" fill="none" ${paint} stroke-width="18" stroke-dasharray="${Math.max(0,length-2)} ${circumference}" stroke-dashoffset="${-offset}" transform="rotate(-90 90 90)"><title>${esc(x.label)}：${x.value}（${pct(x.value/sum)}）</title></circle>`;
     offset += length;
     return part;
   }).join('');
-  return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 180 180" role="img" aria-label="${esc(items.map(x=>`${x.label} ${x.value}`).join('，'))}"><circle cx="90" cy="90" r="${radius}" fill="none" style="stroke:var(--chart-track,#eef2f1)" stroke-width="18"/>${arcs}<text class="donut-value" x="90" y="88" text-anchor="middle">${esc(center)}</text><text class="donut-caption" x="90" y="110" text-anchor="middle">${esc(caption)}</text></svg><div class="donut-legend">${items.map(x=>`<div><span><i style="background:${x.color}"></i>${esc(x.label)}</span><strong>${x.value}<small> ${sum?pct(x.value/sum):'—'}</small></strong></div>`).join('')}</div></div>`;
+  return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 180 180" role="img" aria-label="${esc(items.map(x=>`${x.label} ${x.value}`).join('，'))}"><circle cx="90" cy="90" r="${radius}" fill="none" style="stroke:var(--chart-track,#eef2f1)" stroke-width="18"/>${arcs}<text class="donut-value" x="90" y="88" text-anchor="middle">${esc(center)}</text><text class="donut-caption" x="90" y="110" text-anchor="middle">${esc(caption)}</text></svg><div class="donut-legend">${items.map(x=>`<div><span><i ${x.tone ? `class="${statusSwatch(x.tone)}"` : `style="background:${x.color}"`}></i>${esc(x.label)}</span><strong>${x.value}<small> ${sum?pct(x.value/sum):'—'}</small></strong></div>`).join('')}</div></div>`;
 }
 export function stateBars(rows, nameFor) {
   const fields = {
@@ -131,7 +140,7 @@ export function stateBars(rows, nameFor) {
     unobserved: 'unobserved_count',
     not_applicable: 'not_applicable_count'
   };
-  return `<div class="state-bars">${rows.map(r=>`<button class="state-bar-row" data-knowledge="${esc(r.knowledge_id)}"><span class="bar-label"><b>${esc(r.knowledge_id)}</b>${esc(nameFor(r.knowledge_id))}</span><span class="bar-track" aria-label="${esc(Object.entries(fields).map(([k,f])=>states[k].label+' '+r[f]+'人').join('；'))}">${Object.entries(fields).map(([s,f])=>r[f]?`<span class="segment-${s}" style="width:${r[f]/Math.max(1,r.student_count)*100}%;background:${states[s].color}" title="${states[s].label} ${r[f]} 人">${r[f]>=3?r[f]:''}</span>`:'').join('')}</span><span class="bar-end">${r.student_count} 人</span></button>`).join('')}</div>`;
+  return `<div class="state-bars">${rows.map(r=>`<button class="state-bar-row" data-knowledge="${esc(r.knowledge_id)}"><span class="bar-label"><b>${esc(r.knowledge_id)}</b>${esc(nameFor(r.knowledge_id))}</span><span class="bar-track" aria-label="${esc(Object.entries(fields).map(([k,f])=>states[k].label+' '+r[f]+'人').join('；'))}">${Object.entries(fields).map(([s,f])=>r[f]?`<span class="segment-${s} ${statusSwatch(s)}" style="width:${r[f]/Math.max(1,r.student_count)*100}%" title="${states[s].label} ${r[f]} 人">${r[f]>=3?r[f]:''}</span>`:'').join('')}</span><span class="bar-end">${r.student_count} 人</span></button>`).join('')}</div>`;
 }
 export function lineChart(series, width = 480, height = 256) {
   const left = 52, right = 56, top = 30, bottom = 62;

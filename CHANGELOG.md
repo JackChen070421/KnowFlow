@@ -16,8 +16,33 @@
 - 展开可查看课程要求、完整推荐理由与原始作答；材料和知识详情复用已有入口，保留学习空间按钮。
 - 直接消费当前学生与测验的画像、推荐及知识底座，不新增模型调用、不改变诊断、推荐顺序或存储契约；记录不足不写成答错。
 - 新增 `advice-summary.mjs/css`；正文 16px、卡片标题 18px、明暗与护眼主题共用布局，窄屏改为单列，长依据默认折叠。
-- 验证：80 份学生／测验汇总检查通过；57 项前端测试、21 项浏览器检查、476 项 Python 测试通过；4 项缺少可选依赖跳过，1 项仓库已有预期失败；契约、样例与 Ruff 通过。
+- 验证：80 份学生／测验汇总检查通过；同步主分支最新夜间样式与面板后，69 项前端测试、21 项浏览器检查、476 项 Python 测试通过；4 项缺少可选依赖跳过，1 项仓库已有预期失败；契约、样例与 Ruff 通过。
 - 回退：移除新增模块及样式，回退 app.js、index.html 与 server.py 的展示入口接入；学习记录和正式数据不受影响。
+
+---
+
+## 2026-11-27 — 知识地图随面板宽度重新适配 + 深色图表状态色 class 化
+
+**未推送** · 分支 `feat/web-night-panel-pdf`
+
+- 知识地图：章节视图的 `fit()` 改为始终适配「当前可见全部节点 + 类别节点」，选中节点只高亮、不把相机缩到单类；`panel-resize.mjs` 新增 `onResize(width,{immediate})`，讲解面板拖拽中约 120ms 节流、松手 / 键盘 / 双击 / 恢复本机宽度立即调用 `fit(false)`，窗口 resize 与 svg 的 ResizeObserver 也走同一适配。窄画布按右上图例与左下 `.maptools` 的实际高度留安全区，个人图例在 470–820px 画布上排 4 列，避免浮层压住标签。
+- 深色图表状态色：`charts.js` 输出 `.chart-fill-*` / `.chart-swatch-*` / `.chart-stroke-*`，`theme.css` 用 `--status-fill-*` 定义浅色 / 深色两套（深色三种「无证据」状态 #5f6e77 / #53626b / #45525a），覆盖状态分布条、热力图、知识地图节点、图例、badge 与 donut；`knowledge-map.css` 在 shadow root 里复用同一组变量。顺带收口 `.issue-meter`、`.score-breakdown` 的浅色小件。
+- 验证：`pytest` 476 passed + 4 skipped + 1 xfailed；`ruff` 通过；`node --test tests/web/*.test.mjs` 63 项通过（新增面板回调 / 整图适配 / 状态色 class）；Chrome headless + CDP 实拍 `refit-420/520/620/760`、刷新恢复与窗口缩放，教师 / 学生地图各 9 个状态，均 21 节点 + 30 标签 0 裁切、0 图例遮挡、0 横向滚动条；深色 7 张页面按「亮度 >200 且 >200px 连通块」统计 0 块（文字笔画按包围盒填充率 <0.80 排除）。
+- 未做到 / 取舍：为保证面板打开时 21 个节点全在画布内，点击节点不再自动放大到该类别（滚轮手动缩放仍保留）；面板拉到 760px 时画布约 350px，图谱整体很小但完整。
+- 回退：还原 6 个静态文件与 2 个前端测试；删掉 `knowledge-map.css` / `theme.css` 里的状态色映射即可回到内联颜色。
+
+---
+
+## 2026-11-27 — 夜间白边收口、两个可拖拽面板、原文 PDF 与知识点要求
+
+**未推送** · 分支 `feat/web-night-panel-pdf`
+
+- 深色主题补一层全局表面覆盖（`html/body/#app/main/.app-shell/面板/卡片/表格/抽屉/对话/画布/工具条/表单控件`），`color-scheme: dark` 与滚动条同批收口；白色来自字面量浅色与内联 `--shade`，都在 `theme.css` 源头换成语义变量，不用 `filter: invert` 这类事后反色。打印页在屏幕上跟随主题、`@media print` 的白纸黑字不变。
+- 知识地图「讲解」面板与「全部班级 · 学生差异」抽屉共用 `panel-resize.mjs` + `panel-resize.css`：左边缘 8px `role=separator` 把手，Pointer Events + `setPointerCapture`，范围 360–760、方向键 ±16、双击回默认，宽度按键写 `localStorage`。讲解面板宽度写回网格变量，画布由既有 `ResizeObserver` 重新适配，无横向滚动条。
+- 课程资料库「查看原文」改为新标签直接打开既有 PDF 路由 `/api/document/<材料编号>#page=<页码>`（沿用原鉴权，不新开端点）；卡片底部编号改为「材料编号 · 课标编号」。课标目标卡的知识点由代号列表补齐「代号 + 名称 + 具体要求」，数据取 `knowledge[].requirement/description`，缺失时回退课程图谱细目 `summary`，不硬编码文案。
+- 验证：`pytest` 476 通过 + 4 跳过 + 1 已知 xfail；`ruff` 通过；`node --test tests/web/*.test.mjs` 59 项通过（新增 8 项面板拖拽/键盘/记忆）；Chrome headless + CDP 逐路由实拍 11 个深色页面，四边 2px 环内亮度 >200 的像素 0 处（含两个面板打开态，共 15 张）。
+- 未验证：本机快照没有变式训练试卷，`/training-print` 只能截到工具栏与空态；图表状态色板（`charts.js` 的 `#c9d4dc` / `#e9edf0`，对应「未观测 / 本节点不适用」）仍是浅灰，与图例一一对应，未纳入本次收口。
+- 回退：还原 9 个静态文件与 `server.py` 白名单两行，删除 `panel-resize.mjs/css` 与 `tests/web/panel-resize.test.mjs`。
 
 ---
 

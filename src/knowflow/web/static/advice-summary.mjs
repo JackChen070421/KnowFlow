@@ -4,6 +4,7 @@ const PRACTICE = new Set(['assessment', 'practice', 'probe']);
 const WEAK = new Set(['confirmed_weak', 'likely_weak', 'sparse_poor']);
 const GOOD = new Set(['confirmed_mastered', 'likely_mastered', 'sparse_good']);
 const UNKNOWN = new Set(['unobserved', 'insufficient_evidence']);
+const FEEDBACK = {difficulty: '太难', confusion: '没看懂', request: '需要更多例题'};
 const unique = values => [...new Set(values.filter(Boolean))];
 
 // A view of the existing recommendation, not a second recommendation algorithm.
@@ -65,14 +66,18 @@ export function buildAdviceSummary(profile = {}, recommendation = {}, knowledge 
     unknown: states.filter(s => UNKNOWN.has(s.status)).length,
     deferred: recommendation?.deferred?.length || 0,
     review: recommendation?.review_required?.length || 0,
+    history: recommendation?.history?.length || 0,
   };
 }
 
-function adviceCard(item) {
+function adviceCard(item, teacher = false) {
   const materialLinks = item.materials.map(m => `<button type="button" class="advice-source" data-material="${esc(m.material_id)}" title="${esc(m.title)}" aria-label="查看材料 ${esc(m.material_id)} ${esc(m.title)}">${esc(m.material_id)} · ${PRACTICE.has(m.material_type) ? '练习' : '阅读'}</button>`).join('');
+  // Teacher-only signals: whether the plan is pinned, and what the student asked for.
+  const feedback = teacher ? unique((item.student_feedback || []).map(f => FEEDBACK[f.kind])) : [];
   return `<article class="advice-card ${item.tone}">
-    <header class="advice-card-head"><span class="advice-step" aria-label="第 ${item.seq} 项">${String(item.seq).padStart(2, '0')}</span><span class="advice-kind">${esc(item.label)}</span>${Number.isFinite(item.est_minutes) ? `<span class="advice-duration">约 ${item.est_minutes} 分钟</span>` : ''}</header>
+    <header class="advice-card-head"><span class="advice-step" aria-label="第 ${item.seq} 项">${String(item.seq).padStart(2, '0')}</span><span class="advice-kind">${esc(item.label)}</span>${teacher && item.teacher_locked ? '<span class="pill warm">已锁定</span>' : ''}${Number.isFinite(item.est_minutes) ? `<span class="advice-duration">约 ${item.est_minutes} 分钟</span>` : ''}</header>
     <h3>${esc(item.title)}</h3>
+    ${feedback.length ? `<div class="advice-student-feedback"><span class="advice-feedback-label">学生反馈</span>${feedback.map(label => `<span class="pill warm">${esc(label)}</span>`).join('')}</div>` : ''}
     <dl class="advice-facts"><div><dt>依据</dt><dd>${esc(item.basis)}</dd></div><div><dt>安排</dt><dd>${esc(item.action)}</dd></div><div><dt>复核</dt><dd>${esc(item.check)}</dd></div></dl>
     <div class="advice-sources" aria-label="推荐材料">${materialLinks || '<span>本项暂无可打开的材料。</span>'}</div>
     <details class="advice-details"><summary>课程要求与完整依据 ${icon('arrow', 13)}</summary><div class="advice-detail-body">
@@ -86,15 +91,38 @@ function adviceCard(item) {
   </article>`;
 }
 
-export function renderAdviceSummary(profile, recommendation, knowledge) {
+export function renderAdviceSummary(profile, recommendation, knowledge, options = {}) {
+  const teacher = Boolean(options.teacher);
   const summary = buildAdviceSummary(profile, recommendation, knowledge);
   const visible = summary.items.slice(0, 3);
-  return `<section class="advice-summary" aria-label="个人学习建议汇总">
-    <div class="advice-overview"><div><h2>本轮学习建议</h2><p>${visible.length ? `优先完成以下 ${visible.length} 项${summary.minutes != null && summary.items.length <= 3 ? ` · 预计 ${summary.minutes} 分钟` : ''} · 按顺序推进` : '本轮暂无待执行建议，可进入学习空间继续练习。'}</p></div>
+  const minutes = summary.minutes != null && summary.items.length <= 3 ? ` · 预计 ${summary.minutes} 分钟` : '';
+  const lead = visible.length
+    ? teacher
+      ? `共 ${summary.items.length} 项安排${minutes} · 按顺序推进`
+      : `优先完成以下 ${visible.length} 项${minutes} · 按顺序推进`
+    : teacher
+      ? '本轮没有待执行安排，可结合知识明细核对范围与证据。'
+      : '本轮暂无待执行建议，可进入学习空间继续练习。';
+  const empty = teacher
+    ? '此节点没有生成新计划。参与范围不明时，先确认范围；表现较好时也不强行加练。'
+    : '没有新建议不等于已经全部掌握，仍以知识明细中的证据为准。';
+  const footerText = teacher
+    ? summary.items.length
+      ? `${summary.items.length > 3 ? `共 ${summary.items.length} 项安排，此处展示前三项；完整计划可在「教学反馈」查看。` : '以下安排与学生端看到的内容一致。'}<span>教师视角只读；锁定、更换材料或写评语请到「教学反馈」，调整不改分数与掌握度。</span>`
+      : '本轮没有可调整的计划。<span>教师视角只读；没有新计划不代表已经掌握，仍以知识明细中的证据为准。</span>'
+    : `${summary.items.length > 3 ? `共 ${summary.items.length} 项安排，此处展示前三项。` : '先独立作答，再看提示；失分先订正，达标后尝试变式。'}<span>待观察表示证据不足；练习结果不自动改写正式画像。</span>`;
+  const cta = teacher
+    ? summary.items.length
+      ? `<button type="button" class="button primary" data-profile-tab="feedback">查看教学反馈 ${icon('arrow', 16)}</button>`
+      : `<button type="button" class="button primary" data-profile-tab="knowledge">查看知识明细 ${icon('arrow', 16)}</button>`
+    : `<button type="button" class="button primary" data-view="plan">进入学习空间 ${icon('arrow', 16)}</button>`;
+  return `<section class="advice-summary" aria-label="${teacher ? '学生学习建议（教师视角）' : '个人学习建议汇总'}">
+    <div class="advice-overview"><div>${teacher ? '<div class="advice-eyebrow">教师视角 · 与学生端一致</div>' : ''}<h2>本轮学习建议</h2><p>${lead}</p></div>
       <div class="advice-counts" aria-label="本次测验知识点概况"><span><b>${summary.weak}</b> 项需巩固</span><span><b>${summary.unknown}</b> 项待观察</span><span><b>${summary.good}</b> 项掌握或较好</span></div>
     </div>
-    ${visible.length ? `<div class="advice-grid">${visible.map(adviceCard).join('')}</div>` : '<div class="advice-empty">没有新建议不等于已经全部掌握，仍以知识明细中的证据为准。</div>'}
+    ${visible.length ? `<div class="advice-grid">${visible.map(item => adviceCard(item, teacher)).join('')}</div>` : `<div class="advice-empty">${empty}</div>`}
+    ${teacher && summary.history ? `<p class="advice-pending">另有 ${summary.history} 项已完成，保留在历史记录中；本轮只重排未开始项。</p>` : ''}
     ${summary.deferred || summary.review ? `<p class="advice-pending">另有 ${summary.deferred} 项暂缓安排、${summary.review} 项需人工复核，核对后再调整计划。</p>` : ''}
-    <footer class="advice-footer"><p>${summary.items.length > 3 ? `共 ${summary.items.length} 项安排，此处展示前三项。` : '先独立作答，再看提示；失分先订正，达标后尝试变式。'}<span>待观察表示证据不足；练习结果不自动改写正式画像。</span></p><button type="button" class="button primary" data-view="plan">进入学习空间 ${icon('arrow', 16)}</button></footer>
+    <footer class="advice-footer"><p>${footerText}</p>${cta}</footer>
   </section>`;
 }

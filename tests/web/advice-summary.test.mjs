@@ -80,3 +80,36 @@ test('empty, incomplete and large recommendations stay explicit and escape sourc
   assert.doesNotMatch(html,/<img|NaN|undefined|预计/);
   assert.match(html,/&lt;img/);
 });
+
+test('teacher view reuses the student summary and points at teaching feedback', () => {
+  const profile = {knowledge_states:[{knowledge_id:'K-01',status:'likely_weak',evidence_count:3,performance:{full_credit:1}}]};
+  const recommendation = {plan:[{...planItem,teacher_locked:true,student_feedback:[
+    {kind:'difficulty'},{kind:'request'},{kind:'difficulty'},
+  ]}],history:[{seq:0}]};
+  const html = renderAdviceSummary(profile, recommendation, knowledge, {teacher:true});
+  assert.match(html,/教师视角/);
+  assert.match(html,/data-profile-tab="feedback"/);
+  assert.match(html,/查看教学反馈/);
+  assert.match(html,/学生反馈/);
+  assert.equal((html.match(/太难/g)||[]).length,1);
+  assert.match(html,/需要更多例题/);
+  assert.match(html,/已锁定/);
+  assert.match(html,/另有 1 项已完成/);
+  assert.doesNotMatch(html,/进入学习空间|data-view="plan"/);
+});
+
+test('teacher view without a plan stays explicit and offers the evidence view', () => {
+  const html = renderAdviceSummary({}, {plan: []}, knowledge, {teacher:true});
+  assert.match(html,/没有生成新计划/);
+  assert.match(html,/data-profile-tab="knowledge"/);
+  assert.match(html,/没有新计划不代表已经掌握/);
+  assert.doesNotMatch(html,/进入学习空间|data-view="plan"/);
+});
+
+test('student view keeps the learning-space entry and hides teacher signals', () => {
+  const recommendation = {plan:[{...planItem,teacher_locked:true,student_feedback:[{kind:'difficulty'}]}],history:[{seq:0}]};
+  const html = renderAdviceSummary({}, recommendation, knowledge);
+  assert.match(html,/进入学习空间/);
+  assert.match(html,/data-view="plan"/);
+  assert.doesNotMatch(html,/教师视角|学生反馈|已锁定|另有 1 项已完成/);
+});

@@ -125,6 +125,7 @@ def test_local_server_routes_and_explicit_evidence(dashboard_run):
         for path in (
             "/teacher", "/student", "/styles.css", "/workspace.css",
             "/app.js", "/charts.js", "/analytics.mjs", "/explore-labs.mjs", "/explore-more.mjs",
+            "/advice-summary.mjs", "/advice-summary.css",
         ):
             status, _, body = request(path)
             assert status == 200 and body

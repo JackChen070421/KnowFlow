@@ -32,6 +32,8 @@ button:hover:not(:disabled){border-color:var(--teal,#176b56)}button:focus-visibl
 #atlas{position:relative;z-index:1}
 .legend,.maptools{z-index:2}
 .personal-legend .status-legend-items{display:grid;grid-template-columns:repeat(2,max-content);gap:7px 14px}
+/* 画布变窄（讲解面板拉宽）时排成 4 列，图例变矮，整图居中后不会被图例压住。 */
+.explorer.compact-legend .personal-legend .status-legend-items{grid-template-columns:repeat(4,max-content)}
 .personal-legend strong{font-size:12px}.personal-legend small{font-size:11px}
 @keyframes map-ambient-glow{from{transform:translate(-2%,-1%) scale(1);opacity:.72}50%{opacity:1}to{transform:translate(3%,2%) scale(1.06);opacity:.82}}
 @keyframes map-ambient-dots{from{transform:translate(0,0)}to{transform:translate(14px,-18px)}}

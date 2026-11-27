@@ -15,9 +15,12 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  root.innerHTML=`<link rel="stylesheet" href="/knowledge-map.css"><link rel="stylesheet" href="/panel-resize.css"><div class="tools" ${host.hasAttribute('workspace')?'hidden':''}><input id="query" type="search" aria-label="查找知识点" placeholder="查知识点、问题或教材章节"><select id="topic" aria-label="知识类别"><option value="">全部类别</option></select><button id="overviewMode" class="mode" aria-pressed="true">知识图谱</button><button id="listMode" class="mode" aria-pressed="false">一览表</button></div><section id="overview" class="canvas"><div class="explorer"><div class="stage"><div class="legend" id="legend" role="group" aria-label="知识类别图例"></div><svg id="atlas" role="group" aria-label="按类别辐射的数学知识图谱"><defs><marker id="logic-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><g id="world"><g id="branches"></g><g id="hubs"></g><g id="dots"></g></g></svg><div class="maptools"><div class="layout-switch" role="group" aria-label="思维导图布局"><span class="layout-pill" aria-hidden="true"></span><button id="chapterLayout" aria-pressed="true">按章节分类</button><button id="logicLayout" aria-pressed="false">按逻辑</button></div><button id="home">查看全图</button><button id="minus" aria-label="缩小">−</button><button id="plus" aria-label="放大">＋</button></div></div><article id="detail" class="story-reader" aria-label="知识点形象化讲解" hidden></article></div></section><div id="nodata" class="none" hidden>没有匹配的知识点，请更换关键词或类别。</div><div id="list" class="tablebox" hidden><table><thead><tr><th>知识点</th><th>学习要求</th><th>教材位置</th></tr></thead><tbody id="rows"></tbody></table></div>`;
  const $=id=>root.getElementById(id),svg=$('atlas'),world=$('world');
  // 「讲解」面板左边缘的拖拽把手：和「学生差异」抽屉共用 panel-resize.mjs。
- // 宽度写到 .explorer 的 CSS 变量上，网格轨道随之改变，画布由既有
- // ResizeObserver 重新适配，不会出现横向滚动条。
+ // 宽度写到 .explorer 的 CSS 变量上，网格轨道随之改变；面板宽度变化（拖拽节流
+ // 120ms，松手 / 键盘 / 双击立即一次）与窗口 resize 都调用既有 fit() 重新适配，
+ // 画布不会出现被裁切的节点或横向滚动条。
  const explorer=root.querySelector('.explorer'),detailPanel=$('detail');
+ // 宽度回调可能在 render() 之前由「恢复本机宽度」触发，此时地图还没建好，先跳过。
+ let mapMounted=false,refitTimer=0,refitFrame=0;
  const detailResizer=attachPanelResizer(detailPanel,{
   storageKey:'kf.panel.map-explain.width',
   label:'调整讲解面板宽度',
@@ -29,6 +32,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    else explorer.style.setProperty('--kf-panel-width',width+'px');
   },
   maxFor:()=>fitWithin(explorer,240,760),
+  onResize:(width,{immediate})=>{if(!mapMounted)return;if(immediate)refitNow();else scheduleRefit()},
  });
  function el(tag,text='',cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
  function se(tag,attrs={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
@@ -184,23 +188,28 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function syncViewport(){
   const box=svg.getBoundingClientRect();if(!box.width||!box.height)return false;
   if(cameraReady&&(box.width!==width||box.height!==height)){camera=resizeCamera(camera,width,height,box.width,box.height);if(cameraFrame){cancelAnimationFrame(cameraFrame);cameraFrame=0;animateNext=true}}
-  width=box.width;height=box.height;svg.setAttribute('viewBox',`0 0 ${width} ${height}`);return true;
+  width=box.width;height=box.height;svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+  // 窄画布上把个人图例排成 4 列，减少它压住图谱的高度（<470px 时仍用 2 列）。
+  root.querySelector('.explorer').classList.toggle('compact-legend',width>=470&&width<820);
+  return true;
  }
- function fit(){
+ function fit(animate=true){
   if(disposed||mode!=='overview'||!shown.length||!syncViewport())return;
   // Freeze geometry during camera travel: only one transform changes per frame.
   cancelAnimationFrame(physicsFrame);physicsFrame=0;
-  const focus=active?byId.get(active).topic:$('topic').value===''?null:Number($('topic').value);
+  // 章节视图始终适配「当前可见的全部节点 + 类别节点」：选中节点只做高亮与讲解，
+  // 不再把相机缩到单个类别。否则「讲解」面板一拉宽（画布 690→490），其余节点和
+  // 标签就会跑到画布外。用户手动滚轮缩放仍保留，直到下一次适配（面板 / 窗口尺寸变化）。
+  const focus=$('topic').value===''?null:Number($('topic').value);
   const points=shown.filter(n=>layoutMode==='logic'||focus===null||n.topic===focus).map(n=>layout.positions.get(n.id));
   if(layoutMode==='chapter'){if(focus===null)points.push(layout.center,...layout.hubs.values());else points.push(layout.hubs.get(focus))}
-  if(!active&&layoutMode==='chapter'){for(const [topic,hub] of layout.hubs){const visible=shown.filter(n=>n.topic===topic);if(!visible.length)continue;const radius=Math.max(...visible.map(n=>{const p=layout.positions.get(n.id);return Math.hypot(p.x-hub.x,p.y-hub.y)}));points.push({x:hub.x-radius,y:hub.y-radius},{x:hub.x+radius,y:hub.y+radius})}}
-  if(layoutMode==='chapter'&&!active&&shown.length===nodes.length){
+  if(layoutMode==='chapter'){for(const [topic,hub] of layout.hubs){const visible=shown.filter(n=>n.topic===topic);if(!visible.length)continue;const radius=Math.max(...visible.map(n=>{const p=layout.positions.get(n.id);return Math.hypot(p.x-hub.x,p.y-hub.y)}));points.push({x:hub.x-radius,y:hub.y-radius},{x:hub.x+radius,y:hub.y+radius})}}
+  if(layoutMode==='chapter'&&shown.length===nodes.length){
    const radius=Math.max(...nodes.map(n=>{const hub=layout.hubs.get(n.topic),p=layout.positions.get(n.id);return Math.hypot(hub.x-layout.center.x,hub.y-layout.center.y)+Math.hypot(p.x-hub.x,p.y-hub.y)+20}));
    points.push({x:layout.center.x-radius,y:layout.center.y-radius},{x:layout.center.x+radius,y:layout.center.y+radius});
   }
   const left=Math.min(...points.map(p=>p.x))-130,right=Math.max(...points.map(p=>p.x))+130,top=Math.min(...points.map(p=>p.y))-85,bottom=Math.max(...points.map(p=>p.y))+95;
-  const selected=active&&layoutMode==='chapter'?layout.positions.get(active):null;
-  const target=selected?{x:selected.x,y:selected.y,k:Math.max(.75,Math.min(1.25,width/480,height/440))}:{x:(left+right)/2,y:(top+bottom)/2,k:Math.min((width-28)/(right-left),(height-70)/(bottom-top),1.4)};
+  const target={x:(left+right)/2,y:(top+bottom)/2,k:Math.min((width-28)/(right-left),(height-70)/(bottom-top),1.4)};
   if(layoutMode==='logic'){
    const legendBox=$('legend').getBoundingClientRect();
    const topInset=active?legendBox.height+30:30,bottomInset=70,rightInset=active?14:legendBox.width+24;
@@ -208,14 +217,42 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
    target.x+=(rightInset-14)/(2*target.k);
    target.y-=(topInset-bottomInset)/(2*target.k);
   }
-  if(layoutMode==='chapter'&&!active&&shown.length===nodes.length)target.k*=1.12;
-  const animate=cameraReady&&(animateNext||cameraFrame!==0)&&motionOK;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
-  if(!animate){camera=target;paint();return}
+  if(layoutMode==='chapter'&&shown.length===nodes.length)target.k*=1.12;
+  if(layoutMode==='chapter'){
+   // 窄画布上，右上角图例与左下角 .maptools 都浮在画布上：按它们的实际尺寸
+   // 留出上下安全区，再把整图放进剩余区域，节点和标签不会被浮层压住。
+   const svgBox=svg.getBoundingClientRect(),legendBox=$('legend').getBoundingClientRect();
+   const toolsBox=root.querySelector('.maptools')?.getBoundingClientRect();
+   const topInset=width<820?Math.max(10,legendBox.bottom-svgBox.top+10):10;
+   const bottomInset=(toolsBox?toolsBox.height:36)+20;
+   const available=Math.max(120,height-topInset-bottomInset);
+   target.k=Math.min(target.k,available/(bottom-top));
+   target.y+=(height/2-(topInset+available/2))/target.k;
+  }
+  const animateThis=animate&&cameraReady&&(animateNext||cameraFrame!==0)&&motionOK;animateNext=false;cameraReady=true;cancelAnimationFrame(cameraFrame);cameraFrame=0;
+  if(!animateThis){camera=target;paint();return}
   const start={...camera},t0=performance.now();
   function step(now){if(disposed)return;const progress=Math.min(1,(now-t0)/420);camera=interpolateCamera(start,target,progress);paint();if(progress<1)cameraFrame=requestAnimationFrame(step);else cameraFrame=0}
   cameraFrame=requestAnimationFrame(step);
  }
  function scheduleFit(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=0;fit()})}
+ // 面板宽度 / 窗口尺寸变化后的重新适配：拖拽中节流 120ms，松手（以及键盘、双击、
+ // 恢复本机宽度）立即一次。只调用既有 fit()（章节视图的整图适配），
+ // 不另写一套坐标换算；用户手动缩放/平移保留到下一次适配为止。
+ const REFIT_DELAY=120;
+ function refitNow(){
+  if(disposed||!mapMounted)return;
+  clearTimeout(refitTimer);refitTimer=0;
+  cancelAnimationFrame(refitFrame);refitFrame=0;
+  cancelAnimationFrame(frame);frame=0;
+  fit(false);
+ }
+ function scheduleRefit(){
+  if(disposed||!mapMounted||refitTimer)return;
+  refitTimer=setTimeout(()=>{refitTimer=0;if(disposed)return;cancelAnimationFrame(frame);frame=0;fit(false)},REFIT_DELAY);
+ }
+ const onWindowResize=()=>{if(disposed||!mapMounted||refitFrame)return;refitFrame=requestAnimationFrame(()=>{refitFrame=0;refitNow()})};
+ window.addEventListener('resize',onWindowResize);
  function pdf(n){const url=materials.find(m=>m.material_id===n.material)?.document_url;if(!url)return el('small','本机未载入该教材 PDF');const a=el('a','打开教材 · PDF 第 '+n.page+' 页 ↗','pdf');a.href=url+'#page='+n.page;a.target='_blank';a.rel='noopener';return a}
  let disposeVisual=()=>{};
  function showDetail(){
@@ -321,8 +358,8 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
  function end(e){if(gesture?.id!==e.pointerId)return;const movedNode=gesture.moved&&gesture.node,blankClick=!gesture.moved&&!gesture.node&&e.type==='pointerup';suppressClick=gesture.moved||e.type==='pointercancel';gesture=null;svg.classList.remove('dragging');if(blankClick)full();else if(movedNode)wake();setTimeout(()=>suppressClick=false,0)}svg.onpointerup=svg.onpointercancel=end;
  const motion=el('button','动态布局：'+(dynamic?'开':'关'));motion.id='motion';motion.setAttribute('aria-pressed',String(dynamic));motion.onclick=()=>{dynamic=!dynamic;motion.textContent='动态布局：'+(dynamic?'开':'关');motion.setAttribute('aria-pressed',String(dynamic));if(dynamic)wake();else{cancelAnimationFrame(physicsFrame);physicsFrame=0}};
  const reset=el('button','重置布局');reset.id='resetLayout';reset.onclick=()=>{cancelAnimationFrame(physicsFrame);physicsFrame=0;pinned=null;for(const [id,p] of points)Object.assign(p,homes.get(id));full()};root.querySelector('.tools').append(motion,reset);
- const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleFit()});observer.observe(svg);render();
+ const observer=new ResizeObserver(()=>{const box=svg.getBoundingClientRect();if(box.width&&box.height&&(Math.abs(box.width-width)>.1||Math.abs(box.height-height)>.1))scheduleRefit()});observer.observe(svg);render();mapMounted=true;
  // 学习卡「定位图谱」用 host.dataset.focus 指定要聚焦的节点或其观察指标（PR #38）。
  if(host.dataset.focus){const target=nodes.find(n=>n.id===host.dataset.focus||n.indicators.includes(host.dataset.focus));if(target)choose(target.id)}
- orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;detailResizer.dispose();cancelAnimationFrame(layoutFrame);cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
+ orbitFrame=requestAnimationFrame(orbit);return()=>{disposed=true;mapMounted=false;clearTimeout(refitTimer);cancelAnimationFrame(refitFrame);window.removeEventListener('resize',onWindowResize);detailResizer.dispose();cancelAnimationFrame(layoutFrame);cancelAnimationFrame(orbitFrame);disposeVisual();observer.disconnect();stopCamera();cancelAnimationFrame(physicsFrame);cancelAnimationFrame(paintFrame)};
 }

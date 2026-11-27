@@ -115,7 +115,7 @@ function makePanel(defaultWidth) {
   return { panel, writes };
 }
 
-function mount({ defaultWidth = 420, storage = new Map(), min = 360, max = 760 } = {}) {
+function mount({ defaultWidth = 420, storage = new Map(), min = 360, max = 760, onResize = null } = {}) {
   const dom = installDom(storage);
   const { panel, writes } = makePanel(defaultWidth);
   const resizer = attachPanelResizer(panel, {
@@ -126,6 +126,7 @@ function mount({ defaultWidth = 420, storage = new Map(), min = 360, max = 760 }
     getWidth: () => panel.rendered,
     setWidth: panel.setWidth,
     maxFor: () => max,
+    onResize,
   });
   return { dom, panel, writes, resizer };
 }
@@ -221,4 +222,48 @@ test('两个面板复用同一个模块，只是键与范围由调用方给', ()
   // 样式在 shadow root 里也要能取到薄荷色。
   assert.match(read('panel-resize.css'), /var\(--panel-accent/);
   assert.match(read('theme.css'), /--panel-accent: #3fa98d/);
+});
+
+test('宽度变化回调：拖动给 immediate=false，松手 / 键盘 / 双击给 immediate=true', () => {
+  const calls = [];
+  const { resizer, panel } = mount({ onResize: (width, detail) => calls.push({ width, ...detail }) });
+  assert.equal(calls.length, 0);
+  resizer.handle.dispatch('pointerdown', { clientX: 700 });
+  resizer.handle.dispatch('pointermove', { clientX: 650 });
+  assert.deepEqual(calls.at(-1), { width: 470, immediate: false });
+  resizer.handle.dispatch('pointermove', { clientX: 620 });
+  assert.deepEqual(calls.at(-1), { width: 500, immediate: false });
+  resizer.handle.dispatch('pointerup', { clientX: 620 });
+  assert.deepEqual(calls.at(-1), { width: 500, immediate: true });
+  assert.equal(panel.rendered, 500);
+  resizer.handle.dispatch('keydown', { key: 'ArrowLeft' });
+  assert.deepEqual(calls.at(-1), { width: 516, immediate: true });
+  resizer.handle.dispatch('dblclick');
+  assert.deepEqual(calls.at(-1), { width: null, immediate: true });
+  assert.equal(panel.rendered, 420);
+});
+
+test('挂载时恢复本机宽度也会触发一次 immediate 回调', () => {
+  const calls = [];
+  mount({ storage: new Map([[KEY, '655']]), onResize: (width, detail) => calls.push({ width, ...detail }) });
+  assert.deepEqual(calls, [{ width: 655, immediate: true }]);
+});
+
+test('面板宽度与窗口 resize 复用知识地图既有的 fit 做整图适配', () => {
+  const map = read('knowledge-map.js');
+  // 选中节点只高亮，不再把相机缩到单个类别（否则窄画布一定有节点被裁）。
+  assert.doesNotMatch(map, /const selected=active&&layoutMode==='chapter'/);
+  assert.match(map, /const focus=\$\('topic'\)\.value/);
+  // 拖拽中节流 120ms；松手 / 键盘 / 双击 / 窗口 resize 立即一次。
+  assert.match(map, /const REFIT_DELAY=120/);
+  assert.match(map, /onResize:\(width,\{immediate\}\)=>\{if\(!mapMounted\)return;if\(immediate\)refitNow\(\);else scheduleRefit\(\)\}/);
+  assert.match(map, /function refitNow\(\)\{[\s\S]{0,300}?fit\(false\)/);
+  assert.match(map, /function scheduleRefit\(\)\{[\s\S]{0,400}?fit\(false\)/);
+  assert.match(map, /window\.addEventListener\('resize',onWindowResize\)/);
+  assert.match(map, /new ResizeObserver\(\(\)=>\{[\s\S]{0,300}?scheduleRefit\(\)\}\)/);
+  // 左下角工具栏与右上角图例的高度参与适配，节点标签不会被浮层盖住。
+  assert.match(map, /bottomInset=\(toolsBox\?toolsBox\.height:36\)\+20/);
+  assert.match(map, /topInset=width<820\?Math\.max\(10,legendBox\.bottom-svgBox\.top\+10\):10/);
+  assert.match(map, /classList\.toggle\('compact-legend'/);
+  assert.match(read('knowledge-map.css'), /\.explorer\.compact-legend \.personal-legend/);
 });

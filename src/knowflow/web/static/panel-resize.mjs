@@ -38,6 +38,9 @@ function writeSaved(storageKey, width) {
  * @param {() => number} [options.getWidth] 读当前渲染宽度
  * @param {(width: number|null) => void} [options.setWidth] 写宽度，null 表示恢复默认
  * @param {() => number} [options.maxFor] 计算当前允许的最大宽度（受容器/视口限制）
+ * @param {(width: number|null, detail: {immediate: boolean}) => void} [options.onResize]
+ *   宽度变化回调。拖动过程中 immediate=false（由调用方自行节流），
+ *   松手 / 键盘 / 双击 / 窗口缩放 / 恢复本机宽度时 immediate=true。
  * @returns {{dispose: () => void, reset: () => void, handle: HTMLElement}}
  */
 export function attachPanelResizer(panel, options) {
@@ -52,6 +55,7 @@ export function attachPanelResizer(panel, options) {
       else panel.style.setProperty('--kf-panel-width', `${width}px`);
     },
     maxFor = () => max,
+    onResize = null,
   } = options;
 
   const clamp = value => Math.max(min, Math.min(maxFor(), value));
@@ -73,21 +77,22 @@ export function attachPanelResizer(panel, options) {
     handle.setAttribute('aria-valuenow', String(width));
   };
 
-  const apply = width => {
+  const apply = (width, immediate = false) => {
     const next = width == null ? null : clamp(width);
     setWidth(next);
     syncAria();
+    onResize?.(next, { immediate });
     return next;
   };
 
   const commit = width => {
-    apply(width);
+    apply(width, true);
     writeSaved(storageKey, width == null ? null : clamp(width));
   };
 
   const reset = () => {
     writeSaved(storageKey, null);
-    apply(null);
+    apply(null, true);
   };
 
   const onPointerDown = event => {
@@ -120,6 +125,8 @@ export function attachPanelResizer(panel, options) {
       // 已经释放过了。
     }
     writeSaved(storageKey, clamp(getWidth()));
+    // 松手时宽度已经由最后一次 move 写好了，这里再补一次“立即适配”信号。
+    onResize?.(clamp(getWidth()), { immediate: true });
   };
 
   const onKeyDown = event => {
@@ -144,7 +151,7 @@ export function attachPanelResizer(panel, options) {
   handle.addEventListener('dblclick', onDoubleClick);
 
   const saved = readSaved(storageKey);
-  if (saved != null) apply(saved);
+  if (saved != null) apply(saved, true);
   else syncAria();
 
   // 面板在挂载时可能还没显示（宽度 0），打开那一刻才第一次有真实宽度；
@@ -160,7 +167,7 @@ export function attachPanelResizer(panel, options) {
   // 视口一变，之前记住的宽度可能超过新的可用空间，重新夹一次。
   const reapply = () => {
     const stored = readSaved(storageKey);
-    if (stored != null) apply(stored);
+    if (stored != null) apply(stored, true);
     else syncAria();
   };
   window.addEventListener('resize', reapply);

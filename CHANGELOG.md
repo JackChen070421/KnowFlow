@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-11-27 — 知识地图随面板宽度重新适配 + 深色图表状态色 class 化
+
+**未推送** · 分支 `feat/web-night-panel-pdf`
+
+- 知识地图：章节视图的 `fit()` 改为始终适配「当前可见全部节点 + 类别节点」，选中节点只高亮、不把相机缩到单类；`panel-resize.mjs` 新增 `onResize(width,{immediate})`，讲解面板拖拽中约 120ms 节流、松手 / 键盘 / 双击 / 恢复本机宽度立即调用 `fit(false)`，窗口 resize 与 svg 的 ResizeObserver 也走同一适配。窄画布按右上图例与左下 `.maptools` 的实际高度留安全区，个人图例在 470–820px 画布上排 4 列，避免浮层压住标签。
+- 深色图表状态色：`charts.js` 输出 `.chart-fill-*` / `.chart-swatch-*` / `.chart-stroke-*`，`theme.css` 用 `--status-fill-*` 定义浅色 / 深色两套（深色三种「无证据」状态 #5f6e77 / #53626b / #45525a），覆盖状态分布条、热力图、知识地图节点、图例、badge 与 donut；`knowledge-map.css` 在 shadow root 里复用同一组变量。顺带收口 `.issue-meter`、`.score-breakdown` 的浅色小件。
+- 验证：`pytest` 476 passed + 4 skipped + 1 xfailed；`ruff` 通过；`node --test tests/web/*.test.mjs` 63 项通过（新增面板回调 / 整图适配 / 状态色 class）；Chrome headless + CDP 实拍 `refit-420/520/620/760`、刷新恢复与窗口缩放，教师 / 学生地图各 9 个状态，均 21 节点 + 30 标签 0 裁切、0 图例遮挡、0 横向滚动条；深色 7 张页面按「亮度 >200 且 >200px 连通块」统计 0 块（文字笔画按包围盒填充率 <0.80 排除）。
+- 未做到 / 取舍：为保证面板打开时 21 个节点全在画布内，点击节点不再自动放大到该类别（滚轮手动缩放仍保留）；面板拉到 760px 时画布约 350px，图谱整体很小但完整。
+- 回退：还原 6 个静态文件与 2 个前端测试；删掉 `knowledge-map.css` / `theme.css` 里的状态色映射即可回到内联颜色。
+
+---
+
 ## 2026-11-27 — 夜间白边收口、两个可拖拽面板、原文 PDF 与知识点要求
 
 **未推送** · 分支 `feat/web-night-panel-pdf`

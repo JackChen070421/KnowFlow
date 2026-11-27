@@ -20,6 +20,7 @@ import {
   states,
   categories,
   statusGroup,
+  statusSwatch,
   icon,
   badge,
   legend,
@@ -39,6 +40,17 @@ const responseColors = {
   pending: states.insufficient_evidence.color,
   assigned_not_attempted: states.unobserved.color,
   unobserved: states.not_applicable.color
+};
+// 与 responseColors 同时使用的状态 class：图表的填充由 theme.css 的深/浅两套变量
+// 决定，responseColors 只留给无法用 CSS 的少数位置。
+const responseTones = {
+  observed_correct: 'mastered',
+  partial: 'sparse_poor',
+  zero: 'weak',
+  observed_wrong: 'sparse_poor',
+  pending: 'insufficient_evidence',
+  assigned_not_attempted: 'unobserved',
+  unobserved: 'not_applicable'
 };
 
 let D, kb, storageOK = true,
@@ -198,6 +210,7 @@ const listIds = items => (items || []).map(x => typeof x === 'string' ? x : x.kn
 const statusCount = p => categories.map(s => ({
   label: states[s].label,
   color: states[s].color,
+  tone: s,
   value: p.knowledge_states.filter(k => statusGroup(k.status) === s).length
 })).filter(s=>s.value>0);
 
@@ -470,23 +483,28 @@ function historicalItems(sid = null) {
   return [{
     label: '满分记录',
     value: full,
-    color: responseColors.observed_correct
+    color: responseColors.observed_correct,
+    tone: responseTones.observed_correct
   }, {
     label: '部分得分',
     value: partial,
-    color: responseColors.partial
+    color: responseColors.partial,
+    tone: responseTones.partial
   }, {
     label: '零分记录',
     value: zero,
-    color: responseColors.zero
+    color: responseColors.zero,
+    tone: responseTones.zero
   }, {
     label: '已作答待评分',
     value: pending,
-    color: responseColors.pending
+    color: responseColors.pending,
+    tone: responseTones.pending
   }, {
     label: '已布置未作答',
     value: not,
-    color: responseColors.assigned_not_attempted
+    color: responseColors.assigned_not_attempted,
+    tone: responseTones.assigned_not_attempted
   }];
 }
 
@@ -624,7 +642,7 @@ function heatmap() {
   const height = window.innerHeight;
   const page = pageSlice(profiles(), 'heatmap', height < 760 ? 3 : height < 850 ? 4 : height < 950 ? 5 : 7);
   const columns = pageSlice(kb.knowledge, 'heatColumns', window.innerWidth < 700 ? 3 : 9);
-  return chartCard('学生知识热力图', '点击色块查看证据；点击学生查看完整画像', `<div class="table-scroll heatmap-scroll"><table class="data-table heatmap"><thead><tr><th>学生 / 知识点</th>${columns.items.map(k => `<th><button data-knowledge="${esc(k.knowledge_id)}" title="${esc(k.name)}">${esc(k.knowledge_id)}</button></th>`).join('')}</tr></thead><tbody>${page.items.map(p => `<tr><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td>${columns.items.map(k => { const v = p.knowledge_states.find(x => x.knowledge_id === k.knowledge_id); return `<td><button class="cell cell-${statusGroup(v.status)}" data-person-knowledge="${esc(k.knowledge_id)}" data-person="${esc(p.student_id)}" style="background:${states[v.status].color}" aria-label="${esc(p.student_id + ' ' + k.name + ' ' + states[v.status].label + '，' + v.evidence_count + '条有效评分')}" title="${esc(k.name + ' · ' + states[v.status].label)}">${states[v.status].short}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${legend(page.items.some(p=>p.knowledge_states.some(k=>k.status==='mixed_performance')))}${pagination('heatmap', page, '人')}${columns.count > 1 ? pagination('heatColumns', columns, '个知识点') : ''}`, '每个色块对应一个学生与一个知识点。颜色代表当前证据支持的状态；证据不足不等于未掌握。使用分页查看全部学生，避免长表滚动。');
+  return chartCard('学生知识热力图', '点击色块查看证据；点击学生查看完整画像', `<div class="table-scroll heatmap-scroll"><table class="data-table heatmap"><thead><tr><th>学生 / 知识点</th>${columns.items.map(k => `<th><button data-knowledge="${esc(k.knowledge_id)}" title="${esc(k.name)}">${esc(k.knowledge_id)}</button></th>`).join('')}</tr></thead><tbody>${page.items.map(p => `<tr><td><button class="text-button mono" data-student="${esc(p.student_id)}">${esc(p.student_id)}</button> <small class="muted">${esc(p.group_id)}</small></td>${columns.items.map(k => { const v = p.knowledge_states.find(x => x.knowledge_id === k.knowledge_id); return `<td><button class="cell cell-${statusGroup(v.status)} ${statusSwatch(v.status)}" data-person-knowledge="${esc(k.knowledge_id)}" data-person="${esc(p.student_id)}" aria-label="${esc(p.student_id + ' ' + k.name + ' ' + states[v.status].label + '，' + v.evidence_count + '条有效评分')}" title="${esc(k.name + ' · ' + states[v.status].label)}">${states[v.status].short}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${legend(page.items.some(p=>p.knowledge_states.some(k=>k.status==='mixed_performance')))}${pagination('heatmap', page, '人')}${columns.count > 1 ? pagination('heatColumns', columns, '个知识点') : ''}`, '每个色块对应一个学生与一个知识点。颜色代表当前证据支持的状态；证据不足不等于未掌握。使用分页查看全部学生，避免长表滚动。');
 }
 
 function studentsPage() {
@@ -774,7 +792,7 @@ function bindSourceLibrary(){
 
 function knowledgeMap(p) {
   if(kb.curriculum_graph?.nodes?.length)return `<div data-interactive-map ${p?'data-personal="true"':''}></div>`;
-  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['sparse_good_count','sparse_good'],['sparse_poor_count','sparse_poor'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['unobserved_count','unobserved'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]};background:${states[t].color}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
+  return `<div class="knowledge-map">${kb.objectives.map((o,i)=>`<div class="topic-column"><div class="topic-head"><div class="eyebrow">MODULE ${String(i+1).padStart(2,'0')}</div><h3>${esc(o.theme)}</h3><small>${esc(o.objective_id)}</small></div><div class="knowledge-branch">${kb.knowledge.filter(k=>k.objective_id===o.objective_id).map(k=>{const s=p?.knowledge_states.find(x=>x.knowledge_id===k.knowledge_id),c=currentClass().knowledge_distribution.find(x=>x.knowledge_id===k.knowledge_id);const materialCount=new Set(kb.qmatrix.filter(q=>q.knowledge_id===k.knowledge_id&&q.weight>0).map(q=>q.material_id)).size;return `<button class="knowledge-node" data-knowledge="${esc(k.knowledge_id)}"><span class="kn-top"><span>${esc(k.knowledge_id)}</span>${s?badge(s.status):`<span class="pill">${c.observed_student_count} 人有观测</span>`}</span><strong>${esc(k.name)}</strong><span class="kn-bottom"><span>${materialCount} 份关联材料</span>${s?`<span>${s.evidence_count} 条评分 ${icon('arrow',11)}</span>`:`<span class="kn-meter">${[['mastered_count','mastered'],['weak_count','weak'],['sparse_good_count','sparse_good'],['sparse_poor_count','sparse_poor'],['mixed_count','mixed'],['insufficient_count','insufficient_evidence'],['unobserved_count','unobserved'],['not_applicable_count','not_applicable']].filter(([f])=>c[f]>0).map(([f,t])=>`<i style="flex:${c[f]}" class="${statusSwatch(t)}"></i>`).join('')}</span>`}</span></button>`;}).join('')}</div></div>`).join('')}</div>`;
 }
 
 // 知识点的「具体要求」：优先取知识点对象自己的 requirement / description，
@@ -827,7 +845,7 @@ function qualityPage() {
     unobserved: '无观测'
   };
   const audit = `<p class="panel-sub">此页为整个数据集的质量审计，跨两个节点；不受班级筛选影响。</p><div class="audit-flow">${[[q.input_records,'输入逻辑记录','CSV 解析后的记录数'],[q.duplicates_removed,'修订 / 重复淘汰','按数据层规则保留版本'],[q.rejected_records,'不纳入记录','保留拒绝原因'],[q.total_records,'最终保留记录','进入画像与复算']].map(([v,t,d],i)=>`<div class="audit-step"><small>STEP ${String(i+1).padStart(2,'0')}</small><strong>${v}</strong><span>${t}<br>${d}</span></div>`).join('')}</div><div class="notice">核对关系：输入 ${q.input_records} = 保留 ${q.total_records} + 修订 / 重复淘汰 ${q.duplicates_removed} + 不纳入 ${q.rejected_records}。保留中包含 ${q.partial_credit_records} 条部分得分记录，未按“全错”抹掉。</div><div class="audit-status">${['知识底座结构与引用','个人 / 班级画像复算','学习建议约束与复算'].map(t=>`<span>${icon('shield',15)}${t} · 通过</span>`).join('')}</div>${note(`数据生成时间：${esc(D.meta.generated_at)}。成果保存在被 Git 忽略的本机目录；页面没有调用外部模型。`)}`;
-  const states = `<p class="panel-sub">按数据层整理结果统计。</p>${donut(Object.entries(q.records_by_state).map(([k,v])=>({label:labels[k]||k,value:v,color:responseColors[k]||responseColors.unobserved})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}`;
+  const states = `<p class="panel-sub">按数据层整理结果统计。</p>${donut(Object.entries(q.records_by_state).map(([k,v])=>({label:labels[k]||k,value:v,color:responseColors[k]||responseColors.unobserved,tone:responseTones[k]||responseTones.unobserved})),q.total_records,'条保留记录')}${note('“无观测”的学生—材料组合不一定有实体记录，因此不能只看此处计数判断知识覆盖。')}`;
   const boundaries = `<p class="panel-sub">缺失、待评分、未作答和部分得分分别处理。</p><ul class="rule-list">${q.handling_rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="notice warm">评分点失分是学习线索，不自动等于具体误概念。教师可以从知识点抽屉继续回查原始作答。</div>`;
   const sources = `<p class="panel-sub">保留材料出处，支持本机核对版本。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>输入文件</th><th>逻辑记录数</th><th>SHA-256 指纹</th></tr></thead><tbody>${q.input_files.map(f=>`<tr><td>${esc(f.path)}</td><td>${f.rows??'—'}</td><td class="mono" title="${esc(f.sha256)}">${esc(f.sha256.slice(0,16))}…</td></tr>`).join('')}</tbody></table></div>`;
   const findings = `<p class="panel-sub">规则和处理动作来自任务 2 输出。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>字段 / 记录</th><th>问题</th><th>数量 / 处理</th></tr></thead><tbody>${q.field_quality.map(f=>`<tr><td>${esc(f.field)}</td><td>${esc(f.issue)}</td><td>${f.count}</td></tr>`).join('')}${q.anomalies.slice(0,25).map(a=>`<tr><td>${esc(a.record_id||'—')}</td><td>${esc(a.reason)}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>${!q.anomalies.length&&!q.field_quality.length?empty('当前没有记录到质量异常。'):''}${q.anomalies.length>25?note(`异常共有 ${q.anomalies.length} 项，页面展示前 25 项；全部保留在本机质量报告中。`):''}`;

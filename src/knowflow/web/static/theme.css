@@ -80,6 +80,83 @@
 }
 
 /* ---------------------------------------------------------------------
+   图表状态色：class 驱动，浅色 / 深色只换 --status-fill-* 变量。
+   SVG 的 fill=/stroke= 属性不认 var()，所以元素只写
+   .chart-fill-* / .chart-stroke-*（SVG）与 .chart-swatch-*（HTML 色块），
+   不再在标记里写死颜色。深色下三种「无证据」状态用低亮度中性色，
+   不再出现 #c9d4dc / #e9edf0 这类 >200 亮度的浅块。
+   knowledge-map.css 在 shadow root 里复用同一组变量（见该文件的同名映射）。
+   --------------------------------------------------------------------- */
+:root {
+  --status-fill-mastered: #d78b51;
+  --status-fill-sparse-good: #edb985;
+  --status-fill-sparse-poor: #81b9a5;
+  --status-fill-weak: #238778;
+  --status-fill-mixed: #a28bc7;
+  --status-fill-insufficient-evidence: #c9d4dc;
+  --status-fill-unobserved: #9fb2c0;
+  --status-fill-not-applicable: #e9edf0;
+}
+
+[data-theme="dark"] {
+  --status-fill-mastered: #d78b51;
+  --status-fill-sparse-good: #d6a06c;
+  --status-fill-sparse-poor: #7cb39f;
+  --status-fill-weak: #2c8f7e;
+  --status-fill-mixed: #9d86c4;
+  --status-fill-insufficient-evidence: #5f6e77;
+  --status-fill-unobserved: #53626b;
+  --status-fill-not-applicable: #45525a;
+}
+
+.chart-fill-mastered { fill: var(--status-fill-mastered); }
+.chart-fill-sparse-good { fill: var(--status-fill-sparse-good); }
+.chart-fill-sparse-poor { fill: var(--status-fill-sparse-poor); }
+.chart-fill-weak { fill: var(--status-fill-weak); }
+.chart-fill-mixed { fill: var(--status-fill-mixed); }
+.chart-fill-insufficient-evidence { fill: var(--status-fill-insufficient-evidence); }
+.chart-fill-unobserved { fill: var(--status-fill-unobserved); }
+.chart-fill-not-applicable { fill: var(--status-fill-not-applicable); }
+
+.chart-swatch-mastered { background: var(--status-fill-mastered); }
+.chart-swatch-sparse-good { background: var(--status-fill-sparse-good); }
+.chart-swatch-sparse-poor { background: var(--status-fill-sparse-poor); }
+.chart-swatch-weak { background: var(--status-fill-weak); }
+.chart-swatch-mixed { background: var(--status-fill-mixed); }
+.chart-swatch-insufficient-evidence { background: var(--status-fill-insufficient-evidence); }
+.chart-swatch-unobserved { background: var(--status-fill-unobserved); }
+.chart-swatch-not-applicable { background: var(--status-fill-not-applicable); }
+
+.chart-stroke-mastered { stroke: var(--status-fill-mastered); }
+.chart-stroke-sparse-good { stroke: var(--status-fill-sparse-good); }
+.chart-stroke-sparse-poor { stroke: var(--status-fill-sparse-poor); }
+.chart-stroke-weak { stroke: var(--status-fill-weak); }
+.chart-stroke-mixed { stroke: var(--status-fill-mixed); }
+.chart-stroke-insufficient-evidence { stroke: var(--status-fill-insufficient-evidence); }
+.chart-stroke-unobserved { stroke: var(--status-fill-unobserved); }
+.chart-stroke-not-applicable { stroke: var(--status-fill-not-applicable); }
+
+/* 深色下的深沉填充需要浅色数字；浅色主题保持原有深字。 */
+[data-theme="dark"] .bar-track > span { color: #0d171a; }
+[data-theme="dark"] .bar-track > .chart-swatch-insufficient-evidence,
+[data-theme="dark"] .bar-track > .chart-swatch-unobserved,
+[data-theme="dark"] .bar-track > .chart-swatch-not-applicable { color: #e7eef1; }
+[data-theme="dark"] .heatmap button.cell { color: #0d171a; }
+[data-theme="dark"] .heatmap button.cell.chart-swatch-insufficient-evidence,
+[data-theme="dark"] .heatmap button.cell.chart-swatch-unobserved,
+[data-theme="dark"] .heatmap button.cell.chart-swatch-not-applicable { color: #e7eef1; }
+
+/* 这几处小图形在深色下原本仍是浅色字面量，量化为 >200 亮度的小块。 */
+[data-theme="dark"] .issue-meter { background: var(--surface-3); }
+[data-theme="dark"] .issue-meter i { background: var(--orange); }
+[data-theme="dark"] .score-breakdown i {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+[data-theme="dark"] .score-breakdown i:nth-child(2) { color: var(--orange); }
+[data-theme="dark"] .score-breakdown i:nth-child(3) { color: #c08a63; }
+
+/* ---------------------------------------------------------------------
    Shared surface remap for the two non-default themes
    --------------------------------------------------------------------- */
 

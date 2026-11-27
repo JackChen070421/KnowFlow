@@ -1,4 +1,4 @@
-import {states as statusStyles} from './charts.js';
+import {states as statusStyles,statusFill,statusSwatch} from './charts.js';
 import {radialLayout,logicLayout,logicNeighborhood,logicRelationLabel,relaxCategory,interpolateCamera,resizeCamera} from './map-layout.mjs';
 import {storyContent,mountNodeVisual} from './course-stories.mjs';
 import {attachPanelResizer,fitWithin} from './panel-resize.mjs';
@@ -66,7 +66,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
   const entries=el('div','','status-legend-items');
   const keys=['mastered','sparse_good','sparse_poor','weak','insufficient_evidence','unobserved','not_applicable'];
   if(nodes.some(n=>nodeState(n)?.status==='mixed_performance'))keys.push('mixed');
-  keys.forEach(key=>{const style=statusStyles[key],item=el('span',style.label),dot=el('i');dot.style.background=style.color;item.prepend(dot);entries.append(item)});
+  keys.forEach(key=>{const style=statusStyles[key],item=el('span',style.label),dot=el('i');dot.className=statusSwatch(key);item.prepend(dot);entries.append(item)});
   $('legend').append(entries,el('small','连线与外圈表示章节类别'));
  }
  const relationLegend=el('div','','relation-legend');relationLegend.hidden=true;
@@ -90,7 +90,7 @@ export function mountMap(host,{materials,knowledge,curriculum_graph:graph},openK
     const p=layout.positions.get(n.id);if(layoutMode==='chapter')curve(hub,p,colors[topic]);
     const item=se('g',{transform:`translate(${p.x} ${p.y})`,class:'point radial-node','data-id':n.id,style:`--branch:${colors[topic]}`,'aria-label':n.name+'，打开图解','aria-pressed':n.id===active});
     item.append(se('circle',{r:32,class:'node-halo'}));const title=se('title');title.textContent=n.name+' · '+n.loc;item.append(title);
-    const status=nodeState(n)?.status;item.append(se('circle',{r:21,class:'node-core',fill:profile?(palette[status]||palette.insufficient_evidence)[1]:colors[topic]}));
+    const status=nodeState(n)?.status;const core=se('circle',{r:21,class:'node-core'+(profile?' '+statusFill(status||'insufficient_evidence'):'')});if(!profile)core.setAttribute('fill',colors[topic]);item.append(core);
     const split=Math.ceil(n.name.length/2),chunks=n.name.length>7?[n.name.slice(0,split),n.name.slice(split)]:[n.name];chunks.forEach((chunk,i)=>svgText(item,chunk,0,(layoutMode==='logic'?49:p.y<hub.y-20?-37-(chunks.length-1)*25:49)+i*25,'node-label'));action(item,()=>choose(n.id));$('dots').append(item);groups.set(n.id,item);
     item.dataset.dragId=n.id;
    }

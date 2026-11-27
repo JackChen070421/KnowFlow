@@ -1744,7 +1744,7 @@ function exportSummary() {
 }
 
 function chatContextLabel() {
-  return `${state.node} · ${groupName(state.group)}${state.student ? ' · ' + state.student : ''}`;
+  return `${viewLabel(state.view)} · ${state.node} · ${groupName(state.group)}${state.student ? ' · ' + state.student : ''}`;
 }
 
 function citeChip(id) {
@@ -1916,7 +1916,9 @@ async function sendChat(raw) {
       context: {
         node_id: state.node,
         group_id: state.group,
-        student_id: state.student
+        student_id: state.student,
+        // 让 AI 学伴知道对方当前在哪个页面，指路时能说“就在当前页面”。
+        view: state.view
       }
     }, 'X-KnowFlow-Chat', {timeoutMs: 45000});
     const staleMode = !data.trace || data.trace.mode !== state.chatMode;

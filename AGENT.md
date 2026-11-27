@@ -188,6 +188,7 @@ G2/G3 已覆盖 canonical 数据层、任务2诊断层与任务3建议层；任�
 - 网页「设置」通过 `settings_store.py` 写本机 `.env`（仅回环、要求 `X-KnowFlow-Settings` 头、Key 不回显）；保存等价于手工改配置，不自动重算已有成果。
 - 传输层**不依赖第三方 SDK**：`llm/client.py` 用标准库直连 OpenAI 兼容接口。失败必须按 `LLMError.kind`（auth / billing / model / request / rate_limit / server / timeout / network / empty / bad_response）分类并记日志，不得统一写成“调用不通”；只对 timeout / network / 5xx / 429 重试，最多一次。
 - 网页对话 `/api/chat` 复用 `llm/chat.py` 的事实卡与白名单（仅回环、要求 `X-KnowFlow-Chat` 头）；上下文只来自已校验快照，不读 `data/raw`。
+- 「AI 学伴」的 system prompt 与事实卡一起带一份 **WebUI 地图**（`llm/ui_guide.py`）和当前页面 `context.view`。地图只用于指路（页面 / 分区 / 按钮 / 当前页），不是学情事实，也不得据此推断数据；它明确要求不编造入口、不报页面数量、不写 URL、不替用户操作。地图标签由 `tests/diagnosis/test_ui_guide.py` 与 `web/static/app.js`、`learning.js`、`training.js` 的实际文案逐项对齐：**改界面必须同步改地图并升 `UI_GUIDE_VERSION`**，否则测试失败。界面名里带数字时（如「两个人的共同空闲」）在 `ui_guide.NUMERIC_LABELS` 登记，`audit` 只按整名豁免该处数字，同句其他人数仍要落在事实卡内。
 - 对话的输入分两类，规则不同：**学习者数据**（计数、比率、状态、ID、计划）只能是聚合事实；**课程内容**（`objective_text`、学习卡、题面与解析，来自已校验的 `knowledge_base.json`）可以随问题发送，用于讲题。姓名、原始作答、评分明细、`answer_key`（学生端）永不进入 prompt。
 - 对话的数字锁按**数字在句中扮演的角色**判定，而不是整句关键词：后面跟“人/名”，或数字附近出现人数、比例、掌握度、覆盖等学习者语境的，必须落在事实卡（含列表长度）内；“10 分钟”“14 道题”“第 12 周”“建议每组 4 人”这类教学/建议数量放行。判定窗口**只看数字附近**——整句判定会把“开场用 10 分钟……把 36 名证据不足的学生先落下来”里的 10 分钟误判成编造数据；“约/不到”也只对邻近的那个数字放宽，`41 人` 不能借用同句的“不到”过关。ID 仍是全快照真实 ID。事实卡还有证据缺口时，“全班都没掌握/都掌握”这类绝对结论会被拒收，带“不能说……”限定语的说法放行。多轮上文由前端带最近 6 轮、后端截断到 2400 字，只接受 `role`/`text`。`POST /api/settings/llm/test` 提供 1 token 连通性探测，设置页据此显示真实可用性。
 - 对话先过 `llm/intent.py`（7 类意图 + 复合意图 + 提问形式）；意图只决定“分析重点/回答形态”，不产生任何事实，数据查询类明确要求只答数据本身。`llm/audit.py` 是数字、编号与结论的唯一审计处；`answer_question` 把失败分成模型不可达、数字、编号、越界结论、格式五类，写进 `note` 与 `trace.guard`，便于定位是“模型挂了”还是“模型说了不该说的”。
@@ -290,6 +291,7 @@ $env:PYTHONPATH='src'; python -m knowflow.cli check
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v0.35 | 2026-11-27 | AI 学伴拿到 WebUI 地图（`llm/ui_guide.py`）与当前页面 `context.view`：教师/学生两套指路、学生端不含教师工具；`tests/diagnosis/test_ui_guide.py` 与前端标签逐项对齐，界面改动未同步即失败；数字界面名按整名豁免；测试 498 项（497 passed + 1 xfail） |
 | v0.34 | 2026-11-26 | 事实审计与多轮隔离：中文数字进审计、历史回答数字不再进白名单、`dialogue`（指代/冲突/补充/clarify）、零记录缺口、结构化验收五类（`scripts/check_acceptance.py`）；测试 440 项 + 1 xfail |
 | v0.33 | 2026-11-26 | 学情对话：`llm/intent.py` 意图识别（7 类 + 复合 + 提问形式）、事实卡分 `weak_signal`/`evidence_gap`、`llm/audit.py` 按语境判数字与绝对结论、兜底按意图作答、失败分类写进 `trace.guard`；测试 372 项 |
 | v0.32 | 2026-11-26 | 跨域探索补充：`explore-more.mjs` 任务墙（6）/学科联动（8）/数学小史（3），抽屉承载与本机存储；测试 311 项 + 前端 35 项 |

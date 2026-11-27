@@ -228,6 +228,7 @@ git merge <source_branch>
 4. **提交前检查**：`check_contracts`、`check_examples`、`validate_outputs`（有产物时）、`pytest` 全绿；没有验证就写“未验证”。
 5. **不编造**：不手写 `material_id`/`issue_id`/`record_id`；不把“未记录”说成“未掌握”。
 6. **PR 作者不能自审**；合并前确认 CI 和至少一名非作者 review。
+7. **改 WebUI 同步 AI 学伴地图**：页面 / 分区 / 按钮增删改后，更新 `src/knowflow/llm/ui_guide.py` 并跑 `pytest tests/diagnosis/test_ui_guide.py`；数字界面名同时登记 `NUMERIC_LABELS`。
 
 ---
 

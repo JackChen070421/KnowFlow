@@ -329,7 +329,26 @@ def _advice_frame(text: str, start: int) -> bool:
 # --- 数字分类 ---------------------------------------------------------------
 
 
-def classify_number(text: str, match: SpanLike) -> str:
+def _inside_name(text: str, match: SpanLike, names: tuple[str, ...] = ()) -> bool:
+    """Is this number part of an interface name such as “两个人的共同空闲”?
+
+    Only exact, caller-supplied names are exempt, and only that occurrence: a
+    second “2 人” elsewhere in the answer is still audited normally.
+    """
+
+    start, end = match.start(), match.end()
+    for name in names:
+        if not name:
+            continue
+        begin = text.find(name)
+        while begin >= 0:
+            if begin <= start and end <= begin + len(name):
+                return True
+            begin = text.find(name, begin + 1)
+    return False
+
+
+def classify_number(text: str, match: SpanLike, names: tuple[str, ...] = ()) -> str:
     """Return ``claim`` / ``teaching`` / ``advisory`` / ``other``.
 
     The class says *what role the number plays*, not whether it is correct;
@@ -343,6 +362,8 @@ def classify_number(text: str, match: SpanLike) -> str:
     statistic (observed on the real model: "开场用 10 分钟做一次统一小测…").
     """
 
+    if _inside_name(text, match, names):
+        return "teaching"
     if _is_ordinal(text, match.start(), match.end()):
         return "teaching"
     if _is_time(text, match.end()):
@@ -434,7 +455,11 @@ def _chinese_quantity(text: str, span: SpanLike) -> bool:
 
 
 def audit_numbers(
-    answer: str, numbers: set[float], user_numbers: set[float] | None = None
+    answer: str,
+    numbers: set[float],
+    user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> list[dict]:
     """One record per number in the answer: value, role, source and verdict.
 
@@ -447,7 +472,7 @@ def audit_numbers(
     text = answer or ""
     user_numbers = user_numbers or set()
     for span, value, source, state in _number_tokens(text):
-        kind = classify_number(text, span)
+        kind = classify_number(text, span, names)
         near = _head(text, span.start(), 6) + _tail(text, span.end(), 6)
         sentence = sentence_of(text, span.start())
         if state != "exact":
@@ -500,11 +525,15 @@ def _is_percent(text: str, span: SpanLike) -> bool:
 
 
 def number_audit(
-    answer: str, numbers: set[float], user_numbers: set[float] | None = None
+    answer: str,
+    numbers: set[float],
+    user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> dict:
     """Summarise how the answer's numbers divide into data claims and teaching."""
 
-    items = audit_numbers(answer, numbers, user_numbers)
+    items = audit_numbers(answer, numbers, user_numbers, names=names)
     return {
         "data_claims": sum(1 for item in items if item["kind"] == "claim"),
         "teaching_numbers": sum(1 for item in items if item["kind"] == "teaching"),
@@ -542,6 +571,8 @@ def validate_answer(
     numbers: set[float],
     ids: set[str],
     user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> list[str]:
     """Every reason this answer may not be shown as-is (empty list = accepted)."""
 
@@ -552,7 +583,7 @@ def validate_answer(
         return problems
     if len(text) > MAX_ANSWER:
         problems.append("answer too long")
-    unlocked = number_audit(text, numbers, user_numbers)["unverified"]
+    unlocked = number_audit(text, numbers, user_numbers, names=names)["unverified"]
     if unlocked:
         problems.append(f"numbers outside facts: {unlocked}")
     unknown = set(ID.findall(text)) - ids
@@ -612,6 +643,8 @@ def verdict(
     ids: set[str],
     facts: dict,
     user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> dict:
     """Structured guard result: which kind of problem, if any.
 
@@ -620,7 +653,7 @@ def verdict(
     "回答未通过核对".
     """
 
-    problems = validate_answer(answer, numbers, ids, user_numbers)
+    problems = validate_answer(answer, numbers, ids, user_numbers, names=names)
     claims = claim_problems(answer, facts) if answer else []
     problems = problems + claims
     kinds: list[str] = []

@@ -42,6 +42,7 @@ from .contract import forbidden_text
 from .guard import ID, NUMBER
 from .intent import classify_intent, guide_block
 from .retrieval import select_sources
+from .ui_guide import NUMERIC_LABELS, webui_guide
 
 LOGGER = logging.getLogger(__name__)
 
@@ -844,11 +845,15 @@ def snapshot_ids(snapshot: dict) -> set[str]:
 
 
 def number_audit(
-    answer: str, numbers: set[float], user_numbers: set[float] | None = None
+    answer: str,
+    numbers: set[float],
+    user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> dict:
     """Split the numbers of an answer into data claims and teaching numbers."""
 
-    return _audit.number_audit(answer, numbers, user_numbers)
+    return _audit.number_audit(answer, numbers, user_numbers, names=names)
 
 
 def validate_answer(
@@ -856,10 +861,12 @@ def validate_answer(
     numbers: set[float],
     ids: set[str],
     user_numbers: set[float] | None = None,
+    *,
+    names: tuple[str, ...] = (),
 ) -> list[str]:
     """Every reason this answer may not be shown as-is (empty list = accepted)."""
 
-    return _audit.validate_answer(answer, numbers, ids, user_numbers)
+    return _audit.validate_answer(answer, numbers, ids, user_numbers, names=names)
 
 
 def _ratio(value: Any) -> str:
@@ -1792,6 +1799,9 @@ def answer_question(
         raise ValueError("问题过长，请控制在 500 字以内")
 
     audience = _audience(snapshot)
+    # The interface map is navigation help, not learner data: it is sent with the
+    # fact card so "在哪里看" questions get the real page/tab/button names.
+    ui = webui_guide(audience, (context or {}).get("view"))
     turns = normalize_history(history)
     facts = build_facts(snapshot, text, context, knowledge, history=turns)
     numbers, ids = allowed_sets(facts)
@@ -1835,6 +1845,8 @@ def answer_question(
             + style_note(preferences, audience)
             + "\n\n"
             + guide_block(facts.get("intent") or {})
+            + "\n\n"
+            + ui
             + ("\n\n" + HISTORY_RULE if dialogue else "")
         )
         feedback = ""
@@ -1866,7 +1878,9 @@ def answer_question(
                 failure = LLMError("unknown", f"{type(exc).__name__}: {exc}")
                 LOGGER.warning("chat model call failed: kind=unknown detail=%s", failure.detail)
                 break
-            result = _audit.verdict(answer, numbers, ids, facts, user_numbers)
+            result = _audit.verdict(
+                answer, numbers, ids, facts, user_numbers, names=NUMERIC_LABELS
+            )
             problems = result["problems"]
             kinds = result["kinds"]
             structured_only = False
